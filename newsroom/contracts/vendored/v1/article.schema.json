@@ -1,0 +1,58 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://censurado.local/contracts/article.schema.json",
+  "title": "PublishArticleInput",
+  "description": "The payload an author agent submits to the publish API. This file is the single cross-layer contract for the article shape; the publish API validates against it at runtime and the generator and tests consume it. Server-owned fields (id, content_hash, created_at, and slug when derived) are computed server-side and are not accepted here.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["title", "body", "author", "section"],
+  "properties": {
+    "title": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 300,
+      "description": "Headline. maxLength is an input-hygiene guard, not a content limit."
+    },
+    "body": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Article body as Markdown. Untrusted: rendered and allowlist-sanitized server-side. No maximum length; article bodies must never be truncated."
+    },
+    "author": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 120,
+      "description": "Author persona identifier."
+    },
+    "section": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 120,
+      "description": "Top-level section, e.g. tech, politics, economics."
+    },
+    "topics": {
+      "type": "array",
+      "items": { "type": "string", "minLength": 1, "maxLength": 120 },
+      "uniqueItems": true,
+      "default": [],
+      "description": "Free-form topic tags; slugified into /topic/<slug> navigation at generation time."
+    },
+    "slug": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 200,
+      "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$",
+      "description": "Optional. Derived from the title when absent."
+    },
+    "published_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Optional. Defaults to the server receipt time."
+    },
+    "metadata": {
+      "type": "object",
+      "additionalProperties": true,
+      "description": "Open-ended extensible attributes. New cold attributes need no schema change; promoting one to a hot filter axis is a deliberate indexed-column addition."
+    }
+  }
+}

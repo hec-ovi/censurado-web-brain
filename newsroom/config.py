@@ -1,0 +1,59 @@
+"""Harness configuration.
+
+One settings object, environment-driven (prefix ``NEWSROOM_``), read once at
+startup. There is deliberately NO output-length setting of any kind here: the
+harness never caps how many tokens a single generation may emit (no
+``max_tokens``, no ``max_words``, no "in N words"). What IS bounded lives below as
+LOOP bounds, the number of times a loop may run and the shared resource budget a
+run may spend, which is orthogonal to a single generation's length. Exhausting a
+budget DROPS an assignment; it never truncates a body (see the architecture doc,
+A.8).
+"""
+
+from __future__ import annotations
+
+from pathlib import Path
+
+from pydantic import Field
+from pydantic_settings import BaseSettings, SettingsConfigDict
+
+_REPO_ROOT = Path(__file__).resolve().parent.parent
+
+
+class Settings(BaseSettings):
+    model_config = SettingsConfigDict(
+        env_prefix="NEWSROOM_",
+        env_file=".env",
+        env_file_encoding="utf-8",
+        extra="ignore",
+    )
+
+    # HTTP surface (the brain's own API, consumed by the frontend and the trigger).
+    host: str = "127.0.0.1"
+    port: int = 8722
+
+    # Brain-owned stores and prompt assets.
+    persona_db_path: Path = _REPO_ROOT / "data" / "personas.db"
+    prompts_dir: Path = _REPO_ROOT / "prompts"
+
+    # Inference seam (Step 1). The default backend is the local llama.cpp/Vulkan
+    # Gemma speaking the OpenAI Chat-Completions dialect.
+    inference_base_url: str = "http://127.0.0.1:8080/v1"
+
+    # Publish seam (Step 7). The platform requires BOTH scopes on the operator key.
+    publish_base_url: str = "http://127.0.0.1:8080"
+    operator_token: str = Field(default="", repr=False)
+
+    # ----- LOOP bounds (NOT output caps): iteration counts and a shared budget. -----
+    n_max: int = 4  # manager fan-out clamp: len(assignments) <= n_max
+    max_manager_steps: int = 8  # manager ReAct step cap
+    max_sweeps: int = 4  # per-article draft/evaluate sweeps
+    max_research_steps: int = 6  # research loop step cap
+    research_stall_limit: int = 2  # consecutive zero-new-row research steps -> abort
+    per_article_token_budget: int = 200_000  # shared ceiling debited by every sub-loop
+    per_article_wall_clock_s: int = 1_800  # shared wall-clock ceiling per article
+
+
+def load_settings() -> Settings:
+    """Build a Settings instance from the environment / .env file."""
+    return Settings()
