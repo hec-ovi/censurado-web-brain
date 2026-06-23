@@ -8,17 +8,21 @@ All version and contract claims below were re-verified directly: the publish han
 
 ## PART A: The eight open questions
 
-### A.1 What is a "workflow" here?
+### A.1 What is an agentic workflow?
 
-A workflow is code-owned control flow: a fixed sequence of steps the program decides, written as a durable graph of `State / Nodes / Edges`. The model is called inside nodes but never decides what runs next; the edges do. In this harness the entire outer shape (trigger -> manager triage -> fan-out dispatch -> per-article pipeline -> collect -> publish) is a workflow. It is deterministic, inspectable top to bottom, and re-runnable.
+An agentic workflow is a system where LLM and tool steps are orchestrated through predefined code paths: the developer owns the control flow, the model does the work inside the steps. This is the "workflow" half of Anthropic's workflow-vs-agent taxonomy, the load-bearing distinction in 2026 (workflows = LLMs and tools orchestrated through predefined code paths; agents = LLMs that dynamically direct their own process and tool usage). See Anthropic, "Building Effective AI Agents" (anthropic.com/research/building-effective-agents).
+
+Two contrasts pin the term. It is not a plain workflow: a plain data pipeline has no model in the loop, while an agentic workflow's nodes reason and call tools with an LLM. And it is not an agentic loop (A.2): the steps are agentic, but the edges between them are code, not model decisions. The control flow is a fixed graph of `State / Nodes / Edges`; the model is called inside nodes but never decides what runs next, the edges do.
+
+In this harness the entire outer shape (trigger -> manager triage -> fan-out dispatch -> per-article pipeline -> collect -> publish) is an agentic workflow: LLM-driven nodes, code-driven edges, deterministic and re-runnable top to bottom. The 2026 reality is that real systems are hybrids, structured enough to be reliable and flexible enough to absorb variance. Ours is deliberately a hybrid: an agentic workflow on the outside hosting bounded agentic loops on the inside (A.3).
 
 ### A.2 What is an "agentic loop"?
 
 An agentic loop is model-driven control flow: perceive, reason, plan, act, observe, repeat, where the MODEL decides whether to continue. ReAct, Plan-and-Execute, and Reflexion are all this shape. The defining property, and the reason loops are dangerous, is that the model has no built-in concept of "done." Left alone it will keep going, or stop too early, on its own judgment. A loop is only safe when code outside the model enforces the exit. The research finding is firm on this: a provably-halting loop needs all three of `{max iterations, resource budget, no-progress detection}`. Any loop with fewer than three guards is a hope, not a bound. This rule applies to every loop in the system without exception (see A.6 and A.8 for where the original design violated it and how this version fixes it).
 
-### A.3 How do workflows and loops relate?
+### A.3 How do agentic workflows and agentic loops relate?
 
-They compose by altitude. A deterministic outer workflow hosts bounded inner loops. The guards live exactly where the two altitudes meet: every place a workflow node hands control to a model-driven loop, the workflow owns the cap, the budget, and the progress detector that bring control back. In this harness the manager is the one orchestrator-workers seam, the single point where the workflow lets the model decide how many workers to spawn, and even that decision is clamped (A.6). Below the manager, journalist nodes run their own bounded loops and call tools, but no node below the manager may spawn another agent or persona. That invariant (the manager is the sole fan-out point) is what makes runaway recursion structurally impossible rather than merely unlikely.
+They compose by altitude. A deterministic agentic workflow hosts bounded agentic loops. The guards live exactly where the two altitudes meet: every place a workflow node hands control to a model-driven loop, the workflow owns the cap, the budget, and the progress detector that bring control back. In this harness the manager is the one orchestrator-workers seam, the single point where the workflow lets the model decide how many workers to spawn, and even that decision is clamped (A.6). Below the manager, journalist nodes run their own bounded loops and call tools, but no node below the manager may spawn another agent or persona. That invariant (the manager is the sole fan-out point) is what makes runaway recursion structurally impossible rather than merely unlikely.
 
 ### A.4 Best prompt technique per step
 
