@@ -33,6 +33,7 @@ from newsroom.manager.coverage import CoverageStore
 from newsroom.manager.preflight import ResolvedRoles
 from newsroom.manager.types import Candidate
 from newsroom.personas import Persona, PersonaStore
+from newsroom.publish import publish_assignment
 from newsroom.research.ledger import Ledger
 from newsroom.runner import run as run_mod
 from newsroom.runner import (
@@ -280,6 +281,54 @@ def test_managed_run_drafts_and_publishes_one_article(fake, tmp_path):
     assert len(coverage) == 1
     assert coverage[0].headline == "Chips Ship Early"
     assert coverage[0].section == "tech"
+
+
+def test_a_rerun_publish_of_a_finalized_assignment_is_idempotent(fake, tmp_path):
+    # The runner-level re-run / crash-replay guarantee (deferred from Step 8's review):
+    # the content-derived idempotency key minted at finalize and PERSISTED on the
+    # assignment is what makes a second publish of the same finalized article
+    # exactly-once. A re-run replays to the IDENTICAL key, so the platform returns the
+    # idempotent 200 with the same id rather than minting a second article, and the
+    # already-published guard records no second coverage row.
+    settings = _settings(fake, tmp_path)
+    deps = _deps(fake, settings, personas=[_ada()])
+    fake.state.script_chat(_assign("ada", headline="Chips ship early"))
+    for body in ("outline", "draft", "enriched"):
+        fake.state.script_chat(body)
+    fake.state.script_chat(_finalize_ok("Chips Ship Early", "The chips shipped."))
+
+    report = run_managed(deps=deps)
+
+    # First publish CREATED the article (201), minting exactly one distinct article.
+    assert [p.replayed for p in report.published] == [False]
+    first_id = report.published[0].published_id
+    assert len(fake.state.publish_requests) == 1
+    assert len(fake.state.by_hash) == 1  # one distinct content hash -> one article
+
+    outcome = report.outcomes[0]
+    row = deps.store.get_assignment(outcome.assignment_id)
+    assert row.status == "published" and row.idempotency_key  # finalize persisted the key
+
+    # Re-publish the SAME finalized assignment through the runner's publish tail (the
+    # crash-after-finalize replay path). The row carries the persisted key + content
+    # hash, so the POST replays under the identical key.
+    result = publish_assignment(
+        outcome.article,
+        assignment=row,
+        store=deps.store,
+        base_url=fake.base_url,
+        token="op-token",
+        coverage=deps.coverage_store,
+        lock=deps.lock,
+    )
+
+    assert result.ok and result.replayed and result.id == first_id  # SAME article, 200 replay
+    assert len(fake.state.by_hash) == 1  # nothing new minted on the platform
+    assert len(deps.coverage_store.recent(limit=10)) == 1  # already-published -> no double record
+    # The platform saw a second POST, but under the same key and content hash: a replay.
+    assert len(fake.state.publish_requests) == 2
+    assert {r["content_hash"] for r in fake.state.publish_requests} == {row.content_hash}
+    assert {r["key"] for r in fake.state.publish_requests} == {row.idempotency_key}
 
 
 def test_publish_payload_carries_newsroom_provenance(fake, tmp_path):

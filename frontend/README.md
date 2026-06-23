@@ -47,7 +47,7 @@ The image is buildless, so the build just copies the static files and the nginx 
 docker build -t brain-frontend frontend
 ```
 
-It expects a `brain` service reachable at `brain:8000` (the reverse-proxy target in `nginx.conf`). The compose wiring that runs the console next to the brain lands with the automation layer.
+It expects a `brain` service reachable at `brain:8000` (the reverse-proxy target in `nginx.conf`). The compose that runs the console next to the brain is in `../deploy`: `cd deploy && cp .env.example .env && docker compose up --build` serves the console on `http://localhost:8080`.
 
 ## Test
 

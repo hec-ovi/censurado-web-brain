@@ -27,6 +27,11 @@ dev = [
     "ruff>=0.5",
 ]
 
+[project.scripts]
+# The automation entry point: run the newsroom once and exit. An external periodic
+# trigger invokes this with a --mode (the entire trigger surface). See newsroom.cli.
+censurado-brain = "newsroom.cli:main"
+
 [build-system]
 requires = ["setuptools>=68"]
 build-backend = "setuptools.build_meta"

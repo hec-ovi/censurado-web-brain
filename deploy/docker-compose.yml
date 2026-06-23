@@ -1,0 +1,80 @@
+# Run the brain and its console next to each other. The console (nginx) serves the
+# static UI and reverse-proxies /api to the brain, so the browser makes same-origin
+# calls. The brain talks to an inference backend you provide, or the bundled local
+# one under the `local-llm` profile.
+#
+# Quick start (from this directory):
+#   cp .env.example .env          # then set NEWSROOM_OPERATOR_TOKEN and the URLs
+#   docker compose up --build     # brain + console on http://localhost:8080
+#
+# Add the bundled local model (needs a Vulkan GPU, e.g. a Strix Halo / gfx1151 box):
+#   docker compose --profile local-llm up --build
+
+services:
+  brain:
+    build:
+      context: ..
+      dockerfile: Dockerfile
+    env_file: .env
+    environment:
+      # In-container paths: the SQLite lives on a named volume, prompts in the image.
+      NEWSROOM_PERSONA_DB_PATH: /data/personas.db
+      NEWSROOM_PROMPTS_DIR: /app/prompts
+    volumes:
+      - brain-data:/data
+    extra_hosts:
+      # The publish target is the host platform, reached as host.docker.internal (the
+      # default in .env.example). Docker Desktop populates that name automatically;
+      # Docker Engine on Linux does not, so map it to the host gateway explicitly. This
+      # spelling is honored on Linux and tolerated on Desktop, so the default works on both.
+      - "host.docker.internal:host-gateway"
+    # The brain listens on 8000 inside the compose network (the console's upstream).
+    # It is deliberately NOT published to the host: reach it through the console. Add
+    # a `ports` entry here only if you want to hit the brain API directly.
+    expose:
+      - "8000"
+    healthcheck:
+      # No curl in the slim image; use the interpreter that is already there.
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 20s
+    restart: unless-stopped
+
+  console:
+    build:
+      context: ../frontend
+    depends_on:
+      brain:
+        condition: service_healthy
+    ports:
+      - "8080:80"
+    restart: unless-stopped
+
+  # The local inference backend: a llama.cpp/Vulkan server for the decensored Gemma.
+  # Optional and behind a profile because it needs a Vulkan GPU. Drop a GGUF model
+  # into ./models and point NEWSROOM_INFERENCE_BASE_URL at http://inference:8080/v1.
+  inference:
+    profiles: ["local-llm"]
+    image: ghcr.io/ggml-org/llama.cpp:server-vulkan
+    environment:
+      # Serve from shared system memory (GTT), NOT the small VRAM carveout: allocate
+      # tensors host-visible so the whole unified pool is usable on the APU. Keeping
+      # --n-gpu-layers high is fine because "GPU memory" here IS system memory.
+      GGML_VK_PREFER_HOST_MEMORY: "1"
+      GGML_VK_ALLOW_SYSMEM_FALLBACK: "1"
+    devices:
+      - /dev/dri:/dev/dri
+    volumes:
+      - ./models:/models:ro
+    command: >
+      --host 0.0.0.0 --port 8080
+      --model /models/gemma.gguf
+      --n-gpu-layers 99
+    expose:
+      - "8080"
+    restart: unless-stopped
+
+volumes:
+  brain-data:

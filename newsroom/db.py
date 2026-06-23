@@ -101,6 +101,13 @@ def open_db(path: str | Path = ":memory:", *, check_same_thread: bool = True) ->
     layer opens with it False and serializes access under a lock, so one shared
     connection (one in-memory DB) can be reached from a request handler and a
     background synthesis thread.
+
+    A FILE database also gets WAL journaling and a busy timeout. The automation
+    entry point (``newsroom.cli``) runs as a SEPARATE process from a live brain, so
+    two processes may touch the same file: WAL lets a reader and a writer proceed
+    concurrently, and the busy timeout waits out a brief writer lock instead of
+    failing immediately with "database is locked". Both have no effect on an in-memory
+    database, so they are applied only to a file.
     """
     is_memory = str(path) == ":memory:"
     if not is_memory:
@@ -108,6 +115,10 @@ def open_db(path: str | Path = ":memory:", *, check_same_thread: bool = True) ->
     conn = sqlite3.connect(str(path), check_same_thread=check_same_thread)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA foreign_keys = ON")
+    if not is_memory:
+        # Multi-process safety for the file-backed deployment (see the docstring).
+        conn.execute("PRAGMA journal_mode = WAL")
+        conn.execute("PRAGMA busy_timeout = 5000")
     conn.executescript(SCHEMA)
     conn.commit()
     return conn

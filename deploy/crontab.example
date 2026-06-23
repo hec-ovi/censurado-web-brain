@@ -1,0 +1,21 @@
+# The v1 automation: a host crontab that triggers a managed run on a schedule. The
+# brain is trigger-blind, so automation is just "invoke the one-shot command with a
+# mode". Nothing about cron lives in the brain itself; this file is the whole wiring.
+#
+# Install with: crontab deploy/crontab.example  (edit the path and times first).
+#
+# Three managed runs a day (07:00, 13:00, 19:00 local). The brain container is
+# long-running (it serves the console), so exec the one-shot run command inside it.
+# -T disables the pseudo-TTY (required from cron); output is appended to a log so the
+# JSON run summary is captured. The command exits non-zero on a failed or partial
+# run, which surfaces in cron's own failure mail if MAILTO is set.
+
+MAILTO=""
+
+0 7,13,19 * * * cd /opt/censurado-web-brain/deploy && docker compose exec -T brain censurado-brain --mode managed >> /var/log/censurado-brain.log 2>&1
+
+# Alternative, if you installed the package on the host instead of running it in a
+# container (the file-backed SQLite uses WAL + a busy timeout, so a one-shot run is
+# safe alongside a live brain process):
+#
+# 0 7,13,19 * * * cd /opt/censurado-web-brain && /usr/local/bin/censurado-brain --mode managed >> /var/log/censurado-brain.log 2>&1
