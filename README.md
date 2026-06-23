@@ -60,7 +60,7 @@ The rest of the surface: `POST /personas` (returns `202` and a synthesis job to 
 
 ## Status
 
-Early, and built end to end through the engine. The brain runs today: the persona store and async synthesis, the inference adapter, the bounded research loop and ledger, the per-article pipeline (draft, evaluate, finalize), the manager and fan-out, the raw-HTTP publish client, and the trigger surface (`manual`, `express`, `managed`) over HTTP. Steps 0 through 8 of the Part C build plan have shipped with a green suite. Remaining: the presentation console (Step 9) and the automation wiring plus an end-to-end managed run (Step 10). Plan 1, the workflow-and-loop architecture, is written up in `docs/research/stage-2-newsroom-architecture.md`.
+Early, and built end to end through the engine and its console. The brain runs today: the persona store and async synthesis, the inference adapter, the bounded research loop and ledger, the per-article pipeline (draft, evaluate, finalize), the manager and fan-out, the raw-HTTP publish client, the trigger surface (`manual`, `express`, `managed`) over HTTP, and the author-manager console (a buildless vanilla-JS frontend served by nginx, in `frontend/`). Steps 0 through 9 of the Part C build plan have shipped with a green suite. Remaining: the automation wiring plus an end-to-end managed run (Step 10). Plan 1, the workflow-and-loop architecture, is written up in `docs/research/stage-2-newsroom-architecture.md`.
 
 ## Layout
 
@@ -76,6 +76,7 @@ newsroom/            the brain package (one process, isolated sub-packages)
   publish/           the raw-HTTP publish client to the platform seam
   inference/         the completion adapter (OpenAI-dialect, per-backend shims)
   contracts/         the vendored article schema, section enum, and content hash
+frontend/            the presentation layer: buildless vanilla JS + nginx, talks to the brain over /api
 prompts/             versioned .md prompts (persona, manager, journalist)
 testkit/             the shared in-repo fake (chat + publish), used by every test
 tests/               end-to-end tests that drive the real entry points
