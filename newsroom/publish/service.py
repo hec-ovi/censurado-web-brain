@@ -12,6 +12,9 @@ the idempotent 200) does not double-record.
 
 from __future__ import annotations
 
+import threading
+from contextlib import nullcontext
+
 from newsroom.contracts.article import PublishArticleInput
 from newsroom.manager.coverage import CoverageStore
 from newsroom.publish.client import DEFAULT_TIMEOUT, PublishResult, publish_article
@@ -29,35 +32,43 @@ def publish_assignment(
     token: str,
     coverage: CoverageStore | None = None,
     timeout: float = DEFAULT_TIMEOUT,
+    lock: threading.Lock | None = None,
 ) -> PublishResult:
     """Publish a finalized assignment and record the outcome. Returns the typed
     ``PublishResult`` unchanged; the side effects (mark published, record coverage)
-    fire only on a created/replayed success and only once per assignment."""
+    fire only on a created/replayed success and only once per assignment.
+
+    ``lock`` (when given) serializes the brain's single shared SQLite connection. It
+    is held ONLY around the store block (the read + the two writes), NEVER across the
+    POST, exactly like the pipeline and synthesis seams: the network call must not
+    block a concurrent request-loop read of the same connection."""
     result = publish_article(
         article, assignment=assignment, base_url=base_url, token=token, timeout=timeout
     )
     if not (result.ok and result.id):
         return result
 
-    current = store.get_assignment(assignment.id)
-    already_published = current is not None and current.status == "published"
+    guard = lock if lock is not None else nullcontext()
+    with guard:
+        current = store.get_assignment(assignment.id)
+        already_published = current is not None and current.status == "published"
 
-    # Record coverage FIRST, then mark published LAST. The two are separate commits on
-    # the shared connection, so order them to make the only crash window benign: a
-    # failure between them leaves the assignment "ready" (a re-run replays the
-    # idempotent 200 and re-records), rather than "published" with a coverage row that
-    # the already-published guard could never backfill. A clean replay still records
-    # nothing twice, because by then the assignment is already "published".
-    if coverage is not None and not already_published:
-        coverage.record(
-            section=article.section,
-            headline=article.title,
-            topics=list(article.topics),
-            slug=result.slug,
-            published_id=result.id,
-            assignment_id=assignment.id,
-            content_hash=assignment.content_hash,
-            published_at=article.published_at,
-        )
-    store.mark_published(assignment.id, published_id=result.id)
+        # Record coverage FIRST, then mark published LAST. The two are separate commits
+        # on the shared connection, so order them to make the only crash window benign:
+        # a failure between them leaves the assignment "ready" (a re-run replays the
+        # idempotent 200 and re-records), rather than "published" with a coverage row
+        # the already-published guard could never backfill. A clean replay still
+        # records nothing twice, because by then the assignment is already "published".
+        if coverage is not None and not already_published:
+            coverage.record(
+                section=article.section,
+                headline=article.title,
+                topics=list(article.topics),
+                slug=result.slug,
+                published_id=result.id,
+                assignment_id=assignment.id,
+                content_hash=assignment.content_hash,
+                published_at=article.published_at,
+            )
+        store.mark_published(assignment.id, published_id=result.id)
     return result

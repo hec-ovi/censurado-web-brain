@@ -244,6 +244,46 @@ def test_publish_assignment_does_not_double_record_coverage_on_replay(fake):
     assert len(env.coverage.recent(limit=10)) == 1  # still exactly one
 
 
+def test_publish_assignment_holds_the_lock_around_its_store_block(fake):
+    # When a lock is given (the brain's shared-connection lock), the side-effecting
+    # store block runs under it, so a concurrent request-loop read never races the
+    # publish writes. CRUCIALLY the POST is NOT under the lock: __enter__ asserts the
+    # publish request has ALREADY landed, so a regression wrapping the network call in
+    # the lock (the HARD never-lock-across-network rule) would fail this test.
+    import threading
+
+    class _OrderingLock:
+        def __init__(self, fake):
+            self.enters = 0
+            self.exits = 0
+            self._inner = threading.Lock()
+            self._fake = fake
+
+        def __enter__(self):
+            assert len(self._fake.state.publish_requests) == 1, "POST must precede lock acquisition"
+            self.enters += 1
+            self._inner.acquire()
+            return self
+
+        def __exit__(self, *exc):
+            self._inner.release()
+            self.exits += 1
+            return False
+
+    env = _env()
+    article = _article(env)
+    assignment = _ready_assignment(env, article)
+    lock = _OrderingLock(fake)
+
+    result = publish_assignment(article, assignment=assignment, store=env.store,
+                                base_url=fake.base_url, token="op-token", coverage=env.coverage,
+                                lock=lock)
+
+    assert result.ok is True
+    assert lock.enters == 1 and lock.enters == lock.exits  # store block ran once, under the lock
+    assert env.store.get_assignment(assignment.id).status == "published"
+
+
 def test_publish_assignment_skips_side_effects_on_failure(fake):
     # On a failed publish the wrapper must leave the assignment "ready" and record no
     # coverage, so a later run can replay it.

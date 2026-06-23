@@ -75,6 +75,27 @@ def fake():
 
 
 @pytest.fixture
+def serve_app():
+    """Serve any FastAPI app on an OS-assigned port for the duration of a test and
+    return its base URL. Used by tests that drive a custom-built brain app (e.g. the
+    run surface with injected run deps) over real HTTP. All started servers are torn
+    down on exit."""
+    started: list[tuple[uvicorn.Server, threading.Thread]] = []
+
+    def _start(app) -> str:
+        server, thread, port = _serve(app)
+        started.append((server, thread))
+        return f"http://127.0.0.1:{port}"
+
+    try:
+        yield _start
+    finally:
+        for server, thread in started:
+            server.should_exit = True
+            thread.join(timeout=5)
+
+
+@pytest.fixture
 def brain(fake, tmp_path):
     """The brain HTTP app, running on its own port, with inference pointed at the
     fake and a fresh file-backed persona store. Yields an httpx client. Depends on

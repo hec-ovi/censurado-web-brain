@@ -46,6 +46,7 @@ class Settings(BaseSettings):
 
     # ----- LOOP bounds (NOT output caps): iteration counts and a shared budget. -----
     n_max: int = 4  # manager fan-out clamp: len(assignments) <= n_max
+    express_n: int = 2  # express mode's default small batch (still clamped to n_max)
     max_manager_steps: int = 8  # manager ReAct step cap
     manager_circuit_breaker: int = 3  # consecutive no-progress/failed manager steps -> stop
     fanout_concurrency: int = 1  # articles drafted at once (GPU KV-cache; 1-2 local)

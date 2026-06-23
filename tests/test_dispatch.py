@@ -45,7 +45,7 @@ def _big_budget() -> ArticleBudget:
     return ArticleBudget(token_budget=10_000_000, wall_clock_s=1e9, clock=lambda: 0.0)
 
 
-def _make_ledger(_assignment, _spec) -> Ledger:
+def _make_ledger(_assignment, _spec, _budget) -> Ledger:
     led = Ledger(clock=lambda: datetime(2026, 6, 23, tzinfo=timezone.utc))
     led.add(claim="grounding", url="https://src.test/a", snippet="a source")
     return led
@@ -169,10 +169,10 @@ def test_outcomes_are_in_manifest_order_not_completion_order(fake):
     # assignment (ada) sleeps at its first pipeline step, so the second (bea)
     # finishes first. The result must still come back in manifest order, which only
     # holds if collection is keyed by submission index, not by who finished first.
-    def staggered(assignment, spec):
+    def staggered(assignment, spec, budget):
         if assignment.persona_id == "ada":
             time.sleep(0.2)
-        return _make_ledger(assignment, spec)
+        return _make_ledger(assignment, spec, budget)
 
     result = env.dispatch(manifest, concurrency=2, lock=threading.Lock(), make_ledger=staggered)
 
@@ -243,6 +243,30 @@ def test_store_writes_go_through_the_lock(fake):
     # create_assignment (dispatch) + mark_drafting + finalize_assignment (pipeline).
     assert lock.enters >= 3
     assert lock.enters == lock.exits  # every acquire released
+
+
+# ----- research and the pipeline share ONE per-article budget -----
+
+
+def test_research_spend_charges_the_same_per_article_budget(fake):
+    # The budget minted per article is shared between research (make_ledger) and the
+    # pipeline: if research exhausts it, the pipeline starts already over budget and
+    # drops the article before drafting. This proves one ceiling over their SUM (A.8),
+    # not a separate budget per phase.
+    ada = Persona(id="ada", display_name="Ada", beat="tech", who_i_am="tech", style="dry")
+    env = _Env(fake, [ada])
+    manifest = Manifest(assignments=[AssignmentSpec(persona_id="ada", section="tech", angle="a story")])
+
+    def greedy_research(_assignment, _spec, budget):
+        budget.debit_tokens(10_000_000)  # research alone spends the whole article budget
+        return _make_ledger(_assignment, _spec, budget)
+
+    result = env.dispatch(manifest, make_ledger=greedy_research)
+
+    assert result.outcomes[0].status == "dropped"
+    assert result.outcomes[0].stop_reason == "budget_exhausted"
+    assert result.outcomes[0].drafts == 0  # never drafted: research spent the ceiling
+    assert fake.state.chat_requests == []  # no pipeline model call happened at all
 
 
 # ----- empty manifest is a no-op -----

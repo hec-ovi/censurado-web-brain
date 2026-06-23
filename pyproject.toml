@@ -43,6 +43,7 @@ packages = [
     "newsroom.runs",
     "newsroom.manager",
     "newsroom.publish",
+    "newsroom.runner",
     "testkit",
 ]
 

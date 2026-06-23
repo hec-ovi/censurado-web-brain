@@ -12,6 +12,9 @@ The assignment lifecycle this store models:
              persisted (so a post-finalize crash replays the byte-identical body),
              awaiting the publish POST
   published  the platform accepted it (Step 7), ``published_id`` set
+  publish_failed  finalized but the platform REJECTED the publish (e.g. a 403 or a
+             transport fault); the body is kept so it stays re-publishable, and
+             ``drop_reason`` carries the publish code so the failure is observable
   dropped    abandoned with a ``drop_reason`` (e.g. ``budget_exhausted``); the
              ledger digest is kept for audit, the body is NEVER published
 
@@ -159,6 +162,14 @@ class RunStore:
             idempotency_key=idempotency_key,
             ledger_digest=ledger_digest,
         )
+
+    def mark_publish_failed(self, assignment_id: str, *, reason: str) -> None:
+        """A finalized article the platform REJECTED at publish (e.g. a 403 or a
+        transport fault). Distinct from ``ready`` (finalized, publish not yet
+        attempted) so a failed publish is observable rather than indistinguishable
+        from publish-pending. The body and content hash are KEPT (not cleared), so
+        the article stays re-publishable; ``drop_reason`` carries the publish code."""
+        self._set(assignment_id, status="publish_failed", drop_reason=reason)
 
     def mark_published(self, assignment_id: str, *, published_id: str) -> None:
         self._set(assignment_id, status="published", published_id=published_id)

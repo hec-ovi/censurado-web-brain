@@ -45,13 +45,18 @@ class ResearchOutcome:
     ledger: Ledger = field(repr=False)
 
 
-def plan_subquestions(topic: str, *, cfg: ProviderConfig, prompts_dir: Path | str) -> list[str]:
+def plan_subquestions(
+    topic: str, *, cfg: ProviderConfig, prompts_dir: Path | str, budget=None
+) -> list[str]:
     """One model call: turn the assignment into 3 to 6 searchable sub-questions.
     Accepts a JSON array or an object with a ``sub_questions`` key; returns the
-    non-empty questions as strings."""
+    non-empty questions as strings. Debits the plan call against ``budget`` (when one
+    is given) so research charges the shared per-article ceiling (A.8)."""
     template = load_prompt(prompts_dir, "journalist", "research.md")
     prompt = render(template, topic=topic)
     response = chat(ChatRequest(messages=[{"role": "user", "content": prompt}]), cfg=cfg)
+    if budget is not None:
+        budget.debit_response(response)
     data = extract_json(response.content)
     if isinstance(data, dict):
         data = data.get("sub_questions") or data.get("subquestions") or []
@@ -81,7 +86,7 @@ def run_research(
     if subquestions is None:
         if cfg is None or prompts_dir is None:
             raise ValueError("planning requires cfg and prompts_dir (or pass subquestions)")
-        subquestions = plan_subquestions(topic, cfg=cfg, prompts_dir=prompts_dir)
+        subquestions = plan_subquestions(topic, cfg=cfg, prompts_dir=prompts_dir, budget=budget)
 
     stall = 0
     steps = 0

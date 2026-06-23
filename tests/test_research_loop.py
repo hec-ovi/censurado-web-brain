@@ -83,6 +83,38 @@ def test_planning_request_carries_no_length_cap(fake):
     assert "max_tokens" not in body and "max_completion_tokens" not in body
 
 
+class _RecordingBudget:
+    """A budget double that records debits and never exhausts, to prove research
+    charges the shared per-article ceiling (A.8)."""
+
+    def __init__(self):
+        self.debits = 0
+
+    def debit_response(self, response):
+        self.debits += 1
+
+    def exhausted(self) -> bool:
+        return False
+
+
+def test_plan_subquestions_debits_the_budget(fake):
+    # The plan call (research's one model call) charges the shared per-article budget.
+    fake.state.script_chat(json.dumps(["q1", "q2"]))
+    budget = _RecordingBudget()
+    plan_subquestions("t", cfg=_cfg(fake), prompts_dir=_prompts_dir(), budget=budget)
+    assert budget.debits == 1
+
+
+def test_run_research_debits_the_plan_call(fake):
+    # run_research threads the budget into planning, so research's spend lands on the
+    # same ceiling the pipeline uses (the wiring dispatch relies on).
+    fake.state.script_chat(json.dumps(["q1"]))
+    budget = _RecordingBudget()
+    search = RecordingSearch(_unique)
+    run_research("t", search.search, cfg=_cfg(fake), prompts_dir=_prompts_dir(), budget=budget)
+    assert budget.debits == 1
+
+
 # ----- the loop's guards -----
 
 
