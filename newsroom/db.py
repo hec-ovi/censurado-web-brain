@@ -1,13 +1,15 @@
 """The brain-owned SQLite database: connection + schema, in-process only.
 
-Nothing outside the harness reads this file. It holds the three tables from the
+Nothing outside the harness reads this file. It holds the tables from the
 architecture doc (B.5): ``personas`` (author identities), ``runs`` (one row per
-harness invocation), and ``assignments`` (one row per article a run attempts, the
-idempotency anchor). Step 2 ships the full schema and the typed persona CRUD on
-top of it (``newsroom.personas.store``); the ``runs`` / ``assignments`` CRUD lands
-with the steps that own those rows (the manager at Step 6, finalize/publish at
-Steps 5/7). Defining the whole schema now keeps it in one place and avoids a later
-migration.
+harness invocation), ``assignments`` (one row per article a run attempts, the
+idempotency anchor), and ``coverage`` (one row per published article, the manager's
+"coverage memory" for freshness and non-repetition). Step 2 ships the full schema
+and the typed persona CRUD on top of it (``newsroom.personas.store``); the ``runs``
+/ ``assignments`` CRUD lands with the steps that own those rows (the manager at
+Step 6, finalize/publish at Steps 5/7), and ``coverage`` is written by publish
+(Step 7) and read by the manager's triage (Step 6). Defining the whole schema now
+keeps it in one place and avoids a later migration.
 
 ``beat`` on a persona and ``section`` on an assignment share the harness section
 vocabulary (``contracts.sections``); the CHECK on ``beat`` mirrors that enum so the
@@ -68,6 +70,22 @@ CREATE TABLE IF NOT EXISTS assignments (
 
 CREATE UNIQUE INDEX IF NOT EXISTS idx_assignment_idem
   ON assignments(idempotency_key);
+
+CREATE TABLE IF NOT EXISTS coverage (
+  id            INTEGER PRIMARY KEY AUTOINCREMENT,
+  assignment_id TEXT REFERENCES assignments(id),
+  published_id  TEXT,
+  slug          TEXT,
+  section       TEXT NOT NULL,
+  headline      TEXT NOT NULL,
+  topics        TEXT,                         -- JSON array
+  entities      TEXT,                         -- JSON array
+  fingerprint   TEXT NOT NULL,                -- JSON array of token signatures (tokens may contain spaces)
+  content_hash  TEXT,
+  published_at  TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_coverage_published_at ON coverage(published_at);
 """
 
 

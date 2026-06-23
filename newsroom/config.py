@@ -47,11 +47,18 @@ class Settings(BaseSettings):
     # ----- LOOP bounds (NOT output caps): iteration counts and a shared budget. -----
     n_max: int = 4  # manager fan-out clamp: len(assignments) <= n_max
     max_manager_steps: int = 8  # manager ReAct step cap
+    manager_circuit_breaker: int = 3  # consecutive no-progress/failed manager steps -> stop
+    fanout_concurrency: int = 1  # articles drafted at once (GPU KV-cache; 1-2 local)
     max_sweeps: int = 4  # per-article draft/evaluate sweeps
     max_research_steps: int = 6  # research loop step cap
     research_stall_limit: int = 2  # consecutive zero-new-row research steps -> abort
     per_article_token_budget: int = 200_000  # shared ceiling debited by every sub-loop
     per_article_wall_clock_s: int = 1_800  # shared wall-clock ceiling per article
+
+    # ----- coverage memory (manager triage): fresh, non-repeating, continuous news. -----
+    coverage_lookback: int = 50  # recent published articles the manager triages against
+    coverage_duplicate_threshold: float = 0.6  # >= this overlap -> DUPLICATE (drop, never republish)
+    coverage_followup_threshold: float = 0.3  # >= this (and < duplicate) -> FOLLOW_UP (extend + cite)
 
 
 def load_settings() -> Settings:
