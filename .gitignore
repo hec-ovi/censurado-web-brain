@@ -1,0 +1,34 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.coverage
+htmlcov/
+
+# Secrets and local config
+.env
+.env.*
+!.env.example
+keys.json
+*.secret
+
+# Local persona/data stores
+*.db
+*.db-wal
+*.db-shm
+*.sqlite
+*.sqlite3
+
+# Local model weights (large; never commit)
+models/
+*.gguf
+
+# Editors / OS
+.DS_Store
+.idea/
+.vscode/
