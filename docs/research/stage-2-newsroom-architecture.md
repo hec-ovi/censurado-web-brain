@@ -365,3 +365,17 @@ A requirement added during Plan 2: the harness must publish FRESH news, must NOT
 - **Research (Step 4)** is time-filtered toward recent sources, and the related prior coverage is passed to the journalist as an artifact (slugs, headlines, key claims) so the draft references it and does not repeat it. This rides the existing just-in-time and artifact-handoff context discipline; it adds no new transcript channel.
 
 "Organized" falls out of keying coverage by section, topic, entity, and date, which also lets the manager group related stories. This addition touches the persona and brain SQLite (a coverage view or table, B.5), the manager (Step 6), and research (Step 4); it is designed in full when those steps are built. It does not change the publish seam or the no-output-cap rule.
+
+---
+
+## Appendix: image generation (future feature, not in the v1 build)
+
+A later iteration should let an article carry a generated image (a hero image or inline figures), the way the user's `gamentic` repo already solves it: a local image backend driven by reusable ComfyUI workflow templates (a JSON graph with the prompt and seed parameterized), served alongside the text model. This is a deliberate FUTURE addition, not part of the ten-step v1 build, and it is recorded here so the seam choice does not paint it into a corner.
+
+How it fits without disturbing what is built:
+
+- **Reuse, do not rebuild.** Port gamentic's ComfyUI template approach (the parameterized workflow JSON plus the call/poll client) the same way the text inference adapter was ported from gamentic, and serve it on the same local box. Like the text model, it carries no output cap that would matter; an image backend has its own size parameters, which are not the "never cap LLM output length" concern.
+- **A new pipeline node, persona-blind, bounded.** Image generation slots in as one more bounded node in the per-article pipeline (after finalize, or as an enrich-time figure step), with its own iteration cap and its share of the per-article budget, exactly like every other sub-loop. It is NOT a new fan-out point; the manager stays the sole one.
+- **The publish seam needs no breaking change.** The platform's `body` is Markdown, so a generated, hosted image embeds as a normal Markdown image (`![alt](url)`) in the body with zero schema change. A structured image reference (caption, alt text, dimensions) can instead ride the `metadata` open namespace (`metadata.newsroom.images`), which the strict envelope already permits, until the platform grows a first-class image field. Either path leaves the content-hash idempotency intact (the hash is over title/body/author/section; embedding in the body changes the body and thus the hash, which is correct, while a metadata-only reference does not affect it).
+
+This reverses the platform-side media removal only for the brain: the platform stays media-light, and the brain generates and attaches imagery on its side, publishing through the same single HTTP contract.
