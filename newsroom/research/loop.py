@@ -19,7 +19,6 @@ plan, and it is uncapped like every generation in the harness.
 
 from __future__ import annotations
 
-import json
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import datetime
@@ -27,6 +26,7 @@ from pathlib import Path
 
 from newsroom.inference import ChatRequest, chat
 from newsroom.inference.provider import ProviderConfig
+from newsroom.jsonio import extract_json
 from newsroom.prompts import load_prompt, render
 from newsroom.research.ledger import Ledger
 
@@ -45,16 +45,6 @@ class ResearchOutcome:
     ledger: Ledger = field(repr=False)
 
 
-def _extract_json(content: str):
-    """Parse a model reply as JSON, tolerating a Markdown code fence."""
-    text = content.strip()
-    if text.startswith("```"):
-        text = text.split("\n", 1)[1] if "\n" in text else ""
-        if text.rstrip().endswith("```"):
-            text = text.rstrip()[: -len("```")]
-    return json.loads(text)
-
-
 def plan_subquestions(topic: str, *, cfg: ProviderConfig, prompts_dir: Path | str) -> list[str]:
     """One model call: turn the assignment into 3 to 6 searchable sub-questions.
     Accepts a JSON array or an object with a ``sub_questions`` key; returns the
@@ -62,7 +52,7 @@ def plan_subquestions(topic: str, *, cfg: ProviderConfig, prompts_dir: Path | st
     template = load_prompt(prompts_dir, "journalist", "research.md")
     prompt = render(template, topic=topic)
     response = chat(ChatRequest(messages=[{"role": "user", "content": prompt}]), cfg=cfg)
-    data = _extract_json(response.content)
+    data = extract_json(response.content)
     if isinstance(data, dict):
         data = data.get("sub_questions") or data.get("subquestions") or []
     if not isinstance(data, list):

@@ -1,0 +1,223 @@
+"""The per-article pipeline: outline, the draft/evaluate sweep loop, enrich,
+fact-check, finalize (architecture doc B.2/B.3).
+
+Read top to bottom, this is the one model-driven loop in the harness, made bounded
+by three guards that all hold at once (A.8):
+
+  * ``for sweep in range(max_sweeps)`` caps the number of drafts.
+  * The evaluator's PASS verdict is the only model-driven early exit.
+  * No-progress stops the loop when the evaluator flags the IDENTICAL set of failing
+    sections two sweeps running (it keeps finding the same unfixed issues): a
+    genuine stall, distinct from a healthy revise that fixes one section. This is
+    the failing-section-SET test, NOT whole-draft similarity (A.8).
+
+Over all of it sits the shared per-article budget, debited by every stage. On
+exhaustion the pipeline DROPS the assignment (``budget_exhausted``) and never
+publishes a body: a budget is a loop bound, and dropping (rather than truncating)
+keeps it cleanly separate from the no-output-cap rule. The draft generation itself
+is never capped; only the NUMBER of drafts is bounded.
+
+The persona is re-injected FRESH on every draft and the draft runs warm; enrich and
+fact-check run PERSONA-BLIND; finalize structures the result via pydantic-ai. The
+journalist sees the ledger and its own prior feedback, never another journalist's
+draft (that closed loop is what averages voices into mush).
+"""
+
+from __future__ import annotations
+
+import threading
+from contextlib import nullcontext
+from dataclasses import dataclass, field
+from pathlib import Path
+
+from newsroom.contracts.article import PublishArticleInput
+from newsroom.contracts.hashing import content_hash, idempotency_key
+from newsroom.inference import ChatRequest, chat
+from newsroom.inference.provider import ProviderConfig
+from newsroom.personas import Persona
+from newsroom.pipeline.budget import ArticleBudget
+from newsroom.pipeline.context import ledger_text, persona_block
+from newsroom.pipeline.evaluate import Evaluation, evaluate_draft
+from newsroom.pipeline.factcheck import fact_check
+from newsroom.pipeline.finalize import finalize_article
+from newsroom.prompts import load_prompt, render
+from newsroom.research.ledger import Ledger
+from newsroom.runs import Assignment, RunStore
+
+__all__ = ["ArticleOutcome", "run_article_pipeline"]
+
+# Draft runs warm to fight voice homogenization across journalists; outline and
+# the persona-blind passes run cooler (structure and grounding, not voice).
+_OUTLINE_TEMP = 0.4
+_DRAFT_TEMP = 0.9
+_ENRICH_TEMP = 0.3
+
+
+@dataclass
+class ArticleOutcome:
+    """The result of running the pipeline for one assignment."""
+
+    assignment_id: str
+    status: str  # "ready" (finalized, awaiting publish) | "dropped"
+    stop_reason: str  # pass | max_sweeps | stalled | budget_exhausted
+    drafts: int
+    ledger_digest: str
+    article: PublishArticleInput | None = None
+    content_hash: str | None = None
+    idempotency_key: str | None = None
+    evaluations: list[Evaluation] = field(repr=False, default_factory=list)
+
+
+def _outline(*, angle: str, section: str, ledger: Ledger, cfg: ProviderConfig,
+             prompts_dir, budget: ArticleBudget) -> str:
+    template = load_prompt(prompts_dir, "journalist", "outline.md")
+    prompt = render(template, angle=angle, section=section, ledger=ledger_text(ledger))
+    response = chat(ChatRequest(messages=[{"role": "user", "content": prompt}], temperature=_OUTLINE_TEMP), cfg=cfg)
+    budget.debit_response(response)
+    return response.content
+
+
+def _draft(*, persona: Persona, outline: str, angle: str, ledger: Ledger, feedback: str,
+           cfg: ProviderConfig, prompts_dir, budget: ArticleBudget) -> str:
+    template = load_prompt(prompts_dir, "journalist", "draft.md")
+    prompt = render(
+        template,
+        persona=persona_block(persona),  # re-injected fresh every call
+        outline=outline,
+        angle=angle,
+        ledger=ledger_text(ledger),
+        feedback=feedback,
+    )
+    response = chat(ChatRequest(messages=[{"role": "user", "content": prompt}], temperature=_DRAFT_TEMP), cfg=cfg)
+    budget.debit_response(response)
+    return response.content
+
+
+def _enrich(*, body: str, ledger: Ledger, cfg: ProviderConfig, prompts_dir,
+            budget: ArticleBudget) -> str:
+    # Persona-blind: no persona in the prompt (persona framing degrades accuracy).
+    template = load_prompt(prompts_dir, "journalist", "enrich.md")
+    prompt = render(template, article=body, ledger=ledger_text(ledger))
+    response = chat(ChatRequest(messages=[{"role": "user", "content": prompt}], temperature=_ENRICH_TEMP), cfg=cfg)
+    budget.debit_response(response)
+    return response.content
+
+
+def run_article_pipeline(
+    *,
+    assignment: Assignment,
+    persona: Persona,
+    ledger: Ledger,
+    store: RunStore,
+    budget: ArticleBudget,
+    drafter_cfg: ProviderConfig,
+    evaluator_cfg: ProviderConfig,
+    finalize_cfg: ProviderConfig,
+    prompts_dir: Path | str,
+    max_sweeps: int = 4,
+    lock: threading.Lock | None = None,
+) -> ArticleOutcome:
+    """Drive one assignment through the pipeline. Returns ``ready`` with a finalized
+    ``PublishArticleInput`` (persisted on the assignment, awaiting publish) or
+    ``dropped`` (budget exhausted; no article, nothing to publish).
+
+    ``lock`` (when given) serializes the brain's single shared SQLite connection
+    across concurrent pipelines and the request loop, exactly like the synthesis
+    seam. Only the store WRITES are held under it, never the model calls, so two
+    pipelines overlap on inference but never race on the connection."""
+    digest = ledger.digest()
+    guard = lock if lock is not None else nullcontext()
+
+    with guard:
+        store.mark_drafting(assignment.id)
+
+    def drop(reason: str) -> ArticleOutcome:
+        with guard:
+            store.mark_dropped(assignment.id, reason=reason, ledger_digest=digest)
+        return ArticleOutcome(
+            assignment_id=assignment.id, status="dropped", stop_reason=reason,
+            drafts=drafts, ledger_digest=digest, evaluations=evaluations,
+        )
+
+    drafts = 0
+    evaluations: list[Evaluation] = []
+
+    if budget.exhausted():
+        return drop("budget_exhausted")
+    outline = _outline(angle=assignment.angle, section=assignment.section, ledger=ledger,
+                       cfg=drafter_cfg, prompts_dir=prompts_dir, budget=budget)
+
+    body = ""
+    feedback = ""
+    prev_failing: set[str] | None = None
+    stop_reason = "max_sweeps"
+    for _sweep in range(max_sweeps):
+        if budget.exhausted():
+            return drop("budget_exhausted")
+        body = _draft(persona=persona, outline=outline, angle=assignment.angle, ledger=ledger,
+                     feedback=feedback, cfg=drafter_cfg, prompts_dir=prompts_dir, budget=budget)
+        drafts += 1
+        # Exhaustion AFTER a draft: the body is complete (never truncated), but the
+        # budget is spent, so we DROP rather than continue or publish.
+        if budget.exhausted():
+            return drop("budget_exhausted")
+
+        evaluation = evaluate_draft(body, outline=outline, ledger=ledger, drafter_cfg=drafter_cfg,
+                                    evaluator_cfg=evaluator_cfg, prompts_dir=prompts_dir, budget=budget)
+        evaluations.append(evaluation)
+        if evaluation.passed:
+            stop_reason = "pass"
+            break
+        failing = set(evaluation.failing_sections)
+        # No-progress = the evaluator flags the IDENTICAL, NON-EMPTY set of failing
+        # sections two sweeps running (the same unfixed issues). An empty set is
+        # deliberately NOT a stall: a REVISE with no named sections (including the
+        # unparseable-evaluation fallback) is too ambiguous to early-stop a possibly
+        # improving draft on, so we let max_sweeps bound that case instead.
+        if prev_failing is not None and failing and failing == prev_failing:
+            stop_reason = "stalled"
+            break
+        prev_failing = failing
+        feedback = evaluation.feedback
+        if budget.exhausted():
+            return drop("budget_exhausted")
+
+    # Enrich (single pass, persona-blind), then deterministic fact-check + one
+    # bounded revise. Both debit the same budget.
+    if budget.exhausted():
+        return drop("budget_exhausted")
+    body = _enrich(body=body, ledger=ledger, cfg=drafter_cfg, prompts_dir=prompts_dir, budget=budget)
+
+    if budget.exhausted():
+        return drop("budget_exhausted")
+    body, _verify = fact_check(body, ledger=ledger, cfg=drafter_cfg, prompts_dir=prompts_dir, budget=budget)
+
+    if budget.exhausted():
+        return drop("budget_exhausted")
+    try:
+        article = finalize_article(
+            body, section=assignment.section, author=persona.id, cfg=finalize_cfg,
+            prompts_dir=prompts_dir, ledger=ledger, run_id=assignment.run_id, sweeps=drafts, budget=budget,
+        )
+    except Exception:
+        # A model that cannot produce a valid payload even after the one retry, or a
+        # transport error at the finalize call, is isolated to THIS article: drop it
+        # (the run continues) rather than crashing, mirroring persona synthesis. The
+        # body was never published, so there is nothing to undo.
+        return drop("finalize_failed")
+
+    # Finalize spends tokens too; if that tipped the budget over, we still have a
+    # complete article. Persist and hand it to publish (the spend is recorded, the
+    # NEXT article's research/draft will see the exhausted budget and not start).
+    chash = content_hash(article.title, article.body, article.author, article.section)
+    idem = idempotency_key(assignment.id, chash)
+    with guard:
+        store.finalize_assignment(
+            assignment.id, final_body=article.body, content_hash=chash,
+            idempotency_key=idem, ledger_digest=digest,
+        )
+    return ArticleOutcome(
+        assignment_id=assignment.id, status="ready", stop_reason=stop_reason, drafts=drafts,
+        ledger_digest=digest, article=article, content_hash=chash, idempotency_key=idem,
+        evaluations=evaluations,
+    )

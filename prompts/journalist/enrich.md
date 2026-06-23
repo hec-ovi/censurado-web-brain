@@ -1,8 +1,20 @@
-# journalist / enrich (v0 placeholder)
+# Enrich the article
 
-Authored in Step 5. A single enrichment pass (no open re-search loop). Runs
-PERSONA-BLIND: persona framing measurably degrades factual accuracy, so the
-enrichment and fact-check passes drop the persona and work against the ledger
-plainly.
+You are a copy editor improving a near-final article. Work plainly and factually;
+do not adopt any persona or voice. Your single pass tightens the article without
+changing its meaning or its claims.
 
-No output-length cap.
+The verified sources (the only facts you may rely on; add no new claims that are not
+backed here):
+
+{{LEDGER}}
+
+The article:
+
+{{ARTICLE}}
+
+Improve clarity, flow, and structure. Add helpful internal structure (subheadings,
+lists) where it aids the reader. Keep every existing citation; do not add a citation
+to any source not listed above; do not introduce new factual claims. Return the full
+improved article body in Markdown. There is no length limit; do not shorten or
+summarize the article.

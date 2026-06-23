@@ -15,10 +15,11 @@ dependencies = [
     # The journalists' research tool, reused whole (Step 4). Pinned to the public
     # release tag; keyless multi-engine search + URL fetch with an SSRF guard.
     "websearch-skill @ git+https://github.com/hec-ovi/websearch-skill@v0.1.0",
+    # Typed structured output at the FINALIZE seam ONLY (Step 5): prompted-JSON
+    # output validated into the publish payload with one re-prompt on failure. No
+    # output-length cap is ever set on the model (the body is never truncated).
+    "pydantic-ai>=1.107,<2",
 ]
-
-# pydantic-ai is added at Step 5 (typed structured output at the finalize seam),
-# so the earlier steps' install stays minimal and robust.
 
 [project.optional-dependencies]
 dev = [
@@ -38,6 +39,8 @@ packages = [
     "newsroom.personas",
     "newsroom.inference",
     "newsroom.research",
+    "newsroom.pipeline",
+    "newsroom.runs",
     "newsroom.publish",
     "testkit",
 ]
@@ -53,6 +56,10 @@ addopts = "-q"
 filterwarnings = [
     "ignore:websockets.legacy is deprecated.*:DeprecationWarning",
     "ignore:websockets.server.WebSocketServerProtocol is deprecated.*:DeprecationWarning",
+    # pydantic-ai's run_sync uses the deprecated get_event_loop() internally when
+    # called off the event loop (the finalize seam runs in a worker thread); their
+    # code, scoped narrowly here.
+    "ignore:There is no current event loop:DeprecationWarning",
 ]
 
 [tool.ruff]

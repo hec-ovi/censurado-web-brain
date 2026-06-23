@@ -20,6 +20,7 @@ from pathlib import Path
 
 from newsroom.inference import ChatRequest, chat
 from newsroom.inference.provider import ProviderConfig
+from newsroom.jsonio import extract_json
 from newsroom.personas import Persona, PersonaStore
 from newsroom.prompts import load_prompt, render
 
@@ -46,14 +47,8 @@ class PersonaSeed:
 
 def _extract_json(content: str) -> dict:
     """Parse the model's reply as a JSON object, tolerating a Markdown code fence."""
-    text = content.strip()
-    if text.startswith("```"):
-        # Drop the opening fence (``` or ```json) and the closing fence.
-        text = text.split("\n", 1)[1] if "\n" in text else ""
-        if text.rstrip().endswith("```"):
-            text = text.rstrip()[: -len("```")]
     try:
-        parsed = json.loads(text)
+        parsed = extract_json(content)
     except json.JSONDecodeError as exc:
         raise SynthesisError(f"model did not return valid JSON: {exc}") from exc
     if not isinstance(parsed, dict):

@@ -29,7 +29,30 @@ from __future__ import annotations
 
 import hashlib
 
-__all__ = ["content_hash"]
+__all__ = ["content_hash", "idempotency_key"]
+
+
+def idempotency_key(assignment_id: str, content_hash_hex: str) -> str:
+    """The harness's content-derived idempotency key (architecture doc B.0).
+
+    Keyed on the assignment id (a collision-free PK, so the manager assigning one
+    persona two angles in a run never collides) COMBINED with the finalized
+    article's content hash (so a crash-retry that re-runs a non-deterministic loop
+    and produces a different body presents a DIFFERENT key, never the same key with
+    a different body, which the platform would reject as ``idempotency_key_reused``).
+    A post-finalize replay of the stored body yields the same hash, the same key,
+    and a true idempotent 200.
+
+    The two parts are length-prefixed before hashing so a shifted boundary cannot
+    collide, mirroring ``content_hash``. The platform treats the key as opaque, so
+    only stability and collision-freedom matter, not the internal structure.
+    """
+    h = hashlib.sha256()
+    for part in (assignment_id, content_hash_hex):
+        raw = part.encode("utf-8")
+        h.update(f"{len(raw)}:".encode("ascii"))
+        h.update(raw)
+    return h.hexdigest()
 
 
 def content_hash(title: str, body: str, author: str, section: str) -> str:
