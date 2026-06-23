@@ -347,3 +347,21 @@ A second research pass re-asked all eight questions under the strict "agentic wo
 - **Fact-check and enrich run persona-blind.** Expert-or-persona framing measurably degrades factual accuracy, so the verification pass drops the persona and checks claims against the ledger plainly.
 - **Context is engineered against "context rot."** Recall degrades as the window fills, starting before the hard token limit, and the local Gemma window is smaller than a frontier model's. So: just-in-time retrieval (pass IDs and URLs, load bodies only when a tool needs them), compaction of a loop's trajectory into the ledger near the limit, and artifact handoffs instead of transcripts.
 - **Why a too-small output cap can CAUSE a runaway loop.** A truncated generation fails its completion check, which triggers another iteration; the documented failure mode is a loop that burns its whole budget because each turn was cut off mid-thought. This is the concrete reason the global no-output-cap rule and the loop bound are complementary: bound the number of turns in the harness, and let each turn finish naturally.
+
+---
+
+## Appendix: news freshness, non-repetition, and continuity (coverage memory)
+
+A requirement added during Plan 2: the harness must publish FRESH news, must NOT republish a story it has already covered, and must REFERENCE and EXTEND prior related coverage as a story evolves day to day (new information surfaces daily, and related topics build on each other). This is the "coverage memory."
+
+**Source of truth.** The harness is the SOLE publisher, so its own record of what it has published is authoritative; it does not need to scrape the platform. A `coverage` view over the `assignments` table (or a dedicated `coverage` table) holds, per published article: `published_id` / `slug`, `section`, `topics`, key entities, headline, `published_at`, `content_hash`, and a cheap similarity fingerprint (a normalized title plus entity and topic shingles; an embedding is optional and later). It may be reconciled against the platform's RSS or latest feed as a cross-check, but the harness record leads.
+
+**Where it acts.**
+- **Manager triage (Step 6)**, before assigning, classifies each candidate story against recent coverage into one of three:
+  - DUPLICATE (same event, no new information) -> DROP, do not reassign.
+  - FOLLOW-UP (same topic, new developments today) -> assign with the prior article(s) attached by slug or URL and an instruction to cover ONLY what is new and to link and cite the prior coverage ("as reported on <date>").
+  - NEW -> a normal assignment.
+  The classification is rules-first (a deterministic fingerprint and threshold) with the manager model making the final follow-up-versus-drop-versus-new call over the retrieved related coverage, consistent with the design's "rules where they suffice, model for judgment" stance.
+- **Research (Step 4)** is time-filtered toward recent sources, and the related prior coverage is passed to the journalist as an artifact (slugs, headlines, key claims) so the draft references it and does not repeat it. This rides the existing just-in-time and artifact-handoff context discipline; it adds no new transcript channel.
+
+"Organized" falls out of keying coverage by section, topic, entity, and date, which also lets the manager group related stories. This addition touches the persona and brain SQLite (a coverage view or table, B.5), the manager (Step 6), and research (Step 4); it is designed in full when those steps are built. It does not change the publish seam or the no-output-cap rule.
