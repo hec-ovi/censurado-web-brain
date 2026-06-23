@@ -69,6 +69,8 @@ class ScriptedChat:
 
     content: str
     finish_reason: str = "stop"
+    tool_calls: list | None = None
+    usage: dict | None = None
 
 
 def default_keys() -> dict[str, KeyConfig]:
@@ -104,9 +106,19 @@ class FakeState:
 
     # --- scripting / inspection helpers ---
 
-    def script_chat(self, content: str, finish_reason: str = "stop") -> None:
+    def script_chat(
+        self,
+        content: str,
+        finish_reason: str = "stop",
+        tool_calls: list | None = None,
+        usage: dict | None = None,
+    ) -> None:
         """Queue one assistant response for the next chat completion call."""
-        self.chat_script.append(ScriptedChat(content=content, finish_reason=finish_reason))
+        self.chat_script.append(
+            ScriptedChat(
+                content=content, finish_reason=finish_reason, tool_calls=tool_calls, usage=usage
+            )
+        )
 
     def add_key(self, token: str, author: str, scopes: list[str]) -> None:
         self.keys[token] = KeyConfig(author=author, scopes=list(scopes))
@@ -207,29 +219,27 @@ def create_fake_app(state: FakeState | None = None) -> tuple[FastAPI, FakeState]
         if not isinstance(body, dict):
             return JSONResponse(status_code=400, content={"error": "invalid_json"})
 
+        headers = dict(request.headers)
         offenders = length_cap_keys_in(body)
         if offenders:
-            state.chat_requests.append({"body": body, "status": 422, "capped": True})
+            state.chat_requests.append({"body": body, "status": 422, "capped": True, "headers": headers})
             return JSONResponse(
                 status_code=422,
                 content={"error": "forbidden_length_cap", "keys": offenders},
             )
 
         scripted = state.chat_script.pop(0) if state.chat_script else ScriptedChat("(scripted-default)")
-        state.chat_requests.append({"body": body, "status": 200, "capped": False})
+        state.chat_requests.append({"body": body, "status": 200, "capped": False, "headers": headers})
+        message: dict = {"role": "assistant", "content": scripted.content}
+        if scripted.tool_calls is not None:
+            message["tool_calls"] = scripted.tool_calls
         return {
             "id": f"chatcmpl-fake-{len(state.chat_requests)}",
             "object": "chat.completion",
             "created": 0,
             "model": body.get("model", "fake-model"),
-            "choices": [
-                {
-                    "index": 0,
-                    "message": {"role": "assistant", "content": scripted.content},
-                    "finish_reason": scripted.finish_reason,
-                }
-            ],
-            "usage": {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0},
+            "choices": [{"index": 0, "message": message, "finish_reason": scripted.finish_reason}],
+            "usage": scripted.usage or {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0},
         }
 
     @app.post("/articles")
