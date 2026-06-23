@@ -31,11 +31,13 @@ the fake fails for the same reason the real handler would.
 from __future__ import annotations
 
 import json
+import threading
 from dataclasses import dataclass, field
 from datetime import datetime
 
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
+from starlette.concurrency import run_in_threadpool
 
 from newsroom.contracts.hashing import content_hash
 from testkit.assertions import length_cap_keys_in
@@ -102,9 +104,26 @@ class FakeState:
     ledger: dict[str, dict] = field(default_factory=dict)
     # content-hash dedup index: content_hash -> {id, slug, author}
     by_hash: dict[str, dict] = field(default_factory=dict)
+    # A gate to simulate a slow model: when cleared, the chat handler blocks before
+    # responding, so a test can prove a caller did NOT wait for the completion. It
+    # defaults open (set), so every other test is unaffected. threading.Event is
+    # used (not asyncio) because the fake's loop and the test live in different
+    # threads, and the handler awaits it off-loop via run_in_threadpool.
+    chat_gate: threading.Event = field(default_factory=threading.Event)
     _seq: int = 0
 
+    def __post_init__(self) -> None:
+        self.chat_gate.set()  # open by default; tests opt into holding
+
     # --- scripting / inspection helpers ---
+
+    def hold_chat(self) -> None:
+        """Make the next chat completion block until ``release_chat`` is called."""
+        self.chat_gate.clear()
+
+    def release_chat(self) -> None:
+        """Release a held chat completion (and leave the gate open)."""
+        self.chat_gate.set()
 
     def script_chat(
         self,
@@ -230,6 +249,10 @@ def create_fake_app(state: FakeState | None = None) -> tuple[FastAPI, FakeState]
 
         scripted = state.chat_script.pop(0) if state.chat_script else ScriptedChat("(scripted-default)")
         state.chat_requests.append({"body": body, "status": 200, "capped": False, "headers": headers})
+        # Simulate a slow model when a test has held the gate. Awaited off the event
+        # loop so the wait never blocks the fake from serving other requests.
+        if not state.chat_gate.is_set():
+            await run_in_threadpool(state.chat_gate.wait)
         message: dict = {"role": "assistant", "content": scripted.content}
         if scripted.tool_calls is not None:
             message["tool_calls"] = scripted.tool_calls

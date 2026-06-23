@@ -29,7 +29,7 @@ from pathlib import Path
 from newsroom.contracts.sections import SECTION_ENUM, is_valid_section
 from newsroom.db import open_db
 
-__all__ = ["Persona", "PersonaStore", "open_store"]
+__all__ = ["Persona", "PersonaStore", "open_store", "slugify"]
 
 # Persona fields a caller may change after creation. ``id`` and the timestamps are
 # managed by the store, not edited directly.
@@ -71,8 +71,11 @@ def _utcnow() -> datetime:
     return datetime.now(timezone.utc)
 
 
-def _slugify(text: str) -> str:
-    """Lowercase alphanumerics, runs of anything else collapse to one hyphen."""
+def slugify(text: str) -> str:
+    """Lowercase alphanumerics, runs of anything else collapse to one hyphen.
+
+    Public so the HTTP layer can pre-compute a persona's id (which becomes the
+    publish-seam author) the same way ``create`` derives it, with no drift."""
     out: list[str] = []
     prev_dash = False
     for ch in text.strip().lower():
@@ -102,7 +105,7 @@ class PersonaStore:
         if not is_valid_section(persona.beat):
             raise ValueError(f"invalid beat {persona.beat!r}; must be one of {SECTION_ENUM}")
 
-        persona_id = persona.id.strip() or _slugify(persona.display_name)
+        persona_id = persona.id.strip() or slugify(persona.display_name)
         if not persona_id:
             raise ValueError("persona id is empty and could not be derived from display_name")
 

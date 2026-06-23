@@ -71,17 +71,23 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_assignment_idem
 """
 
 
-def open_db(path: str | Path = ":memory:") -> sqlite3.Connection:
+def open_db(path: str | Path = ":memory:", *, check_same_thread: bool = True) -> sqlite3.Connection:
     """Open the brain database, applying the schema (idempotent) and pragmas.
 
     ``path`` defaults to an in-memory database (tests). A file path's parent
     directory is created if missing. Foreign keys are enforced (off by default in
     SQLite) so the ``assignments`` references are real; rows come back as
     ``sqlite3.Row`` for name-based access.
+
+    ``check_same_thread`` defaults to True (sqlite's own guard). The brain's HTTP
+    layer opens with it False and serializes access under a lock, so one shared
+    connection (one in-memory DB) can be reached from a request handler and a
+    background synthesis thread.
     """
-    if path != ":memory:":
+    is_memory = str(path) == ":memory:"
+    if not is_memory:
         Path(path).parent.mkdir(parents=True, exist_ok=True)
-    conn = sqlite3.connect(str(path))
+    conn = sqlite3.connect(str(path), check_same_thread=check_same_thread)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA foreign_keys = ON")
     conn.executescript(SCHEMA)
