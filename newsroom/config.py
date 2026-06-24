@@ -44,6 +44,24 @@ class Settings(BaseSettings):
     publish_base_url: str = "http://127.0.0.1:8080"
     operator_token: str = Field(default="", repr=False)
 
+    # ----- Imagery seam (art-director image generation). -----
+    # An art-director step pairs with the journalist: after an article is finalized it
+    # writes a FLUX.2 illustration brief, renders it on the local ComfyUI box, uploads
+    # the PNG to the platform's media endpoint, and stamps metadata.image on the article.
+    # The whole step is best-effort: any failure degrades to no image, never drops the
+    # article. There is NO output-length cap here either; image width/height/steps are
+    # render parameters, not generation-length caps.
+    auto_generate_image: bool = True  # default on; overridable per run (RunScope.generate_images)
+    comfyui_base_url: str = "http://127.0.0.1:8188"  # the local ComfyUI server (FLUX.2 klein)
+    image_workflow: str = "flux2_klein"  # named workflow template family under newsroom/imagery/templates
+    image_width: int = 1024
+    image_height: int = 1024
+    image_steps: int = 4  # klein is a distilled few-step model
+    reference_image_limit: int = 2  # max source reference images fed to the FLUX.2 reference workflow
+    # Where generated images are uploaded (POST /media). Defaults to publish_base_url
+    # (same host as the article publish seam) when left blank.
+    media_base_url: str = ""
+
     # ----- LOOP bounds (NOT output caps): iteration counts and a shared budget. -----
     n_max: int = 4  # manager fan-out clamp: len(assignments) <= n_max
     express_n: int = 2  # express mode's default small batch (still clamped to n_max)

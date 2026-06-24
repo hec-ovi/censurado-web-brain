@@ -66,6 +66,8 @@ class Assignment:
     idempotency_key: str | None = None
     ledger_digest: str | None = None
     published_id: str | None = None
+    image_url: str | None = None  # the hero image's public URL (stamped into metadata.image)
+    image_prompt: str | None = None  # the art-director brief that produced the image (audit)
 
 
 def _utcnow() -> datetime:
@@ -150,10 +152,15 @@ class RunStore:
         self._set(assignment_id, status="dropped", drop_reason=reason, ledger_digest=ledger_digest)
 
     def finalize_assignment(self, assignment_id: str, *, final_body: str, content_hash: str,
-                            idempotency_key: str, ledger_digest: str) -> None:
+                            idempotency_key: str, ledger_digest: str,
+                            image_url: str | None = None, image_prompt: str | None = None) -> None:
         """Persist the finalized article and move to ``ready`` (awaiting publish).
         Storing the body BEFORE the POST is what makes the publish idempotent across
-        a crash: the same body replays to the same content hash and key (B.0)."""
+        a crash: the same body replays to the same content hash and key (B.0).
+
+        ``image_url`` / ``image_prompt`` carry the art-director's hero image when one
+        was generated; they are outside the content hash (which is over
+        title/body/author/section), so they never affect the idempotency key."""
         self._set(
             assignment_id,
             status="ready",
@@ -161,6 +168,8 @@ class RunStore:
             content_hash=content_hash,
             idempotency_key=idempotency_key,
             ledger_digest=ledger_digest,
+            image_url=image_url,
+            image_prompt=image_prompt,
         )
 
     def mark_publish_failed(self, assignment_id: str, *, reason: str) -> None:
@@ -212,6 +221,8 @@ def _row_to_assignment(row: sqlite3.Row) -> Assignment:
         idempotency_key=row["idempotency_key"],
         ledger_digest=row["ledger_digest"],
         published_id=row["published_id"],
+        image_url=row["image_url"],
+        image_prompt=row["image_prompt"],
     )
 
 

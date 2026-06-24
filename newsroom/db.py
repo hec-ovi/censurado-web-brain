@@ -65,6 +65,8 @@ CREATE TABLE IF NOT EXISTS assignments (
   idempotency_key TEXT,
   ledger_digest   TEXT,
   published_id    TEXT,
+  image_url       TEXT,
+  image_prompt    TEXT,
   created_at      TEXT NOT NULL
 );
 
@@ -120,5 +122,26 @@ def open_db(path: str | Path = ":memory:", *, check_same_thread: bool = True) ->
         conn.execute("PRAGMA journal_mode = WAL")
         conn.execute("PRAGMA busy_timeout = 5000")
     conn.executescript(SCHEMA)
+    _migrate(conn)
     conn.commit()
     return conn
+
+
+# Columns added to existing tables after the initial schema shipped. CREATE TABLE IF
+# NOT EXISTS leaves an existing table untouched, so a deployed brain DB needs these
+# added explicitly. Each is idempotent (skipped when already present); a fresh DB
+# already has them from SCHEMA, so this is a no-op there.
+_ADDED_COLUMNS = {
+    "assignments": (
+        ("image_url", "TEXT"),
+        ("image_prompt", "TEXT"),
+    ),
+}
+
+
+def _migrate(conn: sqlite3.Connection) -> None:
+    for table, columns in _ADDED_COLUMNS.items():
+        existing = {row["name"] for row in conn.execute(f"PRAGMA table_info({table})")}
+        for name, decl in columns:
+            if name not in existing:
+                conn.execute(f"ALTER TABLE {table} ADD COLUMN {name} {decl}")
