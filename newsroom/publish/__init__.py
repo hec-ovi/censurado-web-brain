@@ -11,6 +11,15 @@
 from __future__ import annotations
 
 from newsroom.publish.client import PublishResult, build_payload, publish_article
+from newsroom.publish.media import MediaAsset, MediaUploadError, upload_media
 from newsroom.publish.service import publish_assignment
 
-__all__ = ["PublishResult", "publish_article", "build_payload", "publish_assignment"]
+__all__ = [
+    "PublishResult",
+    "publish_article",
+    "build_payload",
+    "publish_assignment",
+    "MediaAsset",
+    "MediaUploadError",
+    "upload_media",
+]
