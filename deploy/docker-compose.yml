@@ -50,6 +50,11 @@ services:
         condition: service_healthy
     ports:
       - "8080:80"
+    extra_hosts:
+      # The console proxies /media/ to the portal that serves generated hero images,
+      # reached as host.docker.internal (see frontend/nginx.conf). Map it to the host
+      # gateway so the name resolves on Docker Engine (Linux) as well as Desktop.
+      - "host.docker.internal:host-gateway"
     restart: unless-stopped
 
   # The local inference backend: a llama.cpp/Vulkan server for the decensored Gemma.
