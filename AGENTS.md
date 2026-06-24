@@ -126,22 +126,34 @@ any POST, so a crash after finalize replays the byte-identical body.
 - → `newsroom/contracts/hashing.py` (`content_hash` over title/body/author/section only; `idempotency_key`)
 
 ### Publish + media (the platform boundary)
-Raw HTTP to the portal. `publish_article` POSTs the finalized payload to `/articles` with
-the content-derived `Idempotency-Key` and validates the section locally first.
-`upload_media` POSTs a generated PNG's raw bytes to `/media` (scope `articles:write`, no
-idempotency key, content-addressed) and returns a `/media/<sha>.png` URL the pipeline
-stamps into `metadata.image`. `publish_assignment` adds the side effects (mark published,
-record one coverage row).
-- → `newsroom/publish/client.py` (`publish_article`, `build_payload`, `PublishResult`)
+Raw HTTP to the portal. By default a run's ready articles publish TOGETHER in one atomic
+request: `publish_batch` POSTs them to `/articles:batch` (each item carries its own
+content-derived `idempotency_key`, since one HTTP header cannot carry N keys), the
+platform validates every item then stores all or none, and `publish_batch_assignments`
+fans the side effects (mark published, one coverage row) back to each assignment.
+`publish_article` is the per-article fallback (`POST /articles` with the
+`Idempotency-Key` header), used when `NEWSROOM_PUBLISH_BATCH` is off; both run the same
+local pre-checks (`local_publish_check`: section validity, content/key drift) so a bad
+item never reaches the wire. Before sending a batch it de-collides slugs on the DERIVED
+permalink (the platform's rule, ported in `contracts/slug.py`): a within-batch slug clash
+would 422 the whole atomic batch, so the later item is pinned to a unique slug.
+`upload_media` POSTs a generated PNG's raw bytes to `/media`
+(scope `articles:write`, no idempotency key, content-addressed) and returns a
+`/media/<sha>.png` URL the pipeline stamps into `metadata.image`.
+- → `newsroom/publish/client.py` (`publish_article`, `publish_batch`, `build_payload`, `PublishResult`, `BatchResult`)
 - → `newsroom/publish/media.py` (`upload_media`, `MediaAsset`, `MediaUploadError`)
-- → `newsroom/publish/service.py` (`publish_assignment`)
+- → `newsroom/publish/service.py` (`publish_assignment`, `publish_batch_assignments`)
+- → `newsroom/runner/run.py` (`_publish_ready`: batches the run's ready articles, or falls back per-article)
 
 ### Contracts (the cross-repo seam, vendored)
-The article shape is a pinned copy of the platform schema, governed by a drift test so it
-cannot silently diverge. The brain pins its own closed section enum (the platform treats
-`section` as a free string). Media rides in the open `metadata` bag, no schema change.
+The article and batch shapes are pinned copies of the platform schemas, governed by a
+drift test so they cannot silently diverge. The brain pins its own closed section enum
+(the platform treats `section` as a free string). Media rides in the open `metadata` bag,
+no schema change.
 - → `newsroom/contracts/article.py` (`PublishArticleInput` strict, `FinalizedDraft`)
-- → `newsroom/contracts/vendored/v1/article.schema.json` (+ `SOURCE.md`, do not hand-edit)
+- → `newsroom/contracts/schema.py` (loaders + the pinned `$id`s for all three contracts)
+- → `newsroom/contracts/vendored/v1/*.schema.json` (`article`, `batch-request`, `batch-response`; + `SOURCE.md`, do not hand-edit)
+- → `newsroom/contracts/hashing.py` (`content_hash`, `idempotency_key`), `slug.py` (`derive_slug`, ported from the platform)
 - → `newsroom/contracts/sections.py` (`SECTION_ENUM`, `is_valid_section`)
 
 ### Brain HTTP surface
@@ -173,11 +185,11 @@ loader is two functions.
 ### Tests + the shared fake
 Every test drives a real entry point (HTTP route, CLI, or orchestrator function) through
 to its side effect against ONE in-repo fake that stands in for the platform (`/articles`,
-`/media`), the inference backend (`/v1/chat/completions`), and ComfyUI (`/prompt`,
-`/history`, `/view`, `/upload/image`). The fake imports from `newsroom`, never the
-reverse.
+`/articles:batch`, `/media`), the inference backend (`/v1/chat/completions`), and ComfyUI
+(`/prompt`, `/history`, `/view`, `/upload/image`). The fake imports from `newsroom`, never
+the reverse.
 - → `testkit/fake_server.py` (`create_fake_app`, `FakeState`), `testkit/assertions.py` (the no-cap guard)
-- → `tests/` (e.g. `test_imagery.py`, `test_media_upload.py`, `test_article_pipeline.py`, `test_runs_http.py`)
+- → `tests/` (e.g. `test_publish_batch.py`, `test_imagery.py`, `test_media_upload.py`, `test_article_pipeline.py`, `test_runs_http.py`, `test_schema_drift.py`)
 
 ### Infra
 - → `Dockerfile` (the brain image: uvicorn serving `create_app --factory`)
@@ -189,6 +201,11 @@ reverse.
 - **Publish payload** (`POST /articles`): required `title, body, author, section`;
   optional `topics, slug, published_at, metadata`. Strict envelope (unknown top-level
   field is a hard error). Auth needs BOTH `articles:write` and `articles:publish-any`.
+- **Batch publish** (`POST /articles:batch`): body `{"articles": [...]}`, each item the
+  article shape plus a required per-item `idempotency_key` (no `Idempotency-Key` header).
+  Atomic: any invalid item is a `422` with a per-item error list and nothing is written;
+  idempotent per item on resend. Success is `{"results": [{index, id, slug, status}]}`,
+  `201` if any created else `200` (all deduplicated). Default `<= 500` items.
 - **Media** (`POST /media`): raw image bytes as the body (not multipart), `articles:write`,
   returns `{url, sha256, ...}`. The portal renders `metadata.image` (+ `metadata.image_alt`,
   `metadata.youtube`, `metadata.video`) from the open metadata bag.

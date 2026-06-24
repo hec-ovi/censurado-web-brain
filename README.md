@@ -44,9 +44,10 @@ They compose by altitude: the deterministic workflow hosts the bounded loops, an
 
 ## How it fits censurado-web
 
-- The portal serves a static archive to readers and exposes one authenticated write API (`POST /articles`, plus `POST /media` for image bytes). It never learns that personas exist.
+- The portal serves a static archive to readers and exposes one authenticated write API (`POST /articles` for one article, `POST /articles:batch` for many, plus `POST /media` for image bytes). It never learns that personas exist.
 - This repo owns the personas (its own SQLite), the prompts (versioned `.md` files), and the agents that turn the day's news into finished articles.
 - It authors each article as the persona who wrote it, using a single operator key that carries both the `articles:write` and `articles:publish-any` scopes. That key is the only coupling between the two systems.
+- A run's finished articles publish together in one atomic batch (`POST /articles:batch`): the portal validates every item, then stores all of them or none, and each item carries its own content-derived idempotency key so a resend never doubles. Turn `NEWSROOM_PUBLISH_BATCH` off to fall back to one `POST /articles` per article.
 - A generated hero image is uploaded to the portal and referenced by URL in the article's open `metadata.image` field, so attaching imagery needs no change to the article schema, and the image is outside the content hash, so it never disturbs idempotency.
 
 ## Run modes
@@ -63,7 +64,7 @@ The rest of the surface: `POST /personas` (returns `202` and a synthesis job to 
 
 ## Status
 
-Early, but built end to end. The brain runs today: the persona store and async synthesis, the inference adapter, the bounded research loop and ledger, the per-article pipeline (draft, evaluate, finalize), the art director that writes a FLUX.2 image brief and renders a hero image on a local ComfyUI (then uploads it to the portal's `POST /media` and attaches it via `metadata.image`), the manager and fan-out, the raw-HTTP publish client, the trigger surface (`manual`, `express`, `managed`) over HTTP, the author-manager console (a buildless vanilla-JS frontend served by nginx, in `frontend/`), and the automation layer: a one-shot run command (`censurado-brain --mode managed`) for a periodic trigger, plus a Docker compose that runs the console next to the brain. The whole suite is green, including end-to-end image-generation tests driven against an in-repo ComfyUI fake; the FLUX.2 reference workflow wants one live smoke-test against the box, and the portal's media endpoint is the matching in-flight piece on the platform side. The architecture, including the image-generation seam, is written up in `docs/research/stage-2-newsroom-architecture.md`, and `AGENTS.md` is the operational map of the codebase.
+Early, but built end to end. The brain runs today: the persona store and async synthesis, the inference adapter, the bounded research loop and ledger, the per-article pipeline (draft, evaluate, finalize), the art director that writes a FLUX.2 image brief and renders a hero image on a local ComfyUI (then uploads it to the portal's `POST /media` and attaches it via `metadata.image`), the manager and fan-out, the raw-HTTP publish client (one atomic `POST /articles:batch` per run, with a per-article fallback), the trigger surface (`manual`, `express`, `managed`) over HTTP, the author-manager console (a buildless vanilla-JS frontend served by nginx, in `frontend/`), and the automation layer: a one-shot run command (`censurado-brain --mode managed`) for a periodic trigger, plus a Docker compose that runs the console next to the brain. The whole suite is green, including end-to-end image-generation tests driven against an in-repo ComfyUI fake; the FLUX.2 reference workflow wants one live smoke-test against the box, and the portal's media endpoint is the matching in-flight piece on the platform side. The architecture, including the image-generation seam, is written up in `docs/research/stage-2-newsroom-architecture.md`, and `AGENTS.md` is the operational map of the codebase.
 
 ## Layout
 
