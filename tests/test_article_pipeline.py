@@ -70,11 +70,12 @@ def _env(fake) -> Env:
     )
 
 
-def _run(env: Env, *, budget: ArticleBudget, max_sweeps: int = 4, evaluator=None):
+def _run(env: Env, *, budget: ArticleBudget, max_sweeps: int = 4, evaluator=None, illustrate=None):
     return run_article_pipeline(
         assignment=env.assignment, persona=env.persona, ledger=env.ledger, store=env.store,
         budget=budget, drafter_cfg=env.drafter, evaluator_cfg=evaluator or env.evaluator,
         finalize_cfg=env.finalize, prompts_dir=_prompts_dir(), max_sweeps=max_sweeps,
+        illustrate=illustrate,
     )
 
 
@@ -263,6 +264,110 @@ def test_finalize_failure_drops_the_article_without_publishing(fake):
     row = env.store.get_assignment(env.assignment.id)
     assert row.status == "dropped" and row.drop_reason == "finalize_failed"
     assert row.final_body is None
+
+
+# ----- art-director image step (best-effort, after finalize) -----
+
+
+def _pass_run_script(fake):
+    """Script a one-sweep PASS run through finalize (shared by the image tests)."""
+    fake.state.script_chat("OUTLINE")
+    fake.state.script_chat("draft one")
+    fake.state.script_chat(json.dumps({"verdict": "PASS"}))
+    fake.state.script_chat("enriched body")
+    fake.state.script_chat(json.dumps({"title": "Final Title", "body": "FINAL BODY"}))
+
+
+def test_art_director_stamps_image_metadata_and_persists_url(fake):
+    from newsroom.imagery import ImageResult
+
+    env = _env(fake)
+    _pass_run_script(fake)
+
+    def illustrate(*, article, persona, ledger, budget):
+        return ImageResult(
+            url="/media/abc123.png", alt="an illustrated chip", prompt="a screen-print chip",
+            seed=7, workflow="flux2_klein", references=["https://src.test/hero.jpg"],
+        )
+
+    out = _run(env, budget=_big_budget(), illustrate=illustrate)
+
+    assert out.status == "ready"
+    assert out.image_url == "/media/abc123.png"
+    # Media rides in metadata (the portal's hero-image contract), NOT a new top-level field.
+    assert out.article.metadata["image"] == "/media/abc123.png"
+    assert out.article.metadata["image_alt"] == "an illustrated chip"
+    prov = out.article.metadata["newsroom"]["image"]
+    assert prov["prompt"] == "a screen-print chip" and prov["seed"] == 7
+    assert prov["references"] == ["https://src.test/hero.jpg"]
+
+    # The image is OUTSIDE the content hash, so the identity is image-independent: the
+    # persisted key matches the no-image hash exactly (idempotency is preserved).
+    row = env.store.get_assignment(env.assignment.id)
+    assert row.image_url == "/media/abc123.png"
+    assert row.image_prompt == "a screen-print chip"  # the brief persisted for audit
+    expected_hash = content_hash("Final Title", "FINAL BODY", "ada-reporter", "tech")
+    assert row.content_hash == expected_hash
+    assert row.idempotency_key == idempotency_key(env.assignment.id, expected_hash)
+
+
+def test_no_illustrator_publishes_without_an_image(fake):
+    env = _env(fake)
+    _pass_run_script(fake)
+
+    out = _run(env, budget=_big_budget())  # illustrate=None
+
+    assert out.status == "ready"
+    assert out.image_url is None
+    assert "image" not in (out.article.metadata or {})
+    assert env.store.get_assignment(env.assignment.id).image_url is None
+
+
+def test_illustrator_failure_degrades_to_no_image_never_drops_the_article(fake):
+    env = _env(fake)
+    _pass_run_script(fake)
+
+    def boom(*, article, persona, ledger, budget):
+        raise RuntimeError("comfyui is down")
+
+    out = _run(env, budget=_big_budget(), illustrate=boom)
+
+    # The finalized article is still published; a missing picture never drops it.
+    assert out.status == "ready"
+    assert out.image_url is None
+    assert "image" not in (out.article.metadata or {})
+    row = env.store.get_assignment(env.assignment.id)
+    assert row.status == "ready" and row.image_url is None
+
+
+def test_spent_budget_at_finalize_skips_the_art_director_without_dropping(fake):
+    from newsroom.imagery import ImageResult
+
+    env = _env(fake)
+    fake.state.script_chat("OUTLINE")
+    fake.state.script_chat("draft one")
+    fake.state.script_chat(json.dumps({"verdict": "PASS"}))
+    fake.state.script_chat("enriched body")
+    # Finalize reports usage that exhausts the small budget, so by the art-director gate
+    # the budget is spent: the step is skipped, but the article still finalizes. (The
+    # usage carries the full OpenAI shape, which the pydantic-ai finalize seam validates.)
+    fake.state.script_chat(
+        json.dumps({"title": "T", "body": "B"}),
+        usage={"prompt_tokens": 5_000, "completion_tokens": 5_000, "total_tokens": 10_000},
+    )
+
+    calls = []
+
+    def spy(*, article, persona, ledger, budget):
+        calls.append(1)
+        return ImageResult(url="/media/x.png", alt="a", prompt="p", seed=1, workflow="w", references=[])
+
+    budget = ArticleBudget(token_budget=500, wall_clock_s=1e9, clock=lambda: 0.0)
+    out = _run(env, budget=budget, illustrate=spy)
+
+    assert out.status == "ready"  # finalized and publishable
+    assert calls == []  # the art director was gated off by the exhausted budget
+    assert out.image_url is None
 
 
 # ----- rules-degraded evaluator (shared endpoint) -----

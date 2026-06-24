@@ -71,6 +71,47 @@ def test_a_writer_commits_while_a_reader_holds_an_open_transaction(tmp_path):
         writer.close()
 
 
+def test_open_db_migrates_image_columns_onto_an_existing_db(tmp_path):
+    # The upgrade-safety path: a brain DB created before the image columns existed must
+    # gain them. CREATE TABLE IF NOT EXISTS leaves a deployed table untouched, so the
+    # columns only appear via the explicit ALTER in _migrate. Build a pre-image table,
+    # reopen via open_db, and assert the columns were added (and an old row survives).
+    import sqlite3
+
+    path = tmp_path / "old.db"
+    raw = sqlite3.connect(str(path))
+    raw.executescript(
+        """
+        CREATE TABLE assignments (
+          id TEXT PRIMARY KEY, run_id TEXT, persona_id TEXT, section TEXT, angle TEXT,
+          status TEXT, drop_reason TEXT, final_body TEXT, content_hash TEXT,
+          idempotency_key TEXT, ledger_digest TEXT, published_id TEXT, created_at TEXT
+        );
+        """
+    )
+    raw.execute(
+        "INSERT INTO assignments (id, run_id, persona_id, section, status, created_at) "
+        "VALUES ('a1','r','p','tech','ready','t')"
+    )
+    raw.commit()
+    raw.close()
+
+    conn = open_db(path, check_same_thread=False)
+    try:
+        cols = {row["name"] for row in conn.execute("PRAGMA table_info(assignments)")}
+        assert "image_url" in cols and "image_prompt" in cols
+        row = conn.execute(
+            "SELECT image_url, image_prompt FROM assignments WHERE id = 'a1'"
+        ).fetchone()
+        assert row["image_url"] is None and row["image_prompt"] is None  # old row survives, new cols NULL
+    finally:
+        conn.close()
+
+    # Idempotent: a second open does not error (the columns are already present).
+    again = open_db(path, check_same_thread=False)
+    again.close()
+
+
 def test_in_memory_db_is_not_put_into_wal(tmp_path):
     conn = open_db(":memory:")
     try:

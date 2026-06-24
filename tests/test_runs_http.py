@@ -24,6 +24,7 @@ from newsroom.db import open_db
 from newsroom.inference.provider import DIALECTS, ProviderConfig
 from newsroom.manager.coverage import CoverageStore
 from newsroom.manager.preflight import ResolvedRoles
+from newsroom.imagery import ImageResult
 from newsroom.manager.types import Candidate
 from newsroom.personas import Persona, PersonaStore
 from newsroom.research.ledger import Ledger
@@ -119,6 +120,56 @@ def test_post_runs_returns_202_then_polls_to_a_published_run(fake, tmp_path, ser
     assert row["persona_id"] == "ada" and row["section"] == "tech"
     assert row["status"] == "published" and row["published_id"]
     assert len(fake.state.publish_requests) == 1
+    client.close()
+
+
+def _script_managed_run(fake):
+    fake.state.script_chat(_assign("ada", "Chips ship early"))
+    for body in ("outline", "draft", "enriched"):
+        fake.state.script_chat(body)
+    fake.state.script_chat(json.dumps({"title": "Chips Ship Early", "body": "Shipped.", "topics": []}))
+
+
+def _fixed_image(*, article, persona, ledger, budget):
+    return ImageResult(url="/media/hero.png", alt="art", prompt="p", seed=1,
+                       workflow="flux2_klein", references=[])
+
+
+def test_run_generates_and_publishes_a_hero_image(fake, tmp_path, serve_app):
+    # With the art-director seam injected and auto_generate_image on (the default), a
+    # managed run attaches a hero image: it lands in the published metadata.image and is
+    # surfaced on the assignment over GET /runs.
+    deps = _deps(fake, tmp_path)
+    deps.illustrate = _fixed_image
+    base_url = serve_app(create_app(settings=deps.settings, store=deps.persona_store, run_deps=deps))
+    client = httpx.Client(base_url=base_url, timeout=10)
+    _script_managed_run(fake)
+
+    run_id = client.post("/runs", json={"mode": "managed"}).json()["run_id"]
+    final = _poll_until_done(client, run_id)
+
+    assert final["status"] == "done"
+    assert final["assignments"][0]["image_url"] == "/media/hero.png"
+    payload = fake.state.publish_requests[0]["payload"]
+    assert payload["metadata"]["image"] == "/media/hero.png"
+    client.close()
+
+
+def test_run_with_images_false_publishes_without_an_image(fake, tmp_path, serve_app):
+    # The per-run flag overrides the server default: images=false skips the art director
+    # even though the seam is injected.
+    deps = _deps(fake, tmp_path)
+    deps.illustrate = _fixed_image
+    base_url = serve_app(create_app(settings=deps.settings, store=deps.persona_store, run_deps=deps))
+    client = httpx.Client(base_url=base_url, timeout=10)
+    _script_managed_run(fake)
+
+    run_id = client.post("/runs", json={"mode": "managed", "images": False}).json()["run_id"]
+    final = _poll_until_done(client, run_id)
+
+    assert final["status"] == "done"
+    assert final["assignments"][0]["image_url"] is None
+    assert "image" not in fake.state.publish_requests[0]["payload"].get("metadata", {})
     client.close()
 
 
