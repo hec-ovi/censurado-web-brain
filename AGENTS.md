@@ -1,0 +1,196 @@
+# AGENTS.md
+
+A map of `censurado-web-brain` for an agent (human or model) that needs to work in it
+fast. It explains, in words, what each part does, how it fits, and what it expects,
+then points at the file that IS the contract. It does not restate the code; open the
+pointed-at file for exact signatures.
+
+The deep design rationale (the eight questions, the seam pins, the build plan) lives in
+`docs/research/stage-2-newsroom-architecture.md`. This file is the operational map.
+
+## What this is
+
+The brain is an agentic newsroom: AI journalist personas research the day's news, write
+full articles in their own voice, an art director gives each a hero image, and the brain
+publishes them to the `censurado-web` portal over one HTTP contract. It is one FastAPI
+process. There are exactly two real process boundaries:
+
+```
+[Frontend / cron] --HTTP--> [ Brain (FastAPI) ] --HTTP--> [ Platform: POST /articles, POST /media ]
+                                       \--HTTP--> [ ComfyUI: /prompt /history /view ]
+```
+
+Everything else is in-process packages whose contract is the function signature. The
+shape is a deterministic workflow (code owns the edges) hosting bounded loops (the model
+works inside the nodes), with a guard at every seam so every run terminates.
+
+Two invariants hold everywhere, enforced by tests:
+- **No output-length cap, ever.** No `max_tokens`/`max_words`/"in N words" on any model
+  call. Only loop counts and a per-article budget are bounded; a single generation always
+  finishes. Image width/height/steps are render parameters, not length caps. The guard is
+  `testkit/assertions.py` (a wire-level 422 in the fake + a conftest teardown assert).
+- **One publish seam.** The brain and the portal meet only at the platform HTTP API. The
+  brain owns personas, prompts, and the agents; the portal never learns personas exist.
+
+## Run flow (the outer workflow)
+
+`resolve roles -> manager triage -> fan-out dispatch -> per-article pipeline -> publish`.
+The brain is trigger-blind: the only thing a trigger picks is a `mode`
+(`manual|express|managed`), resolved once into a `RunScope`; the execution path never
+branches on mode again.
+- → `newsroom/runner/run.py` (`plan_run`, `start_run`, `execute_run`, `RunScope`,
+  `RunDeps`, `RunReport`). `execute_run` is the single path; a source-guard test keeps it
+  mode-blind.
+- → `newsroom/runner/deps.py` (`build_run_deps`, `roles_for_settings`) assembles the real
+  seams from settings; tests inject in-process doubles for the network seams
+  (`search_news`, `make_ledger`, `illustrate`) so a run never leaves the box.
+
+## Components
+
+### Inference (the text-model adapter)
+One function over the OpenAI Chat-Completions wire dialect; backends differ only by a
+resolved `ProviderConfig` (data, not subclasses). Roles (`drafter`, `evaluator`,
+`finalize`, `manager`, `art_director`) resolve from the env cascade
+`NEWSROOM_ROLE_<ROLE>_* -> NEWSROOM_INFERENCE_* -> dialect default`. One retry on connect
+errors only; never sends a length cap.
+- → `newsroom/inference/adapter.py` (`chat`, `ChatRequest`, `ChatResponse`, `ToolCall`)
+- → `newsroom/inference/provider.py` (`ProviderConfig`, `resolve`, `DIALECTS`, `endpoint_id`)
+
+### Imagery (the art director's rendering backend)
+The parallel seam to inference, for images. It drives a local ComfyUI running FLUX.2
+klein. `ComfyClient` hides ComfyUI's async wire protocol (submit a graph, poll history,
+fetch the PNG; upload a reference) behind one synchronous `generate`. `graph.py` fills a
+checked-in API-format template by node id, and chains `LoadImage -> VAEEncode ->
+ReferenceLatent` when reference images are supplied (FLUX.2 native reference
+conditioning). `references.py` collects source `og:image` URLs from the ledger
+(best-effort, untrusted). `Illustrator` composes references + the art-director LLM call +
+ComfyUI + the media upload into the `illustrate` seam the pipeline calls; a hard failure
+raises (per-reference download failures are skipped), and the pipeline's
+`_art_direct_image` catches it and degrades to no image.
+- → `newsroom/imagery/comfy_client.py` (`ComfyClient`, `ComfyError`)
+- → `newsroom/imagery/graph.py` (`build_graph`, `TEMPLATES`) + `templates/flux2_klein_t2i.json`
+- → `newsroom/imagery/references.py` (`collect_reference_images`, `ReferenceImage`)
+- → `newsroom/imagery/illustrator.py` (`Illustrator`, `ImageResult`)
+- Expects: a reachable ComfyUI at `NEWSROOM_COMFYUI_BASE_URL` with `flux-2-klein-4b`,
+  `qwen_3_4b` (CLIPLoader type `flux2`), and `flux2-vae` installed. The reference graph is
+  built from documented nodes and wants one live smoke-test against the box.
+
+### Research (the bounded grounding loop)
+Plan 3 to 6 sub-questions, search each into a URL-deduplicated claim-source ledger. Not
+model-driven: bounded by `max_research_steps`, a ledger-stall detector (a step adding no
+new URL is no progress), and the shared per-article budget.
+- → `newsroom/research/loop.py` (`run_research`, `plan_subquestions`, `ResearchOutcome`)
+- → `newsroom/research/ledger.py` (`Ledger`, `LedgerRow`, `digest`)
+- → `newsroom/research/tool.py` (`ResearchTool`, wraps the `websearch-skill` dependency)
+
+### Personas (brain-owned identities)
+Typed CRUD over the brain's own SQLite. A persona's `id` becomes the article `author` at
+the publish seam (a free string platform-side). Carries positive AND negative voice
+exemplars (local models lean on contrast).
+- → `newsroom/personas/store.py` (`Persona`, `PersonaStore`, `open_store`, `slugify`)
+- → `newsroom/brain/synthesis.py` (`synthesize_persona`, async via `POST /personas`)
+
+### Per-article pipeline (the one model-driven loop)
+Drives one assignment: `outline -> draft/evaluate sweeps -> enrich -> fact-check ->
+finalize -> art-direct`. Three simultaneous guards bound the sweep loop (`MAX_SWEEPS`, the
+evaluator's PASS, an identical-failing-section-set stall); a shared `ArticleBudget`
+(token + wall-clock) is debited by every stage and DROPS the assignment on exhaustion
+(never truncates). The persona is re-injected warm on each draft; enrich/fact-check run
+persona-blind; the art director runs persona-AWARE so the image matches the byline. The
+image step is best-effort after finalize: it stamps `metadata.image` (outside the content
+hash, so idempotency is unaffected) and never drops a finalized article.
+- → `newsroom/pipeline/article.py` (`run_article_pipeline`, `ArticleOutcome`, `_art_direct_image`)
+- → `newsroom/pipeline/evaluate.py` (`evaluate_draft`, `Evaluation`)
+- → `newsroom/pipeline/factcheck.py` (`fact_check`, `citation_verify`, `CitationResult`)
+- → `newsroom/pipeline/finalize.py` (`finalize_article`, pydantic-ai structured output)
+- → `newsroom/pipeline/artdirect.py` (`art_direct`, `ArtDirection`)
+- → `newsroom/pipeline/budget.py` (`ArticleBudget`) and `context.py` (`persona_block`, `ledger_text`)
+
+### Manager + fan-out (the sole spawn point)
+The manager triages today's news against recent coverage (DUPLICATE/FOLLOW_UP/NEW) and
+emits assignments clamped to `N_MAX`; it is a bounded ReAct loop. `dispatch_run` is the
+ONLY place workers spawn, on a small thread pool (GPU KV-cache means concurrency 1 to 2);
+it mints one budget per article and forwards the `illustrate` seam. No node below it may
+spawn another, so runaway recursion is structurally impossible.
+- → `newsroom/manager/manager.py` (`run_manager`), `triage` prompt, coverage classifier
+- → `newsroom/manager/dispatch.py` (`dispatch_run`, `DispatchResult`, `LedgerBuilder`)
+- → `newsroom/manager/coverage.py` (`CoverageStore`), `preflight.py` (`ResolvedRoles`, `resolve_roles`)
+
+### Runs store + identity
+The runs/assignments lifecycle and the idempotency anchor. An assignment moves
+`assigned -> drafting -> ready -> published | publish_failed | dropped`. At finalize the
+body, content hash, idempotency key, and (if generated) `image_url` are persisted before
+any POST, so a crash after finalize replays the byte-identical body.
+- → `newsroom/runs/store.py` (`RunStore`, `Run`, `Assignment`, `finalize_assignment`)
+- → `newsroom/db.py` (the SQLite `SCHEMA`: `personas`, `runs`, `assignments`, `coverage`)
+- → `newsroom/contracts/hashing.py` (`content_hash` over title/body/author/section only; `idempotency_key`)
+
+### Publish + media (the platform boundary)
+Raw HTTP to the portal. `publish_article` POSTs the finalized payload to `/articles` with
+the content-derived `Idempotency-Key` and validates the section locally first.
+`upload_media` POSTs a generated PNG's raw bytes to `/media` (scope `articles:write`, no
+idempotency key, content-addressed) and returns a `/media/<sha>.png` URL the pipeline
+stamps into `metadata.image`. `publish_assignment` adds the side effects (mark published,
+record one coverage row).
+- → `newsroom/publish/client.py` (`publish_article`, `build_payload`, `PublishResult`)
+- → `newsroom/publish/media.py` (`upload_media`, `MediaAsset`, `MediaUploadError`)
+- → `newsroom/publish/service.py` (`publish_assignment`)
+
+### Contracts (the cross-repo seam, vendored)
+The article shape is a pinned copy of the platform schema, governed by a drift test so it
+cannot silently diverge. The brain pins its own closed section enum (the platform treats
+`section` as a free string). Media rides in the open `metadata` bag, no schema change.
+- → `newsroom/contracts/article.py` (`PublishArticleInput` strict, `FinalizedDraft`)
+- → `newsroom/contracts/vendored/v1/article.schema.json` (+ `SOURCE.md`, do not hand-edit)
+- → `newsroom/contracts/sections.py` (`SECTION_ENUM`, `is_valid_section`)
+
+### Brain HTTP surface
+The FastAPI app. `POST /personas` and `POST /runs` return `202 + poll` and run the model
+work off the request (background thread, one shared-connection lock). `POST /runs` accepts
+`{mode, n?, persona_ids?, images?}`; `GET /runs/{id}` surfaces each assignment incl.
+`image_url`.
+- → `newsroom/brain/app.py` (`create_app`, `RunRequest`, routes)
+- → `newsroom/cli.py` (`censurado-brain --mode ... [--images/--no-images]`, the automation entry point)
+- → `newsroom/config.py` (`Settings`: all `NEWSROOM_*` env, incl. the imagery knobs; no length setting by policy)
+
+### Frontend (the author-manager console)
+Buildless vanilla ES modules served by nginx; no framework, no bundler. Talks to the
+brain only over `/api` (nginx strips the prefix), polls the 202 surfaces, and previews
+generated hero images (proxied via `/media/`). Component factories build DOM with the
+`el`/`field` helpers; image src is gated by `isSafeImageSrc`.
+- → `frontend/src/api.js` (the only brain client), `frontend/src/poll.js`
+- → `frontend/src/components/` (`runPanel.js` has the images toggle + hero thumbnail;
+  `personaForm.js`, `personaList.js`, `health.js`; `el.js` for `el`/`field`/`isSafeImageSrc`)
+- → `frontend/nginx.conf` (the `/api` and `/media` proxies + CSP)
+
+### Prompts
+Versioned `.md` files with `{{TOKEN}}` placeholders; no front-matter, no length caps. The
+loader is two functions.
+- → `newsroom/prompts.py` (`load_prompt`, `render`)
+- → `prompts/journalist/*.md`, `prompts/manager/triage.md`, `prompts/persona/synthesize.md`,
+  `prompts/art_director/illustrate.md`
+
+### Tests + the shared fake
+Every test drives a real entry point (HTTP route, CLI, or orchestrator function) through
+to its side effect against ONE in-repo fake that stands in for the platform (`/articles`,
+`/media`), the inference backend (`/v1/chat/completions`), and ComfyUI (`/prompt`,
+`/history`, `/view`, `/upload/image`). The fake imports from `newsroom`, never the
+reverse.
+- → `testkit/fake_server.py` (`create_fake_app`, `FakeState`), `testkit/assertions.py` (the no-cap guard)
+- → `tests/` (e.g. `test_imagery.py`, `test_media_upload.py`, `test_article_pipeline.py`, `test_runs_http.py`)
+
+### Infra
+- → `Dockerfile` (the brain image: uvicorn serving `create_app --factory`)
+- → `deploy/docker-compose.yml` (brain + console + optional local model) and `deploy/.env.example`
+- → `deploy/crontab.example` (the periodic trigger: `censurado-brain --mode managed`)
+
+## External seams to know
+
+- **Publish payload** (`POST /articles`): required `title, body, author, section`;
+  optional `topics, slug, published_at, metadata`. Strict envelope (unknown top-level
+  field is a hard error). Auth needs BOTH `articles:write` and `articles:publish-any`.
+- **Media** (`POST /media`): raw image bytes as the body (not multipart), `articles:write`,
+  returns `{url, sha256, ...}`. The portal renders `metadata.image` (+ `metadata.image_alt`,
+  `metadata.youtube`, `metadata.video`) from the open metadata bag.
+- **ComfyUI**: `POST /prompt {prompt, client_id} -> {prompt_id}`, poll
+  `GET /history/{id}`, fetch `GET /view`, upload references `POST /upload/image`.

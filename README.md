@@ -1,6 +1,6 @@
 # censurado-web-brain
 
-The agentic newsroom for [censurado-web](https://github.com/hec-ovi/censurado-web). AI journalist personas research the day's news, write full articles in their own voice, and publish them to the portal over one HTTP contract. It is built as an **agentic workflow hosting bounded agentic loops**: deterministic code owns the control flow, the model does the work inside each step, and guards at every seam make each run terminate.
+The agentic newsroom for [censurado-web](https://github.com/hec-ovi/censurado-web). AI journalist personas research the day's news, write full articles in their own voice, an art director gives each one a locally generated hero image, and the brain publishes them to the portal over one HTTP contract. It is built as an **agentic workflow hosting bounded agentic loops**: deterministic code owns the control flow, the model does the work inside each step, and guards at every seam make each run terminate.
 
 ![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)
 ![Python](https://img.shields.io/badge/python-3.11%2B-3776AB.svg)
@@ -44,9 +44,10 @@ They compose by altitude: the deterministic workflow hosts the bounded loops, an
 
 ## How it fits censurado-web
 
-- The portal serves a static archive to readers and exposes one authenticated write API (`POST /articles`). It never learns that personas exist.
+- The portal serves a static archive to readers and exposes one authenticated write API (`POST /articles`, plus `POST /media` for image bytes). It never learns that personas exist.
 - This repo owns the personas (its own SQLite), the prompts (versioned `.md` files), and the agents that turn the day's news into finished articles.
-- It authors each article as the persona who wrote it, using a single operator key that carries the `articles:publish-any` scope. That key is the only coupling between the two systems.
+- It authors each article as the persona who wrote it, using a single operator key that carries both the `articles:write` and `articles:publish-any` scopes. That key is the only coupling between the two systems.
+- A generated hero image is uploaded to the portal and referenced by URL in the article's open `metadata.image` field, so attaching imagery needs no change to the article schema, and the image is outside the content hash, so it never disturbs idempotency.
 
 ## Run modes
 
@@ -56,11 +57,13 @@ One HTTP surface drives the brain, and the trigger is just a mode on `POST /runs
 - `express` runs a small default batch.
 - `managed` lets the manager pick today's news and assign journalists, up to `N_MAX`.
 
-The rest of the surface: `POST /personas` (returns `202` and a synthesis job to poll), `GET /personas`, `GET /runs/{id}` for a run's assignments and outcomes, and `GET /health`.
+Any run can toggle the art director with an `images` flag on `POST /runs` (the CLI mirrors it with `--images` / `--no-images`); when omitted it follows the `NEWSROOM_AUTO_GENERATE_IMAGE` default.
+
+The rest of the surface: `POST /personas` (returns `202` and a synthesis job to poll), `GET /personas`, `GET /runs/{id}` for a run's assignments and outcomes (including each article's `image_url`), and `GET /health`.
 
 ## Status
 
-Early, but built end to end. The brain runs today: the persona store and async synthesis, the inference adapter, the bounded research loop and ledger, the per-article pipeline (draft, evaluate, finalize), the manager and fan-out, the raw-HTTP publish client, the trigger surface (`manual`, `express`, `managed`) over HTTP, the author-manager console (a buildless vanilla-JS frontend served by nginx, in `frontend/`), and the automation layer: a one-shot run command (`censurado-brain --mode managed`) for a periodic trigger, plus a Docker compose that runs the console next to the brain. All ten steps of the Part C build plan have shipped with a green suite, proven by an end-to-end managed run that researches, drafts, finalizes, and publishes one article. Plan 1, the workflow-and-loop architecture, is written up in `docs/research/stage-2-newsroom-architecture.md`.
+Early, but built end to end. The brain runs today: the persona store and async synthesis, the inference adapter, the bounded research loop and ledger, the per-article pipeline (draft, evaluate, finalize), the art director that writes a FLUX.2 image brief and renders a hero image on a local ComfyUI (then uploads it to the portal's `POST /media` and attaches it via `metadata.image`), the manager and fan-out, the raw-HTTP publish client, the trigger surface (`manual`, `express`, `managed`) over HTTP, the author-manager console (a buildless vanilla-JS frontend served by nginx, in `frontend/`), and the automation layer: a one-shot run command (`censurado-brain --mode managed`) for a periodic trigger, plus a Docker compose that runs the console next to the brain. The whole suite is green, including end-to-end image-generation tests driven against an in-repo ComfyUI fake; the FLUX.2 reference workflow wants one live smoke-test against the box, and the portal's media endpoint is the matching in-flight piece on the platform side. The architecture, including the image-generation seam, is written up in `docs/research/stage-2-newsroom-architecture.md`, and `AGENTS.md` is the operational map of the codebase.
 
 ## Layout
 
@@ -69,19 +72,21 @@ newsroom/            the brain package (one process, isolated sub-packages)
   brain/             the FastAPI app and persona synthesis
   runner/            the trigger-blind run orchestrator (manual/express/managed)
   manager/           the bounded triage agent and the sole fan-out
-  pipeline/          the per-article draft/evaluate/finalize loop
+  pipeline/          the per-article draft/evaluate/finalize loop, plus the art-director step
   research/          the bounded research loop and claim-source ledger
   personas/          the persona store (own SQLite, brain-owned)
   runs/              the runs and assignments store (the idempotency anchor)
-  publish/           the raw-HTTP publish client to the platform seam
+  publish/           the raw-HTTP publish client and the media (image) uploader
+  imagery/           the ComfyUI client, FLUX.2 workflow templates, and the illustrator
   inference/         the completion adapter (OpenAI-dialect, per-backend shims)
   contracts/         the vendored article schema, section enum, and content hash
   cli.py             the automation entry point: a one-shot run that picks a mode
 frontend/            the presentation layer: buildless vanilla JS + nginx, talks to the brain over /api
-prompts/             versioned .md prompts (persona, manager, journalist)
-testkit/             the shared in-repo fake (chat + publish), used by every test
+prompts/             versioned .md prompts (persona, manager, journalist, art_director)
+testkit/             the shared in-repo fake (chat + publish + media + ComfyUI), used by every test
 tests/               end-to-end tests that drive the real entry points
 docs/research/       the architecture writeup
+AGENTS.md            the operational map of the codebase (what each part does, then its contract file)
 Dockerfile           the brain image (uvicorn serving the FastAPI surface)
 deploy/              docker compose (brain + console + optional local model) and the trigger
 ```
@@ -101,8 +106,8 @@ Every test hits a real entry point (an HTTP route, a CLI invocation, or the orch
 ## Principles
 
 - **Isolated layers behind contracts.** Presentation only consumes the brain's API, inference is agnostic to which model or runtime answers, and the trigger is agnostic to what the brain does. Each layer has its own tests and can be swapped without touching the others.
-- **Local-first and self-hostable.** The default path runs entirely on your own hardware, with a local Gemma served by llama.cpp, and no hosted API required. Cloud and CLI-agent adapters plug in behind the same completion interface.
-- **No output-length caps.** Article generation never sets a token, word, or sentence ceiling. Only the number of loop iterations is bounded; the model finishes on its own.
+- **Local-first and self-hostable.** The default path runs entirely on your own hardware: a local Gemma served by llama.cpp for text, and a local ComfyUI running FLUX.2 klein for images, with no hosted API required. Cloud and CLI-agent adapters plug in behind the same completion interface, and the image backend sits behind its own swappable client.
+- **No output-length caps.** Article generation never sets a token, word, or sentence ceiling. Only the number of loop iterations is bounded; the model finishes on its own. Image size and step count are render parameters, not output caps.
 
 ## License
 
