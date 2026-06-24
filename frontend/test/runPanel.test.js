@@ -106,6 +106,59 @@ test("reports an error when the run request itself is rejected", async () => {
   await screen.findByText(/could not start run: mode must be one of/i);
 });
 
+test("generates images by default and renders the hero thumbnail", async () => {
+  let body;
+  server.use(
+    http.post(`${ORIGIN}/api/runs`, async ({ request }) => {
+      body = await request.json();
+      return HttpResponse.json({ run_id: "ri", mode: "managed", status: "running" }, { status: 202 });
+    }),
+    http.get(`${ORIGIN}/api/runs/ri`, () =>
+      HttpResponse.json({
+        run_id: "ri",
+        status: "done",
+        assignments: [
+          { id: "a1", persona_id: "ada", section: "tech", status: "published", published_id: "7", image_url: "/media/hero.png" },
+        ],
+      })),
+  );
+  const user = userEvent.setup();
+  mount();
+
+  await user.click(screen.getByRole("button", { name: /start run/i }));
+
+  const img = await screen.findByAltText(/hero image for ada/i);
+  assert.match(img.getAttribute("src"), /\/media\/hero\.png$/);
+  assert.equal(body.images, true, "images on by default");
+});
+
+test("skips images when the auto-generate toggle is unchecked", async () => {
+  let body;
+  server.use(
+    http.post(`${ORIGIN}/api/runs`, async ({ request }) => {
+      body = await request.json();
+      return HttpResponse.json({ run_id: "rn", mode: "managed", status: "running" }, { status: 202 });
+    }),
+    http.get(`${ORIGIN}/api/runs/rn`, () =>
+      HttpResponse.json({
+        run_id: "rn",
+        status: "done",
+        assignments: [
+          { id: "a1", persona_id: "ada", section: "tech", status: "published", published_id: "7", image_url: null },
+        ],
+      })),
+  );
+  const user = userEvent.setup();
+  mount();
+
+  await user.click(screen.getByLabelText(/auto-generate images/i)); // uncheck (default on)
+  await user.click(screen.getByRole("button", { name: /start run/i }));
+
+  await screen.findByText("ada");
+  assert.equal(body.images, false, "images off when unchecked");
+  assert.equal(screen.queryByRole("img"), null, "no hero image when image_url is absent");
+});
+
 test("reports still-running when the run poll times out", async () => {
   server.use(
     http.post(`${ORIGIN}/api/runs`, () =>

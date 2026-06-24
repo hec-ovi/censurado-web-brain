@@ -1,4 +1,4 @@
-import { el, clear } from "./el.js";
+import { el, clear, isSafeImageSrc } from "./el.js";
 import { SECTIONS } from "./personaForm.js";
 
 // The persona roster: a beat filter over GET /personas, rendering one card per
@@ -57,12 +57,4 @@ function avatar(persona) {
   }
   const initial = (persona.display_name || "?").trim().charAt(0).toUpperCase() || "?";
   return el("div", { class: "avatar avatar--fallback", "aria-hidden": "true" }, initial);
-}
-
-// Only render an avatar src we trust: a same-origin path or an explicit http(s)
-// or data:image URL. Anything else (a javascript: or other odd scheme) falls
-// back to the initial avatar.
-function isSafeImageSrc(value) {
-  if (!value || typeof value !== "string") return false;
-  return value.startsWith("/") || /^https?:\/\//i.test(value) || /^data:image\//i.test(value);
 }

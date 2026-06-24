@@ -1,4 +1,4 @@
-import { el, clear, field } from "./el.js";
+import { el, clear, field, isSafeImageSrc } from "./el.js";
 import { pollUntil } from "../poll.js";
 
 // The trigger surface. `mode` is the whole trigger; n and persona_ids are
@@ -18,6 +18,10 @@ export function RunPanel({ api, poll = pollUntil, pollOpts } = {}) {
   const modeSelect = el("select", { id: "rp-mode" }, MODES.map((m) => el("option", { value: m }, m)));
   const nInput = el("input", { type: "number", id: "rp-n", min: "0", step: "1", placeholder: "default" });
   const personasInput = el("input", { type: "text", id: "rp-personas", placeholder: "all (comma separated ids)" });
+  // Auto-generate images: on by default, mirroring the brain's auto_generate_image default.
+  // The art director writes a brief and ComfyUI renders a hero image per article.
+  const imagesCheck = el("input", { type: "checkbox", id: "rp-images" });
+  imagesCheck.checked = true;
   const submit = el("button", { type: "submit" }, "Start run");
   const status = el("p", { class: "form-status", role: "status", "aria-live": "polite" });
   const resultEl = el("div", { class: "run-result" });
@@ -26,6 +30,7 @@ export function RunPanel({ api, poll = pollUntil, pollOpts } = {}) {
     field("Mode", modeSelect, "rp-mode"),
     field("Count (n)", nInput, "rp-n"),
     field("Persona ids", personasInput, "rp-personas"),
+    field("Auto-generate images", imagesCheck, "rp-images"),
     submit,
     status,
   ]);
@@ -47,6 +52,7 @@ export function RunPanel({ api, poll = pollUntil, pollOpts } = {}) {
     }
     const ids = personasInput.value.split(",").map((s) => s.trim()).filter(Boolean);
     if (ids.length) req.persona_ids = ids;
+    req.images = imagesCheck.checked;
 
     setBusy(true);
     setStatus("pending", "Starting run...");
@@ -83,6 +89,7 @@ export function RunPanel({ api, poll = pollUntil, pollOpts } = {}) {
         el("td", {}, el("span", { class: "badge" }, a.section)),
         el("td", {}, el("span", { class: "status", dataset: { state: a.status } }, a.status)),
         el("td", {}, a.published_id || a.drop_reason || ""),
+        el("td", {}, heroThumb(a)),
       ]),
     );
     resultEl.append(
@@ -91,11 +98,29 @@ export function RunPanel({ api, poll = pollUntil, pollOpts } = {}) {
         el(
           "thead",
           {},
-          el("tr", {}, [el("th", {}, "Persona"), el("th", {}, "Section"), el("th", {}, "Status"), el("th", {}, "Result")]),
+          el("tr", {}, [
+            el("th", {}, "Persona"),
+            el("th", {}, "Section"),
+            el("th", {}, "Status"),
+            el("th", {}, "Result"),
+            el("th", {}, "Image"),
+          ]),
         ),
         el("tbody", {}, rows),
       ]),
     );
+  }
+
+  // The article's generated hero image, when one was produced and its URL is a src we
+  // trust (a /media path or an http(s)/data:image URL). Otherwise nothing renders.
+  function heroThumb(a) {
+    if (!isSafeImageSrc(a.image_url)) return "";
+    return el("img", {
+      class: "hero-thumb",
+      src: a.image_url,
+      alt: `Hero image for ${a.persona_id}'s article`,
+      loading: "lazy",
+    });
   }
 
   function setBusy(busy) {

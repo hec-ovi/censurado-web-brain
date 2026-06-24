@@ -276,6 +276,14 @@ button:disabled {
   font-size: 0.72rem;
   letter-spacing: 0.04em;
 }
+.hero-thumb {
+  width: 72px;
+  height: 48px;
+  border-radius: 6px;
+  object-fit: cover;
+  border: 1px solid var(--border);
+  display: block;
+}
 .status {
   font-size: 0.78rem;
   padding: 2px 8px;

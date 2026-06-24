@@ -31,3 +31,12 @@ export function clear(node) {
 export function field(labelText, control, id) {
   return el("div", { class: "field" }, [el("label", { for: id }, labelText), control]);
 }
+
+// Only render an image src we trust: a same-origin path or an explicit http(s)
+// or data:image URL. Anything else (a javascript: or other odd scheme) is
+// rejected so the caller can fall back. Shared by the persona avatar and the
+// run hero-image preview.
+export function isSafeImageSrc(value) {
+  if (!value || typeof value !== "string") return false;
+  return value.startsWith("/") || /^https?:\/\//i.test(value) || /^data:image\//i.test(value);
+}
