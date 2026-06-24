@@ -66,6 +66,7 @@ def dispatch_run(
     max_sweeps: int = 4,
     concurrency: int = 1,
     lock: threading.Lock | None = None,
+    illustrate: Callable[..., object] | None = None,
 ) -> DispatchResult:
     """Persist the manifest's assignments and run the per-article pipeline for each.
 
@@ -109,6 +110,7 @@ def dispatch_run(
                 prompts_dir=prompts_dir,
                 max_sweeps=max_sweeps,
                 lock=lock,
+                illustrate=illustrate,
             )
         except Exception:
             # Any unexpected failure (research, a transport error, a missing persona)

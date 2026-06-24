@@ -88,6 +88,13 @@ def _parser() -> argparse.ArgumentParser:
         default=None,
         help="comma-separated persona ids to draw from (default: all personas)",
     )
+    parser.add_argument(
+        "--images",
+        action=argparse.BooleanOptionalAction,
+        default=None,
+        help="generate hero images for this run (--no-images to skip); "
+        "default: the server setting NEWSROOM_AUTO_GENERATE_IMAGE",
+    )
     return parser
 
 
@@ -139,7 +146,8 @@ def main(argv: list[str] | None = None, *, build_deps: DepsBuilder | None = None
     run = None
     try:
         run, scope = start_run(
-            args.mode, deps=deps, n=args.n, persona_ids=_parse_persona_ids(args.persona_ids)
+            args.mode, deps=deps, n=args.n,
+            persona_ids=_parse_persona_ids(args.persona_ids), images=args.images,
         )
         report = execute_run(run=run, scope=scope, deps=deps)
     except Exception as exc:

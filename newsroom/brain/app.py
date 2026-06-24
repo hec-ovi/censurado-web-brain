@@ -46,11 +46,14 @@ class PersonaSeedIn(BaseModel):
 
 class RunRequest(BaseModel):
     """The POST /runs request body. ``mode`` is the entire trigger surface; ``n`` and
-    ``persona_ids`` are optional operator overrides (honored mainly by ``manual``)."""
+    ``persona_ids`` are optional operator overrides (honored mainly by ``manual``).
+    ``images`` overrides the art-director image step for this run (True/False), or is
+    omitted to use the server default (``settings.auto_generate_image``)."""
 
     mode: str
     n: int | None = None
     persona_ids: list[str] | None = None
+    images: bool | None = None
 
 
 @dataclass
@@ -209,7 +212,9 @@ def create_app(
             return _problem(422, "invalid_mode", detail=f"mode must be one of {RUN_MODES}")
         # Create the run record now (so we can return its id immediately) and resolve
         # scope, then execute OFF the request. The route never waits for the pipeline.
-        run, scope = start_run(body.mode, deps=deps, n=body.n, persona_ids=body.persona_ids)
+        run, scope = start_run(
+            body.mode, deps=deps, n=body.n, persona_ids=body.persona_ids, images=body.images
+        )
         background_tasks.add_task(_run_in_background, deps, run, scope)
         return JSONResponse(
             status_code=202,
@@ -240,6 +245,7 @@ def create_app(
                     "status": a.status,
                     "published_id": a.published_id,
                     "drop_reason": a.drop_reason,
+                    "image_url": a.image_url,
                 }
                 for a in assignments
             ],

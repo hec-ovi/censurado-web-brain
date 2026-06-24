@@ -26,6 +26,7 @@ draft (that closed loop is what averages voices into mush).
 from __future__ import annotations
 
 import threading
+from collections.abc import Callable
 from contextlib import nullcontext
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -65,6 +66,7 @@ class ArticleOutcome:
     article: PublishArticleInput | None = None
     content_hash: str | None = None
     idempotency_key: str | None = None
+    image_url: str | None = None  # the hero image's public URL, when the art director ran
     evaluations: list[Evaluation] = field(repr=False, default_factory=list)
 
 
@@ -116,6 +118,7 @@ def run_article_pipeline(
     prompts_dir: Path | str,
     max_sweeps: int = 4,
     lock: threading.Lock | None = None,
+    illustrate: Callable[..., object] | None = None,
 ) -> ArticleOutcome:
     """Drive one assignment through the pipeline. Returns ``ready`` with a finalized
     ``PublishArticleInput`` (persisted on the assignment, awaiting publish) or
@@ -206,6 +209,15 @@ def run_article_pipeline(
         # body was never published, so there is nothing to undo.
         return drop("finalize_failed")
 
+    # Art-director image step (best-effort). The article is already finalized, so a
+    # failed or skipped image NEVER drops it: we publish without one. The image rides
+    # in metadata.image, which is OUTSIDE the content hash, so it does not change the
+    # article identity or the idempotency key. The art-director LLM call debits the
+    # same budget; the render respects its wall clock via the client timeout.
+    image_url = _art_direct_image(
+        illustrate, article=article, persona=persona, ledger=ledger, budget=budget
+    )
+
     # Finalize spends tokens too; if that tipped the budget over, we still have a
     # complete article. Persist and hand it to publish (the spend is recorded, the
     # NEXT article's research/draft will see the exhausted budget and not start).
@@ -215,9 +227,42 @@ def run_article_pipeline(
         store.finalize_assignment(
             assignment.id, final_body=article.body, content_hash=chash,
             idempotency_key=idem, ledger_digest=digest,
+            image_url=image_url,
+            image_prompt=(article.metadata or {}).get("newsroom", {}).get("image", {}).get("prompt"),
         )
     return ArticleOutcome(
         assignment_id=assignment.id, status="ready", stop_reason=stop_reason, drafts=drafts,
         ledger_digest=digest, article=article, content_hash=chash, idempotency_key=idem,
-        evaluations=evaluations,
+        image_url=image_url, evaluations=evaluations,
     )
+
+
+def _art_direct_image(illustrate, *, article, persona, ledger, budget) -> str | None:
+    """Run the art-director image step and stamp the result into the article's metadata.
+
+    Returns the public image URL (also stamped into ``metadata.image``) or None when no
+    illustrator is configured, the budget is spent, or generation fails. NEVER raises:
+    a finalized article is always published, with or without a picture. ``metadata`` is
+    not part of the content hash, so this leaves the idempotency key untouched."""
+    if illustrate is None or budget.exhausted():
+        return None
+    try:
+        image = illustrate(article=article, persona=persona, ledger=ledger, budget=budget)
+    except Exception:
+        return None
+    if image is None:
+        return None
+    metadata = dict(article.metadata or {})
+    metadata["image"] = image.url
+    if getattr(image, "alt", ""):
+        metadata["image_alt"] = image.alt
+    newsroom_ns = dict(metadata.get("newsroom") or {})
+    newsroom_ns["image"] = {
+        "prompt": image.prompt,
+        "seed": image.seed,
+        "workflow": image.workflow,
+        "references": list(image.references),
+    }
+    metadata["newsroom"] = newsroom_ns
+    article.metadata = metadata
+    return image.url

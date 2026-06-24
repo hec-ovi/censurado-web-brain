@@ -24,6 +24,7 @@ the shared fake. Production assembles the deps from settings + the environment i
 from __future__ import annotations
 
 import threading
+from collections.abc import Callable
 from contextlib import nullcontext
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -61,12 +62,15 @@ RUN_MODES = ("manual", "express", "managed")
 
 @dataclass(frozen=True)
 class RunScope:
-    """The resolved scope of a run. The mode collapses to exactly these two knobs:
-    ``n`` (the fan-out ceiling for this run, never above the configured ``n_max``)
-    and ``persona_ids`` (a subset to draw from, or None for all personas)."""
+    """The resolved scope of a run. The mode collapses to these knobs: ``n`` (the
+    fan-out ceiling for this run, never above the configured ``n_max``),
+    ``persona_ids`` (a subset to draw from, or None for all personas), and
+    ``generate_images`` (per-run override for the art-director image step: True/False,
+    or None to defer to ``settings.auto_generate_image``)."""
 
     n: int
     persona_ids: tuple[str, ...] | None = None
+    generate_images: bool | None = None
 
 
 @dataclass
@@ -90,6 +94,10 @@ class RunDeps:
     prompts_dir: Path | str
     settings: Settings
     lock: threading.Lock | None = None
+    # The art-director image seam (article -> hero image). None disables image
+    # generation entirely; a test injects an in-process double. Whether it runs for a
+    # given run is gated by the run scope + settings.auto_generate_image in execute_run.
+    illustrate: Callable[..., object] | None = None
 
 
 @dataclass
@@ -124,6 +132,7 @@ def plan_run(
     express_n: int,
     n: int | None = None,
     persona_ids: list[str] | None = None,
+    images: bool | None = None,
 ) -> RunScope:
     """Resolve a mode (plus optional operator overrides) into a ``RunScope``. This is
     the ONE place the mode is consulted: the trigger surface. The modes differ ONLY
@@ -143,7 +152,7 @@ def plan_run(
     resolved_n = default_n if n is None else n
     resolved_n = max(0, min(resolved_n, n_max))
     ids = tuple(persona_ids) if persona_ids else None
-    return RunScope(n=resolved_n, persona_ids=ids)
+    return RunScope(n=resolved_n, persona_ids=ids, generate_images=images)
 
 
 def _select_personas(store: PersonaStore, persona_ids: tuple[str, ...] | None) -> list[Persona]:
@@ -268,6 +277,17 @@ def execute_run(*, run: Run, scope: RunScope, deps: RunDeps) -> RunReport:
             followup_threshold=settings.coverage_followup_threshold,
         )
 
+        # The art-director image step runs iff it is both available (injected) and
+        # enabled for this run: the per-run flag wins, falling back to the global
+        # settings default. Resolving it here (not in the pipeline) keeps execute_run
+        # the single gate and the pipeline trigger-blind about the on/off decision.
+        images_enabled = (
+            scope.generate_images
+            if scope.generate_images is not None
+            else settings.auto_generate_image
+        )
+        illustrate = deps.illustrate if (images_enabled and deps.illustrate is not None) else None
+
         dispatch = dispatch_run(
             run_id=run.id,
             manifest=manifest,
@@ -282,6 +302,7 @@ def execute_run(*, run: Run, scope: RunScope, deps: RunDeps) -> RunReport:
             max_sweeps=settings.max_sweeps,
             concurrency=settings.fanout_concurrency,
             lock=deps.lock,
+            illustrate=illustrate,
         )
 
         published = _publish_ready(dispatch, deps)
@@ -318,6 +339,7 @@ def start_run(
     deps: RunDeps,
     n: int | None = None,
     persona_ids: list[str] | None = None,
+    images: bool | None = None,
 ) -> tuple[Run, RunScope]:
     """Resolve scope and create the run record WITHOUT executing it. The HTTP surface
     uses this to return a run id immediately (202 + poll), then runs ``execute_run``
@@ -328,6 +350,7 @@ def start_run(
         express_n=deps.settings.express_n,
         n=n,
         persona_ids=persona_ids,
+        images=images,
     )
     guard = deps.lock if deps.lock is not None else nullcontext()
     with guard:
@@ -341,24 +364,28 @@ def run_now(
     deps: RunDeps,
     n: int | None = None,
     persona_ids: list[str] | None = None,
+    images: bool | None = None,
 ) -> RunReport:
     """Synchronous run: create the record and execute it on this thread. The
     automation entry point (Step 10) and the three mode wrappers below all funnel
     through here."""
-    run, scope = start_run(mode, deps=deps, n=n, persona_ids=persona_ids)
+    run, scope = start_run(mode, deps=deps, n=n, persona_ids=persona_ids, images=images)
     return execute_run(run=run, scope=scope, deps=deps)
 
 
-def run_manual(*, deps: RunDeps, n: int | None = None, persona_ids: list[str] | None = None) -> RunReport:
+def run_manual(*, deps: RunDeps, n: int | None = None, persona_ids: list[str] | None = None,
+               images: bool | None = None) -> RunReport:
     """Entry point: an operator-driven run (explicit ``n`` / ``persona_ids``)."""
-    return run_now("manual", deps=deps, n=n, persona_ids=persona_ids)
+    return run_now("manual", deps=deps, n=n, persona_ids=persona_ids, images=images)
 
 
-def run_express(*, deps: RunDeps, n: int | None = None, persona_ids: list[str] | None = None) -> RunReport:
+def run_express(*, deps: RunDeps, n: int | None = None, persona_ids: list[str] | None = None,
+                images: bool | None = None) -> RunReport:
     """Entry point: a quick small batch."""
-    return run_now("express", deps=deps, n=n, persona_ids=persona_ids)
+    return run_now("express", deps=deps, n=n, persona_ids=persona_ids, images=images)
 
 
-def run_managed(*, deps: RunDeps, n: int | None = None, persona_ids: list[str] | None = None) -> RunReport:
+def run_managed(*, deps: RunDeps, n: int | None = None, persona_ids: list[str] | None = None,
+                images: bool | None = None) -> RunReport:
     """Entry point: the full automated run."""
-    return run_now("managed", deps=deps, n=n, persona_ids=persona_ids)
+    return run_now("managed", deps=deps, n=n, persona_ids=persona_ids, images=images)

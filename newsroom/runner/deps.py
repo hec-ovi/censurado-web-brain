@@ -25,6 +25,8 @@ import os
 import threading
 
 from newsroom.config import Settings
+from newsroom.imagery.comfy_client import ComfyClient
+from newsroom.imagery.illustrator import Illustrator
 from newsroom.inference.provider import DEFAULT_MODEL, DIALECTS, ProviderConfig, resolve
 from newsroom.manager.coverage import CoverageStore
 from newsroom.manager.dispatch import LedgerBuilder
@@ -87,6 +89,7 @@ def roles_for_settings(settings: Settings) -> ResolvedRoles:
         finalize=_role_cfg("finalize", base),
         manager=_role_cfg("manager", base),
         evaluator_distinct=drafter.endpoint_id != evaluator.endpoint_id,
+        art_director=_role_cfg("art_director", base),
     )
 
 
@@ -130,6 +133,28 @@ def _research_ledger(tool: ResearchTool, roles: ResolvedRoles, settings: Setting
     return make_ledger
 
 
+def _build_illustrator(settings: Settings, roles: ResolvedRoles) -> Illustrator | None:
+    """Assemble the art-director image seam from settings, or None when no art-director
+    role resolved. The media endpoint is the article publish host unless
+    ``NEWSROOM_MEDIA_BASE_URL`` overrides it. Whether it actually runs for a given run is
+    decided later (settings.auto_generate_image + the per-run flag), in ``execute_run``."""
+    if roles.art_director is None:
+        return None
+    media_base = str(settings.media_base_url or settings.publish_base_url).rstrip("/")
+    return Illustrator(
+        comfy=ComfyClient(base_url=str(settings.comfyui_base_url).rstrip("/")),
+        art_director_cfg=roles.art_director,
+        prompts_dir=settings.prompts_dir,
+        media_base_url=media_base,
+        operator_token=settings.operator_token,
+        workflow=settings.image_workflow,
+        width=settings.image_width,
+        height=settings.image_height,
+        steps=settings.image_steps,
+        reference_limit=settings.reference_image_limit,
+    )
+
+
 def build_run_deps(
     settings: Settings,
     *,
@@ -139,14 +164,15 @@ def build_run_deps(
     roles: ResolvedRoles | None = None,
     search_news: NewsSearch | None = None,
     make_ledger: LedgerBuilder | None = None,
+    illustrate=None,
 ) -> RunDeps:
     """Assemble the run dependencies over the brain's shared connection.
 
     ``conn``, ``lock``, and ``persona_store`` come from ``create_app`` so runs share
-    the one connection the synthesis path already uses. The two network seams
-    (``search_news``, ``make_ledger``) can be overridden for tests; by default they
-    are wired to one shared research tool (its web-search backend is built lazily on
-    first use)."""
+    the one connection the synthesis path already uses. The network seams
+    (``search_news``, ``make_ledger``, ``illustrate``) can be overridden for tests; by
+    default they are wired to one shared research tool (its web-search backend is built
+    lazily on first use) and the production art-director illustrator."""
     roles = roles or roles_for_settings(settings)
     tool = ResearchTool(freshness="month")
     return RunDeps(
@@ -161,4 +187,5 @@ def build_run_deps(
         prompts_dir=settings.prompts_dir,
         settings=settings,
         lock=lock,
+        illustrate=illustrate if illustrate is not None else _build_illustrator(settings, roles),
     )

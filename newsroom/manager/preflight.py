@@ -30,6 +30,9 @@ class ResolvedRoles:
     finalize: ProviderConfig
     manager: ProviderConfig
     evaluator_distinct: bool
+    # The art-director role (image-brief writer). Optional so older constructors keep
+    # working; production always resolves it. It has no distinctness requirement.
+    art_director: ProviderConfig | None = None
 
 
 def _env_truthy(name: str) -> bool:
@@ -50,6 +53,7 @@ def resolve_roles(*, require_distinct: bool | None = None) -> ResolvedRoles:
     evaluator = resolve("evaluator")
     finalize = resolve("finalize")
     manager = resolve("manager")
+    art_director = resolve("art_director")
     distinct = drafter.endpoint_id != evaluator.endpoint_id
 
     if require_distinct and not distinct:
@@ -66,4 +70,5 @@ def resolve_roles(*, require_distinct: bool | None = None) -> ResolvedRoles:
         finalize=finalize,
         manager=manager,
         evaluator_distinct=distinct,
+        art_director=art_director,
     )
