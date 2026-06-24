@@ -35,6 +35,7 @@ CREATE TABLE IF NOT EXISTS personas (
   who_i_am      TEXT NOT NULL,
   about         TEXT,
   style         TEXT NOT NULL,
+  language      TEXT NOT NULL DEFAULT 'español neutro',
   few_shots_pos TEXT,
   few_shots_neg TEXT,
   sources       TEXT,
@@ -135,6 +136,12 @@ _ADDED_COLUMNS = {
     "assignments": (
         ("image_url", "TEXT"),
         ("image_prompt", "TEXT"),
+    ),
+    # The persona writer language shipped after the initial personas table. A live
+    # personas.db predates it, so the column is added explicitly with the Spanish
+    # default; existing rows inherit it. A fresh DB already has it from SCHEMA.
+    "personas": (
+        ("language", "TEXT NOT NULL DEFAULT 'español neutro'"),
     ),
 }
 

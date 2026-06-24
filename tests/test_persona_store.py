@@ -226,6 +226,38 @@ def test_delete_referenced_persona_raises_value_error():
     assert store.get("p") is not None  # the rejected delete left the row intact
 
 
+# ----- language -----
+
+
+def test_language_defaults_to_spanish_when_unset(store: PersonaStore):
+    created = store.create(
+        Persona(
+            display_name="Default Lang",
+            beat="tech",
+            who_i_am="You ARE Default Lang.",
+            style="Terse.",
+        )
+    )
+    got = store.get(created.id)
+    assert got is not None
+    assert got.language == "español neutro"
+
+
+def test_explicit_language_round_trips(store: PersonaStore):
+    created = store.create(_full_persona(id="english-writer", language="English"))
+    got = store.get(created.id)
+    assert got is not None
+    assert got.language == "English"
+
+
+def test_update_can_change_language(store: PersonaStore):
+    created = store.create(_full_persona())
+    assert created.language == "español neutro"
+    updated = store.update(created.id, language="português brasileiro")
+    assert updated.language == "português brasileiro"
+    assert store.get(created.id).language == "português brasileiro"
+
+
 # ----- file persistence + idempotent schema init -----
 
 

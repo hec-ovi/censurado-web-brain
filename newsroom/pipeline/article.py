@@ -209,6 +209,14 @@ def run_article_pipeline(
         # body was never published, so there is nothing to undo.
         return drop("finalize_failed")
 
+    # Stamp the author's identity into the open metadata map so the static portal can
+    # render bylines, author pages, and an About page from the publish contract alone
+    # (the portal's article schema carries only an ``author`` slug). This is
+    # UNCONDITIONAL: it does not ride on image generation, so an article published with
+    # images disabled still carries its byline. metadata is OUTSIDE the content hash, so
+    # this leaves the article identity and idempotency key untouched.
+    _stamp_author_identity(article, persona)
+
     # Art-director image step (best-effort). The article is already finalized, so a
     # failed or skipped image NEVER drops it: we publish without one. The image rides
     # in metadata.image, which is OUTSIDE the content hash, so it does not change the
@@ -235,6 +243,23 @@ def run_article_pipeline(
         ledger_digest=digest, article=article, content_hash=chash, idempotency_key=idem,
         image_url=image_url, evaluations=evaluations,
     )
+
+
+def _stamp_author_identity(article, persona: Persona) -> None:
+    """Stamp the persona's public identity into the article's open ``metadata`` map.
+
+    Sets ``author_name`` (the persona's ``display_name``) and ``author_bio`` (the
+    persona's ``about``, the third-person byline produced by synthesis), and
+    ``author_avatar`` ONLY when the persona has a non-empty ``avatar_path`` (the key is
+    omitted otherwise, so the portal never renders a broken avatar). Unconditional and
+    never raises: every finalized article carries its byline. ``metadata`` is not part
+    of the content hash, so this leaves the idempotency key untouched."""
+    metadata = dict(article.metadata or {})
+    metadata["author_name"] = persona.display_name
+    metadata["author_bio"] = persona.about
+    if persona.avatar_path:
+        metadata["author_avatar"] = persona.avatar_path
+    article.metadata = metadata
 
 
 def _art_direct_image(illustrate, *, article, persona, ledger, budget) -> str | None:

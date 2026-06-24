@@ -49,12 +49,13 @@ class Env:
     finalize: ProviderConfig
 
 
-def _env(fake) -> Env:
+def _env(fake, *, about: str = "", avatar_path: str = "") -> Env:
     conn = open_db(":memory:")
     personas = PersonaStore(conn)
     store = RunStore(conn)
     persona = personas.create(Persona(
         display_name="Ada Reporter", beat="tech", who_i_am="I cover chips.",
+        about=about, avatar_path=avatar_path,
         style="dry and precise", few_shots_pos=["a crisp lede"], few_shots_neg=["hype"],
     ))
     run = store.create_run(mode="managed", n_requested=1)
@@ -389,3 +390,94 @@ def test_rules_degraded_evaluator_passes_a_grounded_draft(fake):
     assert out.evaluations[0].mode == "rules"
     # outline + draft + enrich + finalize == 4 (no evaluator call, no fact-check call)
     assert len(fake.state.chat_requests) == 4
+
+
+# ----- author identity stamped into metadata (bylines / author pages / About) -----
+
+
+def test_author_identity_is_stamped_into_published_metadata(fake):
+    # The persona carries a third-person byline bio and an avatar, both of which the
+    # portal needs to render a byline and an author page from the publish contract alone.
+    env = _env(fake, about="Ada Reporter covers chips for the desk.", avatar_path="/media/ada.png")
+    _pass_run_script(fake)
+
+    out = _run(env, budget=_big_budget())  # illustrate=None: author metadata is image-independent
+
+    assert out.status == "ready"
+    md = out.article.metadata
+    assert md["author_name"] == env.persona.display_name == "Ada Reporter"
+    assert md["author_bio"] == env.persona.about == "Ada Reporter covers chips for the desk."
+    assert md["author_avatar"] == env.persona.avatar_path == "/media/ada.png"
+    # Stamped even with the art director OFF (no image was generated).
+    assert "image" not in md
+
+    # metadata is OUTSIDE the content hash, so the author keys do NOT shift the article
+    # identity or the persisted idempotency key.
+    expected_hash = content_hash("Final Title", "FINAL BODY", "ada-reporter", "tech")
+    assert out.content_hash == expected_hash
+    assert out.idempotency_key == idempotency_key(env.assignment.id, expected_hash)
+    row = env.store.get_assignment(env.assignment.id)
+    assert row.content_hash == expected_hash
+    assert row.idempotency_key == idempotency_key(env.assignment.id, expected_hash)
+
+
+def test_author_avatar_omitted_when_avatar_path_is_empty(fake):
+    # The usual case: a persona with no avatar yet. author_name/bio are always present;
+    # author_avatar is omitted entirely so the portal never renders a broken image.
+    env = _env(fake, about="Ada Reporter covers chips for the desk.", avatar_path="")
+    _pass_run_script(fake)
+
+    out = _run(env, budget=_big_budget())
+
+    assert out.status == "ready"
+    md = out.article.metadata
+    assert md["author_name"] == "Ada Reporter"
+    assert md["author_bio"] == "Ada Reporter covers chips for the desk."
+    assert "author_avatar" not in md
+
+
+def test_author_identity_does_not_change_the_content_hash(fake):
+    # Prove the author metadata is hash-neutral by construction: the hash of an article
+    # WITH author metadata equals the hash of one without it (it is over title/body/
+    # author/section only). Run two pipelines that differ ONLY in persona identity and
+    # assert their content hashes are identical.
+    env_with = _env(fake, about="A full bio.", avatar_path="/media/a.png")
+    _pass_run_script(fake)
+    out_with = _run(env_with, budget=_big_budget())
+
+    env_without = _env(fake, about="", avatar_path="")
+    _pass_run_script(fake)
+    out_without = _run(env_without, budget=_big_budget())
+
+    assert out_with.article.metadata["author_bio"] == "A full bio."
+    assert out_without.article.metadata["author_bio"] == ""
+    assert "author_avatar" in out_with.article.metadata
+    assert "author_avatar" not in out_without.article.metadata
+    # Same title/body/author/section -> identical content hash regardless of author metadata.
+    assert out_with.content_hash == out_without.content_hash
+
+
+def test_author_identity_coexists_with_image_metadata(fake):
+    # When the art director DOES run, author keys and image keys both land in metadata;
+    # neither clobbers the other, and the content hash stays image- and author-neutral.
+    from newsroom.imagery import ImageResult
+
+    env = _env(fake, about="Ada Reporter covers chips for the desk.", avatar_path="/media/ada.png")
+    _pass_run_script(fake)
+
+    def illustrate(*, article, persona, ledger, budget):
+        return ImageResult(
+            url="/media/abc123.png", alt="an illustrated chip", prompt="a screen-print chip",
+            seed=7, workflow="flux2_klein", references=[],
+        )
+
+    out = _run(env, budget=_big_budget(), illustrate=illustrate)
+
+    md = out.article.metadata
+    assert md["author_name"] == "Ada Reporter"
+    assert md["author_bio"] == "Ada Reporter covers chips for the desk."
+    assert md["author_avatar"] == "/media/ada.png"
+    assert md["image"] == "/media/abc123.png"
+    assert md["image_alt"] == "an illustrated chip"
+    expected_hash = content_hash("Final Title", "FINAL BODY", "ada-reporter", "tech")
+    assert out.content_hash == expected_hash

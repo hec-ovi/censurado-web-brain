@@ -115,7 +115,11 @@ def dispatch_run(
         except Exception:
             # Any unexpected failure (research, a transport error, a missing persona)
             # is isolated to THIS article so it never crashes the run. Mark it dropped
-            # and return a dropped outcome; the body was never published.
+            # and return a dropped outcome; the body was never published. Log the full
+            # traceback so a silent "error" drop is debuggable from the brain logs.
+            import traceback
+            print(f"[dispatch] article {row.id} ({persona.id}) dropped on error:", flush=True)
+            traceback.print_exc()
             with guard:
                 try:
                     store.mark_dropped(row.id, reason="error")

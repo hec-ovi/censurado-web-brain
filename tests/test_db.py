@@ -112,6 +112,48 @@ def test_open_db_migrates_image_columns_onto_an_existing_db(tmp_path):
     again.close()
 
 
+def test_open_db_migrates_language_column_onto_an_existing_personas_db(tmp_path):
+    # The live personas.db predates the writer language column. CREATE TABLE IF NOT
+    # EXISTS leaves the deployed table untouched, so the column only appears via the
+    # explicit ALTER in _migrate. Build a pre-language personas table with a row,
+    # reopen via open_db, and assert the column was added with the Spanish default on
+    # the existing row.
+    import sqlite3
+
+    path = tmp_path / "old_personas.db"
+    raw = sqlite3.connect(str(path))
+    raw.executescript(
+        """
+        CREATE TABLE personas (
+          id TEXT PRIMARY KEY, display_name TEXT NOT NULL, beat TEXT NOT NULL,
+          who_i_am TEXT NOT NULL, about TEXT, style TEXT NOT NULL,
+          few_shots_pos TEXT, few_shots_neg TEXT, sources TEXT, avatar_path TEXT,
+          created_at TEXT NOT NULL, updated_at TEXT NOT NULL
+        );
+        """
+    )
+    raw.execute(
+        "INSERT INTO personas (id, display_name, beat, who_i_am, style, created_at, updated_at) "
+        "VALUES ('p1','P One','tech','w','s','t','t')"
+    )
+    raw.commit()
+    raw.close()
+
+    conn = open_db(path, check_same_thread=False)
+    try:
+        cols = {row["name"] for row in conn.execute("PRAGMA table_info(personas)")}
+        assert "language" in cols
+        # The existing row inherits the Spanish default rather than NULL.
+        row = conn.execute("SELECT language FROM personas WHERE id = 'p1'").fetchone()
+        assert row["language"] == "español neutro"
+    finally:
+        conn.close()
+
+    # Idempotent: a second open does not error (the column is already present).
+    again = open_db(path, check_same_thread=False)
+    again.close()
+
+
 def test_in_memory_db_is_not_put_into_wal(tmp_path):
     conn = open_db(":memory:")
     try:

@@ -36,6 +36,7 @@ def persona_block(persona: Persona) -> str:
     contrastive positive AND negative exemplars that local models lean on."""
     parts = [
         f"You ARE {persona.display_name}, the journalist who owns the {persona.beat} beat.",
+        f"You ALWAYS write in {persona.language}. Never switch languages.",
         f"Who you are: {persona.who_i_am}",
     ]
     if persona.about:

@@ -28,6 +28,7 @@ from pydantic_ai.models.openai import OpenAIChatModel
 from pydantic_ai.providers.openai import OpenAIProvider
 
 from newsroom.contracts.article import FinalizedDraft, PublishArticleInput
+from newsroom.inference.adapter import retry_transient
 from newsroom.inference.provider import ProviderConfig
 from newsroom.prompts import load_prompt, render
 from newsroom.research.ledger import Ledger
@@ -64,7 +65,7 @@ def finalize_article(
     template = load_prompt(prompts_dir, "journalist", "finalize.md")
     prompt = render(template, article=article_text, section=section, author=author)
 
-    result = _agent(cfg).run_sync(prompt)
+    result = retry_transient(lambda: _agent(cfg).run_sync(prompt))
     if budget is not None:
         budget.debit_tokens(getattr(result.usage, "total_tokens", 0) or 0)
     draft: FinalizedDraft = result.output

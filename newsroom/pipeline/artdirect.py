@@ -23,6 +23,7 @@ from pydantic_ai import Agent, PromptedOutput
 from pydantic_ai.models.openai import OpenAIChatModel
 from pydantic_ai.providers.openai import OpenAIProvider
 
+from newsroom.inference.adapter import retry_transient
 from newsroom.inference.provider import ProviderConfig
 from newsroom.personas import Persona
 from newsroom.pipeline.context import persona_block
@@ -90,7 +91,7 @@ def art_direct(
         article=article_text,
         references=render_references(references),
     )
-    result = _agent(cfg).run_sync(prompt)
+    result = retry_transient(lambda: _agent(cfg).run_sync(prompt))
     if budget is not None:
         budget.debit_tokens(getattr(result.usage, "total_tokens", 0) or 0)
     return result.output

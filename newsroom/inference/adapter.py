@@ -65,6 +65,49 @@ class ChatResponse:
     model: str = ""
 
 
+# Transient backend failures to retry: network drops plus cloud HTTP 429/5xx. A
+# rate-limited or momentarily-unavailable backend (e.g. Gemini free tier: 429 TPM
+# throttles, intermittent 503) must not drop an article on a single blip.
+_RETRY_STATUS = {429, 500, 502, 503, 504}
+_MAX_ATTEMPTS = 6
+_TRANSIENT_NET = (
+    httpx.ConnectError, httpx.RemoteProtocolError, httpx.ReadError,
+    httpx.WriteError, httpx.PoolTimeout, httpx.ReadTimeout, httpx.ConnectTimeout,
+)
+
+
+def _retry_delay(attempt: int, retry_after: str | None = None) -> float:
+    """Backoff seconds: honor a Retry-After header (capped), else exponential."""
+    if retry_after:
+        try:
+            return min(float(retry_after), 60.0)
+        except (TypeError, ValueError):
+            pass
+    return float(min(2 ** attempt, 30))
+
+
+def retry_transient(fn, *, attempts: int = _MAX_ATTEMPTS):
+    """Call ``fn`` and retry transient backend failures (network drops, HTTP 429/5xx)
+    with exponential backoff. Non-transient errors (a parse/validation failure, a 4xx
+    other than 429) raise immediately. Used to wrap the pydantic-ai structured seams,
+    which carry the failing HTTP status on the exception's ``status_code``."""
+    last: Exception | None = None
+    for attempt in range(attempts):
+        try:
+            return fn()
+        except _TRANSIENT_NET as exc:
+            last = exc
+        except Exception as exc:
+            if getattr(exc, "status_code", None) not in _RETRY_STATUS:
+                raise
+            last = exc
+        if attempt == attempts - 1:
+            break
+        time.sleep(_retry_delay(attempt))
+    assert last is not None
+    raise last
+
+
 def chat(
     request: ChatRequest,
     *,
@@ -97,14 +140,19 @@ def chat(
     if cfg.api_key:
         kwargs["headers"] = {"Authorization": f"Bearer {cfg.api_key}"}
 
-    for attempt in (0, 1):
+    resp = None
+    for attempt in range(_MAX_ATTEMPTS):
         try:
             resp = httpx.post(url, **kwargs)
-            break
-        except (httpx.ConnectError, httpx.RemoteProtocolError):
-            if attempt:
+        except _TRANSIENT_NET:
+            if attempt == _MAX_ATTEMPTS - 1:
                 raise
-            time.sleep(0.5)
+            time.sleep(_retry_delay(attempt))
+            continue
+        if resp.status_code in _RETRY_STATUS and attempt < _MAX_ATTEMPTS - 1:
+            time.sleep(_retry_delay(attempt, resp.headers.get("retry-after")))
+            continue
+        break
     resp.raise_for_status()
     data = resp.json()
     choice = data["choices"][0]

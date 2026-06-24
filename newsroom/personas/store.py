@@ -39,6 +39,7 @@ _MUTABLE_FIELDS = (
     "who_i_am",
     "about",
     "style",
+    "language",
     "few_shots_pos",
     "few_shots_neg",
     "sources",
@@ -59,6 +60,7 @@ class Persona:
     style: str
     id: str = ""
     about: str = ""
+    language: str = "español neutro"
     few_shots_pos: list = field(default_factory=list)
     few_shots_neg: list = field(default_factory=list)
     sources: list = field(default_factory=list)
@@ -114,10 +116,10 @@ class PersonaStore:
             self._conn.execute(
                 """
                 INSERT INTO personas (
-                  id, display_name, beat, who_i_am, about, style,
+                  id, display_name, beat, who_i_am, about, style, language,
                   few_shots_pos, few_shots_neg, sources, avatar_path,
                   created_at, updated_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     persona_id,
@@ -126,6 +128,7 @@ class PersonaStore:
                     persona.who_i_am,
                     persona.about,
                     persona.style,
+                    persona.language,
                     json.dumps(persona.few_shots_pos),
                     json.dumps(persona.few_shots_neg),
                     json.dumps(persona.sources),
@@ -211,6 +214,7 @@ def _row_to_persona(row: sqlite3.Row) -> Persona:
         who_i_am=row["who_i_am"],
         about=row["about"] or "",
         style=row["style"],
+        language=row["language"],
         few_shots_pos=json.loads(row["few_shots_pos"]) if row["few_shots_pos"] else [],
         few_shots_neg=json.loads(row["few_shots_neg"]) if row["few_shots_neg"] else [],
         sources=json.loads(row["sources"]) if row["sources"] else [],
