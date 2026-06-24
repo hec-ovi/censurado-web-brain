@@ -16,7 +16,7 @@ publishes them to the `censurado-web` portal over one HTTP contract. It is one F
 process. There are exactly two real process boundaries:
 
 ```
-[Frontend / cron] --HTTP--> [ Brain (FastAPI) ] --HTTP--> [ Platform: POST /articles, POST /media ]
+[Frontend / cron] --HTTP--> [ Brain (FastAPI) ] --HTTP--> [ Platform: POST /articles:batch, /articles, /media ]
                                        \--HTTP--> [ ComfyUI: /prompt /history /view ]
 ```
 
@@ -30,7 +30,8 @@ Two invariants hold everywhere, enforced by tests:
   finishes. Image width/height/steps are render parameters, not length caps. The guard is
   `testkit/assertions.py` (a wire-level 422 in the fake + a conftest teardown assert).
 - **One publish seam.** The brain and the portal meet only at the platform HTTP API. The
-  brain owns personas, prompts, and the agents; the portal never learns personas exist.
+  brain owns personas, prompts, and the agents; the portal has no persona concept (it
+  stores `author` as a free string).
 
 ## Run flow (the outer workflow)
 
@@ -48,8 +49,8 @@ branches on mode again.
 ## Components
 
 ### Inference (the text-model adapter)
-One function over the OpenAI Chat-Completions wire dialect; backends differ only by a
-resolved `ProviderConfig` (data, not subclasses). Roles (`drafter`, `evaluator`,
+One function over the OpenAI Chat-Completions wire dialect; backends differ only by the
+values in a resolved `ProviderConfig`, with no per-backend subclasses. Roles (`drafter`, `evaluator`,
 `finalize`, `manager`, `art_director`) resolve from the env cascade
 `NEWSROOM_ROLE_<ROLE>_* -> NEWSROOM_INFERENCE_* -> dialect default`. One retry on connect
 errors only; never sends a length cap.
@@ -73,7 +74,7 @@ raises (per-reference download failures are skipped), and the pipeline's
 - → `newsroom/imagery/illustrator.py` (`Illustrator`, `ImageResult`)
 - Expects: a reachable ComfyUI at `NEWSROOM_COMFYUI_BASE_URL` with `flux-2-klein-4b`,
   `qwen_3_4b` (CLIPLoader type `flux2`), and `flux2-vae` installed. The reference graph is
-  built from documented nodes and wants one live smoke-test against the box.
+  built from documented nodes and has not yet been smoke-tested against a live box.
 
 ### Research (the bounded grounding loop)
 Plan 3 to 6 sub-questions, search each into a URL-deduplicated claim-source ledger. Not
@@ -134,9 +135,10 @@ fans the side effects (mark published, one coverage row) back to each assignment
 `publish_article` is the per-article fallback (`POST /articles` with the
 `Idempotency-Key` header), used when `NEWSROOM_PUBLISH_BATCH` is off; both run the same
 local pre-checks (`local_publish_check`: section validity, content/key drift) so a bad
-item never reaches the wire. Before sending a batch it de-collides slugs on the DERIVED
-permalink (the platform's rule, ported in `contracts/slug.py`): a within-batch slug clash
-would 422 the whole atomic batch, so the later item is pinned to a unique slug.
+item never reaches the wire. Before sending the batch, `publish_batch_assignments`
+de-collides slugs on the DERIVED permalink (the platform's rule, ported in
+`contracts/slug.py`): a within-batch slug clash would 422 the whole atomic batch, so the
+later item is pinned to a unique slug.
 `upload_media` POSTs a generated PNG's raw bytes to `/media`
 (scope `articles:write`, no idempotency key, content-addressed) and returns a
 `/media/<sha>.png` URL the pipeline stamps into `metadata.image`.

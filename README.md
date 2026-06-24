@@ -8,7 +8,7 @@ The agentic newsroom for [censurado-web](https://github.com/hec-ovi/censurado-we
 ![Agentic workflow](https://img.shields.io/badge/agentic-workflow-7c3aed.svg)
 ![Agentic loop](https://img.shields.io/badge/agentic-loop-0ea5e9.svg)
 
-The portal stays non-agentic and never learns that personas exist. This repo is the only agentic part of the system, and the two meet at exactly one seam, the publish API.
+All the agentic code lives in this repo. The portal has no concept of personas (its article schema takes only an `author` string), and the two systems connect through one seam, the publish API.
 
 ---
 
@@ -36,15 +36,15 @@ Every loop in the brain carries a monotonic, harness-enforced bound the model ca
 - **The per-article sweeps** draft, then grade with a separate evaluator that returns `PASS` or `REVISE` with failing sections. The loop exits on `PASS`, on `MAX_SWEEPS`, or when the failing-section set repeats two sweeps running (a genuine stall). The evaluator resolves to a different endpoint than the drafter, or degrades to a rules-grounded check, so the drafter never grades itself.
 - **A shared per-article budget** (token plus wall-clock) is debited by every sub-loop, so the article budget is a true ceiling over the sum of research, drafting, and enrichment, not a per-loop afterthought.
 
-Bounding a loop is not capping output. The number of drafts is bounded; a single generation is never length-limited. There is no `max_tokens`, no word ceiling, no "be brief" anywhere in the prompts. When a budget runs out mid-draft, the assignment is **dropped** with reason `budget_exhausted` and its ledger kept for audit; a partial body is never published, which keeps the loop bound separate from a truncated output.
+Bounding a loop is not capping output. The number of drafts is bounded; a single generation is never length-limited (see Principles). When a budget runs out mid-draft, the assignment is **dropped** with reason `budget_exhausted` and its ledger kept for audit; a partial body is never published, which keeps the loop bound separate from a truncated output.
 
 ## How the two compose
 
-They compose by altitude: the deterministic workflow hosts the bounded loops, and the guards live exactly where a workflow node hands control to a model-driven loop. The workflow owns the cap, the budget, and the progress detector that bring control back. The manager is the one seam where the workflow lets the model decide how many workers to spawn, and even that decision is clamped. This is the hybrid that current practice converges on: structured enough to be reliable, flexible enough to absorb the variance of real news.
+They compose by altitude: the deterministic workflow hosts the bounded loops, and the guards live exactly where a workflow node hands control to a model-driven loop. The workflow owns the cap, the budget, and the progress detector that bring control back. The manager is the one seam where the workflow lets the model decide how many workers to spawn, and even that decision is clamped to `N_MAX`.
 
 ## How it fits censurado-web
 
-- The portal serves a static archive to readers and exposes one authenticated write API (`POST /articles` for one article, `POST /articles:batch` for many, plus `POST /media` for image bytes). It never learns that personas exist.
+- The portal serves a static archive to readers and exposes one authenticated write API (`POST /articles` for one article, `POST /articles:batch` for many, plus `POST /media` for image bytes).
 - This repo owns the personas (its own SQLite), the prompts (versioned `.md` files), and the agents that turn the day's news into finished articles.
 - It authors each article as the persona who wrote it, using a single operator key that carries both the `articles:write` and `articles:publish-any` scopes. That key is the only coupling between the two systems.
 - A run's finished articles publish together in one atomic batch (`POST /articles:batch`): the portal validates every item, then stores all of them or none, and each item carries its own content-derived idempotency key so a resend never doubles. Turn `NEWSROOM_PUBLISH_BATCH` off to fall back to one `POST /articles` per article.
@@ -64,7 +64,7 @@ The rest of the surface: `POST /personas` (returns `202` and a synthesis job to 
 
 ## Status
 
-Early, but built end to end. The brain runs today: the persona store and async synthesis, the inference adapter, the bounded research loop and ledger, the per-article pipeline (draft, evaluate, finalize), the art director that writes a FLUX.2 image brief and renders a hero image on a local ComfyUI (then uploads it to the portal's `POST /media` and attaches it via `metadata.image`), the manager and fan-out, the raw-HTTP publish client (one atomic `POST /articles:batch` per run, with a per-article fallback), the trigger surface (`manual`, `express`, `managed`) over HTTP, the author-manager console (a buildless vanilla-JS frontend served by nginx, in `frontend/`), and the automation layer: a one-shot run command (`censurado-brain --mode managed`) for a periodic trigger, plus a Docker compose that runs the console next to the brain. The whole suite is green, including end-to-end image-generation tests driven against an in-repo ComfyUI fake; the FLUX.2 reference workflow wants one live smoke-test against the box, and the portal's media endpoint is the matching in-flight piece on the platform side. The architecture, including the image-generation seam, is written up in `docs/research/stage-2-newsroom-architecture.md`, and `AGENTS.md` is the operational map of the codebase.
+Early, but built end to end. Every part under Layout runs today and is wired together: the manager triages the day's news and fans out journalists, each researches and drafts under the bounded loops, the art director renders a hero image on a local ComfyUI, the run publishes its articles to the portal in one atomic batch, and the one-shot command plus the Docker compose make it a periodic trigger with the console alongside. The whole suite is green, including end-to-end image-generation tests against an in-repo ComfyUI fake. One piece is still unproven on live hardware: the FLUX.2 reference workflow needs a smoke-test on the box (the text-to-image path is built from a known-good render). The design is written up in `docs/research/stage-2-newsroom-architecture.md`, and `AGENTS.md` is the operational map of the codebase.
 
 ## Layout
 
@@ -78,9 +78,9 @@ newsroom/            the brain package (one process, isolated sub-packages)
   personas/          the persona store (own SQLite, brain-owned)
   runs/              the runs and assignments store (the idempotency anchor)
   publish/           the raw-HTTP publish client and the media (image) uploader
-  imagery/           the ComfyUI client, FLUX.2 workflow templates, and the illustrator
+  imagery/           the ComfyUI client, the FLUX.2 klein workflow template, and the illustrator
   inference/         the completion adapter (OpenAI-dialect, per-backend shims)
-  contracts/         the vendored article schema, section enum, and content hash
+  contracts/         the vendored publish contracts (article + batch), section enum, content hash, slug derivation
   cli.py             the automation entry point: a one-shot run that picks a mode
 frontend/            the presentation layer: buildless vanilla JS + nginx, talks to the brain over /api
 prompts/             versioned .md prompts (persona, manager, journalist, art_director)
