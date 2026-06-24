@@ -265,9 +265,10 @@ def test_managed_run_drafts_and_publishes_one_article(fake, tmp_path):
     assert report.mode == "managed"
     assert len(report.manifest.assignments) == 1
     assert [o.status for o in report.outcomes] == ["ready"]
-    # Exactly one article was published, and the platform recorded it.
+    # Exactly one article was published, and the platform recorded it. The default
+    # publish path is the atomic batch (one item here).
     assert [p.ok for p in report.published] == [True]
-    assert len(fake.state.publish_requests) == 1
+    assert len(fake.state.batch_requests) == 1 and len(fake.state.batch_requests[0]["items"]) == 1
     published_id = report.published[0].published_id
     assert published_id
 
@@ -290,7 +291,12 @@ def test_a_rerun_publish_of_a_finalized_assignment_is_idempotent(fake, tmp_path)
     # exactly-once. A re-run replays to the IDENTICAL key, so the platform returns the
     # idempotent 200 with the same id rather than minting a second article, and the
     # already-published guard records no second coverage row.
-    settings = _settings(fake, tmp_path)
+    #
+    # This pins publish_batch off so BOTH the first publish and the manual replay below
+    # go through the single endpoint, the path whose per-request key/content-hash this
+    # test asserts. The batch path's own replay idempotency is covered in
+    # test_publish_batch.py.
+    settings = _settings(fake, tmp_path, publish_batch=False)
     deps = _deps(fake, settings, personas=[_ada()])
     fake.state.script_chat(_assign("ada", headline="Chips ship early"))
     for body in ("outline", "draft", "enriched"):
@@ -343,7 +349,7 @@ def test_publish_payload_carries_newsroom_provenance(fake, tmp_path):
 
     run_managed(deps=deps)
 
-    sent = fake.state.publish_requests[0]["payload"]
+    sent = fake.state.batch_requests[0]["items"][0]
     assert sent["author"] == "ada"
     assert sent["section"] == "tech"
     assert sent["metadata"]["newsroom"]["run_id"]  # provenance stamped at finalize
@@ -446,6 +452,78 @@ def test_publish_failure_marks_done_with_errors_and_keeps_the_article(fake, tmp_
     assert deps.store.get_run(report.run_id).status == "done_with_errors"
 
 
+def test_batch_validation_failure_marks_every_article_done_with_errors(fake, tmp_path):
+    # The run-level atomic-422 path: with the default batch on and a key that may not
+    # author as the personas, the platform rejects the WHOLE batch (422), so NOTHING is
+    # written and EVERY finalized assignment is marked publish_failed -> done_with_errors.
+    settings = _settings(fake, tmp_path)  # publish_batch on (default)
+    deps = _deps(fake, settings, personas=[_ada(), _bea()])
+    deps.operator_token = "agent-a-token"  # write-only, locked to author "agent-a"
+    fake.state.script_chat(_assign_many([("ada", "A tech story"), ("bea", "A world story")]))
+    for _ in range(2):
+        for body in ("outline", "draft", "enriched"):
+            fake.state.script_chat(body)
+        fake.state.script_chat(_finalize_ok("Distinct " + str(_), "A body."))
+
+    report = run_managed(deps=deps)
+
+    assert report.status == "done_with_errors"
+    assert [o.status for o in report.outcomes] == ["ready", "ready"]  # both finalized
+    assert all(p.ok is False and p.code == "author_mismatch" for p in report.published)
+    rows = deps.store.list_assignments(run_id=report.run_id)
+    assert all(r.status == "publish_failed" and r.drop_reason == "author_mismatch" for r in rows)
+    assert fake.state.by_hash == {}  # atomic: nothing written
+    assert fake.state.batch_requests[0]["status"] == 422
+    assert deps.coverage_store.recent(limit=10) == []  # no coverage on a failed batch
+
+
+def test_per_article_fallback_publish_failure_marks_done_with_errors(fake, tmp_path):
+    # The per-article fallback FAILURE path: with batch off, each article publishes via
+    # POST /articles; a 403 marks that assignment publish_failed and the run
+    # done_with_errors, and the batch endpoint is never touched.
+    settings = _settings(fake, tmp_path, publish_batch=False)
+    deps = _deps(fake, settings, personas=[_ada(), _bea()])
+    deps.operator_token = "noscope-token"  # the fake 403s insufficient_scope on publish
+    fake.state.script_chat(_assign_many([("ada", "A tech story"), ("bea", "A world story")]))
+    for _ in range(2):
+        for body in ("outline", "draft", "enriched"):
+            fake.state.script_chat(body)
+        fake.state.script_chat(_finalize_ok("Fallback " + str(_), "A body."))
+
+    report = run_managed(deps=deps)
+
+    assert report.status == "done_with_errors"
+    assert all(p.ok is False and p.code == "insufficient_scope" for p in report.published)
+    rows = deps.store.list_assignments(run_id=report.run_id)
+    assert all(r.status == "publish_failed" and r.final_body for r in rows)  # kept, re-publishable
+    assert fake.state.batch_requests == []  # the batch endpoint was not used
+    assert deps.coverage_store.recent(limit=10) == []
+
+
+def test_run_decollides_a_duplicate_slug_and_stays_green(fake, tmp_path):
+    # Two journalists cover the same headline, so both articles derive the same slug.
+    # Without de-collision the platform's within-batch unique-slug rule would 422 the
+    # whole atomic batch; the run instead de-collides the second and finishes done.
+    settings = _settings(fake, tmp_path)  # publish_batch on (default)
+    deps = _deps(fake, settings, personas=[_ada(), _bea()])
+    fake.state.script_chat(_assign_many([("ada", "Scoop one"), ("bea", "Scoop two")]))
+    # Both pipelines run (concurrency 1, in manifest order). Both finalize the SAME title
+    # -> same derived slug; distinct bodies -> distinct content hashes (so they do not
+    # just dedup, forcing the slug clash the de-collision must resolve).
+    for body_text in ("Ada's take on the scoop.", "Bea's different angle on it."):
+        for body in ("outline", "draft", "enriched"):
+            fake.state.script_chat(body)
+        fake.state.script_chat(_finalize_ok("Hot Scoop", body_text))
+
+    report = run_managed(deps=deps)
+
+    assert report.status == "done"  # NOT done_with_errors: the slug clash was de-collided
+    assert [p.ok for p in report.published] == [True, True]
+    assert len(fake.state.by_hash) == 2  # two distinct articles landed
+    sent = fake.state.batch_requests[0]["items"]
+    assert sent[1]["slug"] == "hot-scoop-2"  # the second was pinned to a unique slug
+
+
 def test_manual_run_honors_a_persona_subset(fake, tmp_path):
     # persona_ids narrows the run to a subset; an unknown id is silently skipped, not
     # an error. The manager tries to assign BOTH ada and bea, but the run was scoped to
@@ -483,7 +561,8 @@ def test_express_caps_the_batch_to_express_n(fake, tmp_path):
     assert len(report.manifest.assignments) == 2  # clamped to express_n, not n_max=4
     assert [o.status for o in report.outcomes] == ["ready", "ready"]
     assert [p.ok for p in report.published] == [True, True]
-    assert len(fake.state.publish_requests) == 2
+    # Both published together in one atomic batch.
+    assert len(fake.state.batch_requests) == 1 and len(fake.state.batch_requests[0]["items"]) == 2
 
 
 def test_roles_for_settings_reports_distinctness_and_honors_per_role_overrides(fake, tmp_path, monkeypatch):

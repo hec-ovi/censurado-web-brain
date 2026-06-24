@@ -44,7 +44,7 @@ def _ready_ledger(_assignment, _spec, _budget) -> Ledger:
     return led
 
 
-def _deps(fake, tmp_path) -> RunDeps:
+def _deps(fake, tmp_path, *, publish_batch: bool = True) -> RunDeps:
     conn = open_db(":memory:", check_same_thread=False)
     persona_store = PersonaStore(conn)
     persona_store.create(
@@ -56,6 +56,7 @@ def _deps(fake, tmp_path) -> RunDeps:
         inference_base_url=f"{fake.base_url}/v1",
         publish_base_url=fake.base_url,
         operator_token="op-token",
+        publish_batch=publish_batch,
     )
     return RunDeps(
         store=RunStore(conn),
@@ -119,7 +120,9 @@ def test_post_runs_returns_202_then_polls_to_a_published_run(fake, tmp_path, ser
     row = final["assignments"][0]
     assert row["persona_id"] == "ada" and row["section"] == "tech"
     assert row["status"] == "published" and row["published_id"]
-    assert len(fake.state.publish_requests) == 1
+    # The default publish path is the atomic batch (one item here).
+    assert len(fake.state.batch_requests) == 1
+    assert len(fake.state.batch_requests[0]["items"]) == 1
     client.close()
 
 
@@ -150,7 +153,7 @@ def test_run_generates_and_publishes_a_hero_image(fake, tmp_path, serve_app):
 
     assert final["status"] == "done"
     assert final["assignments"][0]["image_url"] == "/media/hero.png"
-    payload = fake.state.publish_requests[0]["payload"]
+    payload = fake.state.batch_requests[0]["items"][0]
     assert payload["metadata"]["image"] == "/media/hero.png"
     client.close()
 
@@ -169,7 +172,61 @@ def test_run_with_images_false_publishes_without_an_image(fake, tmp_path, serve_
 
     assert final["status"] == "done"
     assert final["assignments"][0]["image_url"] is None
-    assert "image" not in fake.state.publish_requests[0]["payload"].get("metadata", {})
+    assert "image" not in (fake.state.batch_requests[0]["items"][0].get("metadata") or {})
+    client.close()
+
+
+def _assign_many(specs):
+    return json.dumps({"action": "assign", "assignments": [
+        {"persona_id": p, "headline": h, "angle": "cover it", "triage": "new"} for p, h in specs
+    ]})
+
+
+def _script_run(fake, titles):
+    """Script a managed run that finalizes one ready article per title (in order).
+    fanout_concurrency is 1, so the articles run sequentially and the chat FIFO aligns."""
+    fake.state.script_chat(_assign_many([("ada", t) for t in titles]))
+    for title in titles:
+        for body in ("outline", "draft", "enriched"):
+            fake.state.script_chat(body)
+        fake.state.script_chat(json.dumps({"title": title, "body": f"Body of {title}.", "topics": []}))
+
+
+def test_managed_run_publishes_its_ready_articles_in_one_batch(fake, tmp_path, serve_app):
+    # The default publish path sends a run's ready articles TOGETHER in one atomic
+    # POST /articles:batch; the per-article endpoint is not touched.
+    deps = _deps(fake, tmp_path)
+    base_url = serve_app(create_app(settings=deps.settings, store=deps.persona_store, run_deps=deps))
+    client = httpx.Client(base_url=base_url, timeout=10)
+    _script_run(fake, ["Chips Ship Early", "GPU Prices Climb"])
+
+    run_id = client.post("/runs", json={"mode": "managed"}).json()["run_id"]
+    final = _poll_until_done(client, run_id)
+
+    assert final["status"] == "done"
+    assert len(final["assignments"]) == 2
+    assert all(a["status"] == "published" and a["published_id"] for a in final["assignments"])
+    assert len(fake.state.batch_requests) == 1
+    assert len(fake.state.batch_requests[0]["items"]) == 2
+    assert fake.state.publish_requests == []  # the single endpoint was not used
+    client.close()
+
+
+def test_run_falls_back_to_per_article_publish_when_batch_is_off(fake, tmp_path, serve_app):
+    # With publish_batch off, the run publishes one POST /articles per ready article and
+    # never calls the batch endpoint. Same observable outcome: both published.
+    deps = _deps(fake, tmp_path, publish_batch=False)
+    base_url = serve_app(create_app(settings=deps.settings, store=deps.persona_store, run_deps=deps))
+    client = httpx.Client(base_url=base_url, timeout=10)
+    _script_run(fake, ["Alpha Story", "Beta Story"])
+
+    run_id = client.post("/runs", json={"mode": "managed"}).json()["run_id"]
+    final = _poll_until_done(client, run_id)
+
+    assert final["status"] == "done"
+    assert all(a["status"] == "published" for a in final["assignments"])
+    assert fake.state.batch_requests == []  # batch endpoint untouched
+    assert len(fake.state.publish_requests) == 2  # one POST per article
     client.close()
 
 

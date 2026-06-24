@@ -38,7 +38,7 @@ from newsroom.manager.preflight import ResolvedRoles
 from newsroom.manager.types import Manifest
 from newsroom.personas import Persona, PersonaStore
 from newsroom.pipeline import ArticleBudget, ArticleOutcome
-from newsroom.publish import publish_assignment
+from newsroom.publish import publish_assignment, publish_batch_assignments
 from newsroom.runs import Run, RunStore
 
 __all__ = [
@@ -182,45 +182,70 @@ def _publish_ready(dispatch, deps: RunDeps) -> list[PublishOutcome]:
     """The COLLECT -> PUBLISH tail: publish every article that finalized to ``ready``.
     Dropped articles (budget exhausted, finalize failed) have no body and are skipped.
 
-    A publish that fails (a 403, a transport fault) keeps the persisted body and marks
-    the assignment ``publish_failed`` with the publish code, so the failure is
+    By default the run's ready articles publish TOGETHER in one atomic batch
+    (``settings.publish_batch``); turning the flag off falls back to one POST per
+    article. Either way the per-assignment bookkeeping is identical: a publish that
+    fails (a 403, a transport fault, an atomic-batch rejection) keeps the persisted body
+    and marks the assignment ``publish_failed`` with the publish code, so the failure is
     OBSERVABLE (over GET /runs/{id}) rather than indistinguishable from publish-pending,
     and the article stays re-publishable. WITHIN one run a publish is exactly-once via
     the content-derived key persisted at finalize (a crash after finalize replays the
-    stored body to the same key). Across a FROM-SCRATCH re-run, new assignment ids mint
-    new keys, so cross-run exactly-once rests on the platform's content-hash dedup and
-    is best-effort (a temp-0.9 redraft is not byte-identical), not the persisted key."""
+    stored body to the same key, or resends the same per-item batch key). Across a
+    FROM-SCRATCH re-run, new assignment ids mint new keys, so cross-run exactly-once
+    rests on the platform's content-hash dedup and is best-effort (a temp-0.9 redraft is
+    not byte-identical), not the persisted key."""
     guard = deps.lock if deps.lock is not None else nullcontext()
-    published: list[PublishOutcome] = []
+
+    # Re-fetch each ready row: the pipeline persisted content_hash + idempotency_key at
+    # finalize, and the publish path reads them off the assignment. finalize guarantees
+    # the row exists, so a missing row is a should-not-happen guard (skipped).
+    ready: list[tuple[str, object]] = []  # (assignment_id, article)
+    pairs: list[tuple[object, object]] = []  # (Assignment row, article) for the publisher
     for outcome in dispatch.outcomes:
         if outcome.status != "ready" or outcome.article is None:
             continue
-        # Re-fetch the row: the pipeline persisted content_hash + idempotency_key at
-        # finalize, and the publish client reads them off the assignment. finalize
-        # guarantees the row exists, so a missing row is a should-not-happen guard.
         with guard:
             row = deps.store.get_assignment(outcome.assignment_id)
         if row is None:
             continue
-        result = publish_assignment(
-            outcome.article,
-            assignment=row,
+        ready.append((outcome.assignment_id, outcome.article))
+        pairs.append((row, outcome.article))
+
+    if deps.settings.publish_batch:
+        results = publish_batch_assignments(
+            pairs,
             store=deps.store,
             base_url=deps.publish_base_url,
             token=deps.operator_token,
             coverage=deps.coverage_store,
             lock=deps.lock,
         )
+    else:
+        results = [
+            publish_assignment(
+                article,
+                assignment=row,
+                store=deps.store,
+                base_url=deps.publish_base_url,
+                token=deps.operator_token,
+                coverage=deps.coverage_store,
+                lock=deps.lock,
+            )
+            for row, article in pairs
+        ]
+
+    published: list[PublishOutcome] = []
+    for (assignment_id, _article), result in zip(ready, results):
         if not result.ok:
-            # publish_assignment leaves the row 'ready' on failure; mark it failed so a
+            # The publisher leaves the row 'ready' on failure; mark it failed so a
             # finalized-but-unpublished article is visible, not a silent green run.
             with guard:
                 deps.store.mark_publish_failed(
-                    outcome.assignment_id, reason=result.code or "publish_failed"
+                    assignment_id, reason=result.code or "publish_failed"
                 )
         published.append(
             PublishOutcome(
-                assignment_id=outcome.assignment_id,
+                assignment_id=assignment_id,
                 ok=result.ok,
                 published_id=result.id,
                 slug=result.slug,

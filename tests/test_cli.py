@@ -123,9 +123,10 @@ def test_cli_managed_run_publishes_end_to_end(fake, tmp_path, capsys):
     assert out["status"] == "done"
     assert (out["assigned"], out["published"], out["failed"]) == (1, 1, 0)
 
-    # The run really happened: one article on the platform, the run row closed, and a
-    # coverage row so the next run will not republish the story.
-    assert len(fake.state.publish_requests) == 1
+    # The run really happened: one article on the platform (published via the default
+    # atomic batch), the run row closed, and a coverage row so the next run will not
+    # republish the story.
+    assert len(fake.state.batch_requests) == 1 and len(fake.state.batch_requests[0]["items"]) == 1
     run = deps.store.get_run(out["run_id"])
     assert run.status == "done" and run.finished_at
     coverage = deps.coverage_store.recent(limit=5)

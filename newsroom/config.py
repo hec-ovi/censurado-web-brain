@@ -43,6 +43,11 @@ class Settings(BaseSettings):
     # Publish seam (Step 7). The platform requires BOTH scopes on the operator key.
     publish_base_url: str = "http://127.0.0.1:8080"
     operator_token: str = Field(default="", repr=False)
+    # Publish a run's ready articles together in ONE atomic request (POST /articles:batch)
+    # instead of one POST per article. The batch is all-or-nothing: any invalid item
+    # rejects the whole batch (nothing written), so it stays re-publishable on the next
+    # run. Turn off to fall back to the per-article path (each publishes independently).
+    publish_batch: bool = True
 
     # ----- Imagery seam (art-director image generation). -----
     # An art-director step pairs with the journalist: after an article is finalized it
