@@ -48,12 +48,14 @@ packages = [
     "newsroom.runs",
     "newsroom.manager",
     "newsroom.publish",
+    "newsroom.imagery",
     "newsroom.runner",
     "testkit",
 ]
 
 [tool.setuptools.package-data]
 "newsroom.contracts" = ["vendored/v1/*.json", "vendored/v1/*.md"]
+"newsroom.imagery" = ["templates/*.json"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
