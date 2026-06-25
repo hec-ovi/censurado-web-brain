@@ -89,6 +89,66 @@ CREATE TABLE IF NOT EXISTS coverage (
 );
 
 CREATE INDEX IF NOT EXISTS idx_coverage_published_at ON coverage(published_at);
+
+-- ----- Operator-editable editorial config (the console's settings panel). -----
+-- These three carry what an operator tunes at runtime without a redeploy: WHERE the
+-- news comes from (location + the portal allowlist) and HOW it is written (the house
+-- style guide). They are read by the manager/research seams and the journalist
+-- pipeline, and edited over the brain HTTP API. config.Settings still provides the
+-- boot SEED; the live, editable copy lives here so a console edit takes effect without
+-- restarting the process.
+
+-- Single-row publication location (id is pinned to 1). Drives place-scoped discovery
+-- and the manager's "you are the editor for <place>" framing.
+CREATE TABLE IF NOT EXISTS location (
+  id            INTEGER PRIMARY KEY CHECK (id = 1),
+  region        TEXT NOT NULL,                 -- ISO-3166-1 alpha-2 (e.g. AR); Google News gl
+  ui_lang       TEXT NOT NULL,                 -- BCP47 (e.g. es-419); Google News hl
+  language      TEXT NOT NULL,                 -- ISO-639-1 (e.g. es); websearch language scope
+  gdelt_country TEXT NOT NULL DEFAULT '',      -- FIPS-10-4 (e.g. AR); optional GDELT feed
+  city          TEXT NOT NULL DEFAULT '',
+  latlong       TEXT NOT NULL DEFAULT '',
+  updated_at    TEXT NOT NULL
+);
+
+-- The operator's own local news portals (clarin.com, lanacion.com, ...). Discovery
+-- pulls these directly (native RSS / news sitemaps) and scopes web_search to them.
+CREATE TABLE IF NOT EXISTS portals (
+  id              TEXT PRIMARY KEY,            -- slug of the domain (clarin-com)
+  domain          TEXT NOT NULL UNIQUE,        -- clarin.com
+  homepage        TEXT NOT NULL DEFAULT '',
+  feed_urls       TEXT NOT NULL DEFAULT '[]',  -- JSON array of known feed URLs
+  feed_type       TEXT NOT NULL DEFAULT 'auto'
+                    CHECK (feed_type IN ('auto','native_rss','atom','news_sitemap','site_search')),
+  language        TEXT NOT NULL DEFAULT 'es',
+  ownership_group TEXT NOT NULL DEFAULT '',    -- independence grouping for corroboration counting
+  enabled         INTEGER NOT NULL DEFAULT 1,
+  status          TEXT NOT NULL DEFAULT 'unknown',   -- unknown|ok|unreachable (health-checker)
+  last_checked    TEXT NOT NULL DEFAULT '',
+  last_ok         TEXT NOT NULL DEFAULT '',
+  created_at      TEXT NOT NULL,
+  updated_at      TEXT NOT NULL
+);
+
+-- The house style guide ("the model of redaction + rules"), as IMMUTABLE versions
+-- plus a one-row active pointer. An edit inserts a new version; promote/rollback just
+-- moves the pointer, so every past version is auditable and instantly restorable.
+CREATE TABLE IF NOT EXISTS style_guide (
+  version    INTEGER PRIMARY KEY AUTOINCREMENT,
+  voice      TEXT NOT NULL DEFAULT '',         -- holistic house voice (prose; NO length phrasing)
+  exemplars  TEXT NOT NULL DEFAULT '[]',       -- JSON array of {label: good|bad, text, why}
+  rules      TEXT NOT NULL DEFAULT '[]',       -- JSON array of {id, text, severity, scope, check}
+  lexicon    TEXT NOT NULL DEFAULT '{}',       -- JSON object {banned_terms, preferred_swaps}
+  sourcing   TEXT NOT NULL DEFAULT '{}',       -- JSON object {min_sources, require_attribution, ...}
+  structure  TEXT NOT NULL DEFAULT '{}',       -- JSON object {headline, dateline, lede}
+  created_by TEXT NOT NULL DEFAULT '',
+  created_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS style_guide_active (
+  id      INTEGER PRIMARY KEY CHECK (id = 1),
+  version INTEGER NOT NULL REFERENCES style_guide(version)
+);
 """
 
 

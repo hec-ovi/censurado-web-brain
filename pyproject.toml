@@ -42,6 +42,7 @@ packages = [
     "newsroom.contracts",
     "newsroom.brain",
     "newsroom.personas",
+    "newsroom.editorial",
     "newsroom.inference",
     "newsroom.research",
     "newsroom.pipeline",
