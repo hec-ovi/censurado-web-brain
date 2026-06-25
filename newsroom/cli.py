@@ -35,6 +35,7 @@ import sys
 import threading
 from collections.abc import Callable
 
+from newsroom.bootstrap import bootstrap
 from newsroom.config import Settings, load_settings
 from newsroom.db import open_db
 from newsroom.personas import PersonaStore
@@ -127,11 +128,42 @@ def _emit(summary: dict) -> None:
     sys.stdout.write("\n")
 
 
+def _bootstrap_main(argv: list[str]) -> int:
+    """``censurado-brain bootstrap``: idempotently seed the newsroom and (by default)
+    run one batch. Safe to re-run; ``--no-run`` seeds only. Prints a JSON summary and
+    returns the run's exit code (0 when seed-only)."""
+    parser = argparse.ArgumentParser(
+        prog="censurado-brain bootstrap",
+        description="Seed the newsroom (idempotent) and run one batch. Safe to re-run.",
+    )
+    parser.add_argument("--no-run", action="store_true", help="seed only; do not run a batch")
+    parser.add_argument(
+        "--mode", choices=RUN_MODES, default="managed", help="run mode (default: managed)"
+    )
+    parser.add_argument(
+        "--n", type=int, default=None, help="article ceiling for the run (clamped to N_MAX)"
+    )
+    args = parser.parse_args(argv)
+
+    settings = load_settings()
+    result = bootstrap(settings, run=not args.no_run, mode=args.mode, n=args.n)
+    _emit(result)
+    run_summary = result.get("run")
+    if result.get("ran") and isinstance(run_summary, dict):
+        return _EXIT.get(run_summary.get("status"), _EXIT["failed"])
+    return 0
+
+
 def main(argv: list[str] | None = None, *, build_deps: DepsBuilder | None = None) -> int:
     """Parse args, run once, print a JSON summary, return an exit code.
 
     ``build_deps`` defaults to the production assembly; a test overrides it to inject
     in-process doubles for the network seams while still driving this real path."""
+    argv = list(sys.argv[1:] if argv is None else argv)
+    if argv and argv[0] == "bootstrap":
+        # The one-command setup path: seed the newsroom, then run. Kept as a subcommand
+        # so the bare invocation (a plain --mode run) is unchanged for the trigger.
+        return _bootstrap_main(argv[1:])
     args = _parser().parse_args(argv)
     settings = load_settings()
     deps = (build_deps or build_deps_from_env)(settings)
