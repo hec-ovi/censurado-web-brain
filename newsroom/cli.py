@@ -34,10 +34,12 @@ import json
 import sys
 import threading
 from collections.abc import Callable
+from dataclasses import asdict
 
 from newsroom.bootstrap import bootstrap
 from newsroom.config import Settings, load_settings
 from newsroom.db import open_db
+from newsroom.editorial import Portal, PortalStore
 from newsroom.mirror import (
     AuthorPush,
     PushResult,
@@ -259,7 +261,147 @@ def _env_author_push(settings: Settings) -> AuthorPush:
     return push
 
 
-def main(argv: list[str] | None = None, *, build_deps: DepsBuilder | None = None) -> int:
+def _open_portal_store() -> PortalStore:
+    """Open the brain DB the API uses and wrap it in a ``PortalStore``. The CLI source
+    verbs are their own process (a separate connection from a live brain); WAL + the
+    busy timeout (see ``open_db``) let that connection share the file safely."""
+    settings = load_settings()
+    conn = open_db(settings.persona_db_path, check_same_thread=False)
+    return PortalStore(conn)
+
+
+def _split_csv(raw: str | None) -> list[str]:
+    """Split a comma-separated CLI value into a clean list (``--feed-urls a,b`` -> [a, b])."""
+    if not raw:
+        return []
+    return [piece.strip() for piece in raw.split(",") if piece.strip()]
+
+
+def _sources_main(argv: list[str], *, store: PortalStore | None = None) -> int:
+    """``censurado-brain sources list|add|update|remove|enable|disable``: curate the
+    source (portal) registry from the command line, mirroring the HTTP management API.
+    Operates on a local ``PortalStore`` over the brain DB. Prints a JSON result via
+    ``_emit`` and returns 0 on success, 1 on a store rejection (duplicate domain, invalid
+    feed_type, unknown id) or a missing/unknown sub-verb. ``store`` is injectable for tests."""
+    if not argv:
+        _emit({"error": "usage: sources list|add|update|remove|enable|disable"})
+        return _EXIT["failed"]
+    verb, rest = argv[0], argv[1:]
+    if verb not in ("list", "add", "update", "remove", "enable", "disable"):
+        _emit({"error": f"unknown sources verb {verb!r}"})
+        return _EXIT["failed"]
+
+    store = store or _open_portal_store()
+
+    if verb == "list":
+        parser = argparse.ArgumentParser(prog="censurado-brain sources list")
+        parser.add_argument(
+            "--enabled", action=argparse.BooleanOptionalAction, default=None,
+            help="filter to enabled (--enabled) or disabled (--no-enabled) sources",
+        )
+        args = parser.parse_args(rest)
+        portals = store.list(enabled=args.enabled)
+        _emit({"portals": [asdict(p) for p in portals], "total": len(portals)})
+        return 0
+
+    if verb == "add":
+        parser = argparse.ArgumentParser(prog="censurado-brain sources add")
+        parser.add_argument("--domain", required=True, help="the source domain or URL")
+        parser.add_argument("--homepage", default="")
+        parser.add_argument("--description", default="", help="operator note on the source")
+        parser.add_argument("--feed-urls", default=None, help="comma-separated known feed URLs")
+        parser.add_argument("--feed-type", default="auto")
+        parser.add_argument("--language", default="es")
+        parser.add_argument("--ownership-group", default="")
+        parser.add_argument(
+            "--disabled", action="store_true", help="add the source disabled (default: enabled)"
+        )
+        args = parser.parse_args(rest)
+        portal = Portal(
+            domain=args.domain,
+            homepage=args.homepage,
+            description=args.description,
+            feed_urls=_split_csv(args.feed_urls),
+            feed_type=args.feed_type,
+            language=args.language,
+            ownership_group=args.ownership_group,
+            enabled=not args.disabled,
+        )
+        try:
+            stored = store.create(portal)
+        except ValueError as exc:
+            _emit({"error": str(exc)})
+            return _EXIT["failed"]
+        _emit(asdict(stored))
+        return 0
+
+    if verb == "update":
+        parser = argparse.ArgumentParser(prog="censurado-brain sources update")
+        parser.add_argument("portal_id", help="the source id (e.g. clarin-com)")
+        parser.add_argument("--homepage", default=None)
+        parser.add_argument("--description", default=None)
+        parser.add_argument("--feed-urls", default=None, help="comma-separated; replaces the list")
+        parser.add_argument("--feed-type", default=None)
+        parser.add_argument("--language", default=None)
+        parser.add_argument("--ownership-group", default=None)
+        parser.add_argument(
+            "--enabled", action=argparse.BooleanOptionalAction, default=None,
+            help="enable (--enabled) or disable (--no-enabled) the source",
+        )
+        args = parser.parse_args(rest)
+        changes: dict = {}
+        if args.homepage is not None:
+            changes["homepage"] = args.homepage
+        if args.description is not None:
+            changes["description"] = args.description
+        if args.feed_urls is not None:
+            changes["feed_urls"] = _split_csv(args.feed_urls)
+        if args.feed_type is not None:
+            changes["feed_type"] = args.feed_type
+        if args.language is not None:
+            changes["language"] = args.language
+        if args.ownership_group is not None:
+            changes["ownership_group"] = args.ownership_group
+        if args.enabled is not None:
+            changes["enabled"] = args.enabled
+        try:
+            stored = store.update(args.portal_id, **changes)
+        except KeyError:
+            _emit({"error": f"unknown source {args.portal_id!r}"})
+            return _EXIT["failed"]
+        except ValueError as exc:
+            _emit({"error": str(exc)})
+            return _EXIT["failed"]
+        _emit(asdict(stored))
+        return 0
+
+    if verb in ("enable", "disable"):
+        parser = argparse.ArgumentParser(prog=f"censurado-brain sources {verb}")
+        parser.add_argument("portal_id", help="the source id (e.g. clarin-com)")
+        args = parser.parse_args(rest)
+        try:
+            stored = store.set_enabled(args.portal_id, verb == "enable")
+        except KeyError:
+            _emit({"error": f"unknown source {args.portal_id!r}"})
+            return _EXIT["failed"]
+        _emit(asdict(stored))
+        return 0
+
+    # verb == "remove"
+    parser = argparse.ArgumentParser(prog="censurado-brain sources remove")
+    parser.add_argument("portal_id", help="the source id (e.g. clarin-com)")
+    args = parser.parse_args(rest)
+    removed = store.delete(args.portal_id)
+    _emit({"id": args.portal_id, "removed": removed})
+    return 0 if removed else _EXIT["failed"]
+
+
+def main(
+    argv: list[str] | None = None,
+    *,
+    build_deps: DepsBuilder | None = None,
+    portal_store: PortalStore | None = None,
+) -> int:
     """Parse args, run once, print a JSON summary, return an exit code.
 
     ``build_deps`` defaults to the production assembly; a test overrides it to inject
@@ -277,6 +419,10 @@ def main(argv: list[str] | None = None, *, build_deps: DepsBuilder | None = None
         # The one-time author backfill: push local personas to the platform registry.
         # A subcommand so the bare --mode run path stays untouched.
         return _mirror_authors_main(argv[1:])
+    if argv and argv[0] == "sources":
+        # Curate the source (portal) registry, mirroring the HTTP management API. A
+        # subcommand so the bare --mode run path (the periodic trigger) is unchanged.
+        return _sources_main(argv[1:], store=portal_store)
     args = _parser().parse_args(argv)
     settings = load_settings()
     deps = (build_deps or build_deps_from_env)(settings)

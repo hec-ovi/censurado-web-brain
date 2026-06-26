@@ -196,6 +196,52 @@ def test_open_db_migrates_active_column_onto_an_existing_personas_db(tmp_path):
     again.close()
 
 
+def test_open_db_migrates_description_column_onto_an_existing_portals_db(tmp_path):
+    # The live brain DB predates the portals.description column. CREATE TABLE IF NOT
+    # EXISTS leaves the deployed table untouched, so the column only appears via the
+    # explicit ALTER in _migrate. Build a pre-description portals table with a row,
+    # reopen via open_db, and assert the column was added defaulting to '' on the
+    # existing row (so a PortalStore reads it back as the empty string, never NULL).
+    import sqlite3
+
+    from newsroom.editorial import PortalStore
+
+    path = tmp_path / "old_portals.db"
+    raw = sqlite3.connect(str(path))
+    raw.executescript(
+        """
+        CREATE TABLE portals (
+          id TEXT PRIMARY KEY, domain TEXT NOT NULL UNIQUE,
+          homepage TEXT NOT NULL DEFAULT '', feed_urls TEXT NOT NULL DEFAULT '[]',
+          feed_type TEXT NOT NULL DEFAULT 'auto', language TEXT NOT NULL DEFAULT 'es',
+          ownership_group TEXT NOT NULL DEFAULT '', enabled INTEGER NOT NULL DEFAULT 1,
+          status TEXT NOT NULL DEFAULT 'unknown', last_checked TEXT NOT NULL DEFAULT '',
+          last_ok TEXT NOT NULL DEFAULT '', created_at TEXT NOT NULL, updated_at TEXT NOT NULL
+        );
+        """
+    )
+    raw.execute(
+        "INSERT INTO portals (id, domain, created_at, updated_at) "
+        "VALUES ('clarin-com','clarin.com','t','t')"
+    )
+    raw.commit()
+    raw.close()
+
+    conn = open_db(path, check_same_thread=False)
+    try:
+        cols = {row["name"] for row in conn.execute("PRAGMA table_info(portals)")}
+        assert "description" in cols
+        # The store reads the migrated row, and the new column is "" rather than NULL.
+        portal = PortalStore(conn).get("clarin-com")
+        assert portal is not None and portal.description == ""
+    finally:
+        conn.close()
+
+    # Idempotent: a second open does not error (the column is already present).
+    again = open_db(path, check_same_thread=False)
+    again.close()
+
+
 def test_in_memory_db_is_not_put_into_wal(tmp_path):
     conn = open_db(":memory:")
     try:

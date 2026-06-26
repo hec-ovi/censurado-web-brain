@@ -124,6 +124,8 @@ CREATE TABLE IF NOT EXISTS portals (
   id              TEXT PRIMARY KEY,            -- slug of the domain (clarin-com)
   domain          TEXT NOT NULL UNIQUE,        -- clarin.com
   homepage        TEXT NOT NULL DEFAULT '',
+  description     TEXT NOT NULL DEFAULT '',    -- operator's note on the source (the real
+                                               -- source lists carry rich descriptions)
   feed_urls       TEXT NOT NULL DEFAULT '[]',  -- JSON array of known feed URLs
   feed_type       TEXT NOT NULL DEFAULT 'auto'
                     CHECK (feed_type IN ('auto','native_rss','atom','news_sitemap','site_search')),
@@ -216,6 +218,11 @@ _ADDED_COLUMNS = {
         # live personas.db predates it, so it is added explicitly. Old rows default to
         # active (1): an existing newsroom keeps writing until the mirror says otherwise.
         ("active", "INTEGER NOT NULL DEFAULT 1"),
+    ),
+    # The operator-facing source description shipped after the initial portals table; a
+    # live brain DB predates it, so it is added explicitly (old rows default to '').
+    "portals": (
+        ("description", "TEXT NOT NULL DEFAULT ''"),
     ),
 }
 

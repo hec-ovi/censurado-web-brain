@@ -31,6 +31,7 @@ FEED_TYPES = ("auto", "native_rss", "atom", "news_sitemap", "site_search")
 _MUTABLE_FIELDS = (
     "domain",
     "homepage",
+    "description",
     "feed_urls",
     "feed_type",
     "language",
@@ -71,6 +72,7 @@ class Portal:
     domain: str
     id: str = ""
     homepage: str = ""
+    description: str = ""
     feed_urls: list = field(default_factory=list)
     feed_type: str = "auto"
     language: str = "es"
@@ -114,14 +116,15 @@ class PortalStore:
             self._conn.execute(
                 """
                 INSERT INTO portals (
-                  id, domain, homepage, feed_urls, feed_type, language, ownership_group,
-                  enabled, status, last_checked, last_ok, created_at, updated_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                  id, domain, homepage, description, feed_urls, feed_type, language,
+                  ownership_group, enabled, status, last_checked, last_ok, created_at, updated_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     portal_id,
                     domain,
                     portal.homepage,
+                    portal.description,
                     json.dumps(portal.feed_urls),
                     portal.feed_type,
                     portal.language,
@@ -219,6 +222,7 @@ def _row_to_portal(row: sqlite3.Row) -> Portal:
         id=row["id"],
         domain=row["domain"],
         homepage=row["homepage"] or "",
+        description=row["description"] or "",
         feed_urls=json.loads(row["feed_urls"]) if row["feed_urls"] else [],
         feed_type=row["feed_type"],
         language=row["language"],

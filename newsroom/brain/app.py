@@ -20,13 +20,17 @@ import uuid
 from dataclasses import asdict, dataclass
 
 from fastapi import BackgroundTasks, FastAPI, Request
+from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
+from newsroom.brain.problems import _problem
+from newsroom.brain.routes import portals_router
 from newsroom.brain.synthesis import PersonaSeed, synthesize_persona
 from newsroom.config import Settings, load_settings
 from newsroom.contracts.sections import SECTION_ENUM, is_valid_section
 from newsroom.db import open_db
+from newsroom.editorial import PortalStore
 from newsroom.inference.provider import DEFAULT_MODEL, DEFAULT_PROVIDER, DIALECTS, ProviderConfig
 from newsroom.personas import PersonaStore, slugify
 from newsroom.runner import (
@@ -86,11 +90,20 @@ class Job:
     error: str = ""
 
 
-def _problem(status: int, code: str, detail: str | None = None) -> JSONResponse:
-    body: dict = {"status": status, "code": code}
-    if detail:
-        body["detail"] = detail
-    return JSONResponse(status_code=status, content=body, media_type="application/problem+json")
+async def _validation_error_handler(request: Request, exc: RequestValidationError) -> JSONResponse:
+    """Convert FastAPI/pydantic body & query validation failures into the brain's shared
+    ``application/problem+json`` envelope, so a malformed request reads the SAME
+    ``{status, code, detail}`` shape (with ``code == "validation_failed"``) every
+    hand-mapped error uses, instead of FastAPI's default ``{"detail": [...]}``. Registered
+    app-wide, so it covers every route (personas, runs, portals, and the routers to come).
+    The ``detail`` is a concise human summary that joins each failure's ``loc`` and ``msg``."""
+    parts: list[str] = []
+    for err in exc.errors():
+        loc = ".".join(str(p) for p in err.get("loc", ()) if p != "body")
+        msg = err.get("msg", "invalid")
+        parts.append(f"{loc}: {msg}" if loc else msg)
+    detail = "; ".join(parts) or "request validation failed"
+    return _problem(422, "validation_failed", detail=detail)
 
 
 def _run_synthesis(state, job_id: str, seed: PersonaSeed) -> None:
@@ -138,6 +151,7 @@ def create_app(
     settings: Settings | None = None,
     store: PersonaStore | None = None,
     run_deps: RunDeps | None = None,
+    portal_store: PortalStore | None = None,
 ) -> FastAPI:
     """Build the brain app. A test passes a ``settings`` pointed at the fake; for runs
     it also injects ``run_deps`` (with in-process search/research doubles) so a run
@@ -147,6 +161,11 @@ def create_app(
     synthesis writes and run writes serialize on the same connection."""
     settings = settings or load_settings()
     app = FastAPI(title="censurado-web-brain")
+
+    # Every body/query validation failure becomes the shared problem+json envelope
+    # (code == "validation_failed"), so clients branch on one error shape across the
+    # whole API rather than special-casing FastAPI's default {"detail": [...]}.
+    app.add_exception_handler(RequestValidationError, _validation_error_handler)
 
     conn = None
     if store is None:
@@ -166,8 +185,16 @@ def create_app(
         run_deps.lock = lock
     lock = run_deps.lock
 
+    # The source-management API shares the one connection the persona/run surfaces use,
+    # so a console source edit and a running pipeline serialize on the same lock. When a
+    # test injects a pre-built persona store (conn is None here), it injects portal_store
+    # alongside it if the source routes are exercised; otherwise it stays unset.
+    if portal_store is None and conn is not None:
+        portal_store = PortalStore(conn)
+
     caps = DIALECTS[DEFAULT_PROVIDER]
     app.state.store = store
+    app.state.portal_store = portal_store
     app.state.run_deps = run_deps
     app.state.jobs = {}
     app.state.lock = lock
@@ -313,5 +340,10 @@ def create_app(
                 for a in assignments
             ],
         }
+
+    # The source-management API lives in its own router (added, not inlined) so the
+    # seven tested-thin inline routes above stay untouched. A future chunk migrates
+    # those onto routers too.
+    app.include_router(portals_router)
 
     return app

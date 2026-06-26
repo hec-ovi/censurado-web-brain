@@ -23,6 +23,7 @@ import pytest
 from newsroom.cli import main
 from newsroom.config import Settings
 from newsroom.db import open_db
+from newsroom.editorial import PortalStore
 from newsroom.personas import Persona, PersonaStore
 from newsroom.research.ledger import Ledger
 from newsroom.runner import build_run_deps
@@ -249,6 +250,88 @@ def test_cli_persona_ids_scope_the_run(fake, tmp_path, capsys):
     assert out["mode"] == "manual"
     assert (out["assigned"], out["published"]) == (1, 1)  # bea out of scope, ghost skipped
     assert deps.store.list_assignments(run_id=out["run_id"])[0].persona_id == "ada"
+
+
+def test_cli_sources_add_list_update_disable_remove(tmp_path, capsys):
+    # The `sources` verb group curates the portal registry from the command line,
+    # mirroring the HTTP management API. One injected store backs every call (the real
+    # PortalStore over a brain DB), so the verbs see each other's writes.
+    store = PortalStore(open_db(tmp_path / "brain.db", check_same_thread=False))
+
+    # add: a URL normalizes + derives the id, and the description rides along.
+    code = main(
+        ["sources", "add", "--domain", "https://www.clarin.com/", "--description", "Diario"],
+        portal_store=store,
+    )
+    assert code == 0
+    added = json.loads(capsys.readouterr().out)
+    assert added["id"] == "clarin-com" and added["domain"] == "clarin.com"
+    assert added["description"] == "Diario" and added["enabled"] is True
+
+    # list: shows the source, total is right.
+    assert main(["sources", "list"], portal_store=store) == 0
+    listed = json.loads(capsys.readouterr().out)
+    assert listed["total"] == 1 and listed["portals"][0]["id"] == "clarin-com"
+
+    # update: changes the description (and only that).
+    assert main(
+        ["sources", "update", "clarin-com", "--description", "Grupo Clarin"], portal_store=store
+    ) == 0
+    updated = json.loads(capsys.readouterr().out)
+    assert updated["description"] == "Grupo Clarin"
+
+    # disable: flips enabled.
+    assert main(["sources", "disable", "clarin-com"], portal_store=store) == 0
+    assert json.loads(capsys.readouterr().out)["enabled"] is False
+
+    # remove: deletes; a second remove reports nothing removed and exits non-zero.
+    assert main(["sources", "remove", "clarin-com"], portal_store=store) == 0
+    assert json.loads(capsys.readouterr().out)["removed"] is True
+    assert main(["sources", "remove", "clarin-com"], portal_store=store) == 1
+    assert json.loads(capsys.readouterr().out)["removed"] is False
+
+
+def test_cli_sources_duplicate_domain_is_an_error(tmp_path, capsys):
+    # A duplicate domain is rejected by the store and surfaced as a non-zero exit with a
+    # JSON error, not a traceback.
+    store = PortalStore(open_db(tmp_path / "brain.db", check_same_thread=False))
+    assert main(["sources", "add", "--domain", "clarin.com"], portal_store=store) == 0
+    capsys.readouterr()
+    code = main(["sources", "add", "--domain", "https://www.clarin.com/x"], portal_store=store)
+    assert code == 1
+    assert "already exists" in json.loads(capsys.readouterr().out)["error"]
+
+
+def test_cli_sources_enable_happy_path(tmp_path, capsys):
+    # `sources enable` flips a disabled source back on and prints the updated record.
+    store = PortalStore(open_db(tmp_path / "brain.db", check_same_thread=False))
+    assert main(
+        ["sources", "add", "--domain", "clarin.com", "--disabled"], portal_store=store
+    ) == 0
+    assert json.loads(capsys.readouterr().out)["enabled"] is False
+
+    assert main(["sources", "enable", "clarin-com"], portal_store=store) == 0
+    assert json.loads(capsys.readouterr().out)["enabled"] is True
+
+
+def test_cli_sources_verbs_on_unknown_id_exit_1_with_a_json_error(tmp_path, capsys):
+    # update / enable / disable on an id that does not exist are surfaced as a JSON error
+    # and a non-zero exit, never a traceback. The store has no such id.
+    store = PortalStore(open_db(tmp_path / "brain.db", check_same_thread=False))
+    for argv in (
+        ["sources", "update", "ghost", "--description", "x"],
+        ["sources", "enable", "ghost"],
+        ["sources", "disable", "ghost"],
+    ):
+        assert main(argv, portal_store=store) == 1
+        assert "ghost" in json.loads(capsys.readouterr().out)["error"]
+
+
+def test_cli_sources_unknown_subverb_exits_1_with_usage(tmp_path, capsys):
+    # An unknown `sources` sub-verb prints a JSON error (not a usage crash) and exits 1.
+    store = PortalStore(open_db(tmp_path / "brain.db", check_same_thread=False))
+    assert main(["sources", "teleport"], portal_store=store) == 1
+    assert "teleport" in json.loads(capsys.readouterr().out)["error"]
 
 
 def test_cli_rejects_an_unknown_mode(fake, tmp_path):
