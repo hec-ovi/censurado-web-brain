@@ -22,6 +22,14 @@ from testkit.assertions import length_cap_keys_in
 from testkit.fake_server import FakeState, create_fake_app
 
 
+@pytest.fixture(autouse=True)
+def _no_inference_cooldown(monkeypatch):
+    """Default the per-answer inference cooldown OFF for the whole suite so tests that
+    drive ``chat()`` against the fake never sleep on real time. The cooldown-specific
+    tests re-set ``NEWSROOM_INFERENCE_COOLDOWN`` explicitly to assert the pacing."""
+    monkeypatch.setenv("NEWSROOM_INFERENCE_COOLDOWN", "0")
+
+
 def _serve(app) -> tuple[uvicorn.Server, threading.Thread, int]:
     """Run a FastAPI app on an OS-assigned port in a daemon thread; return the
     server, its thread, and the bound port (read back, so no bind race)."""

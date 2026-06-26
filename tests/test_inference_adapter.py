@@ -131,6 +131,9 @@ def test_no_auth_header_when_no_api_key(fake):
 
 
 class _Resp:
+    status_code = 200
+    headers: dict = {}
+
     def raise_for_status(self):
         return None
 
@@ -169,21 +172,58 @@ def test_persistent_connection_failure_raises(monkeypatch):
     monkeypatch.setattr(adapter.httpx, "post", _post)
     with pytest.raises(httpx.ConnectError):
         chat(ChatRequest(messages=_msgs()), cfg=_static_cfg())
-    assert calls["n"] == 2
+    # A persistently-dead backend exhausts every attempt before giving up.
+    assert calls["n"] == adapter._MAX_ATTEMPTS
 
 
-def test_timeouts_are_never_retried(monkeypatch):
+def test_timeouts_are_retried(monkeypatch):
+    # "It did not answer" (a timeout) is the case the user wants re-sent: a timeout is
+    # transient (overloaded cloud backend), so it is retried up to the attempt cap.
     monkeypatch.setattr(adapter.time, "sleep", lambda s: None)
     calls = {"n": 0}
 
     def _post(url, **kw):
         calls["n"] += 1
-        raise httpx.ReadTimeout("box is busy")
+        raise httpx.ReadTimeout("backend overloaded")
 
     monkeypatch.setattr(adapter.httpx, "post", _post)
     with pytest.raises(httpx.ReadTimeout):
         chat(ChatRequest(messages=_msgs()), cfg=_static_cfg())
-    assert calls["n"] == 1
+    assert calls["n"] == adapter._MAX_ATTEMPTS
+
+
+# ---------------- post-answer cooldown (pacing) ----------------
+
+
+def test_cooldown_after_each_successful_answer(monkeypatch):
+    monkeypatch.setenv("NEWSROOM_INFERENCE_COOLDOWN", "7")
+    slept: list[float] = []
+    monkeypatch.setattr(adapter.time, "sleep", lambda s: slept.append(s))
+    monkeypatch.setattr(adapter.httpx, "post", lambda url, **kw: _Resp())
+    r = chat(ChatRequest(messages=_msgs()), cfg=_static_cfg())
+    assert r.content == "ok"
+    # Exactly one post-answer cooldown, no retry backoff (the call succeeded first try).
+    assert slept == [7.0]
+
+
+def test_cooldown_zero_disables_pacing(monkeypatch):
+    monkeypatch.setenv("NEWSROOM_INFERENCE_COOLDOWN", "0")
+    slept: list[float] = []
+    monkeypatch.setattr(adapter.time, "sleep", lambda s: slept.append(s))
+    monkeypatch.setattr(adapter.httpx, "post", lambda url, **kw: _Resp())
+    chat(ChatRequest(messages=_msgs()), cfg=_static_cfg())
+    assert slept == []
+
+
+def test_cooldown_paces_pydantic_seams_via_retry_transient(monkeypatch):
+    # finalize/artdirect run their pydantic-ai call through retry_transient; a success
+    # must be paced exactly like a chat() answer.
+    monkeypatch.setenv("NEWSROOM_INFERENCE_COOLDOWN", "3")
+    slept: list[float] = []
+    monkeypatch.setattr(adapter.time, "sleep", lambda s: slept.append(s))
+    out = adapter.retry_transient(lambda: "done")
+    assert out == "done"
+    assert slept == [3.0]
 
 
 # ---------------- role / provider resolution ----------------
