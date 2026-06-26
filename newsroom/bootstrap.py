@@ -21,14 +21,24 @@ from sqlite3 import Connection
 from newsroom.config import Settings
 from newsroom.db import open_db
 from newsroom.editorial.seeds import seed_all
+from newsroom.mirror import (
+    ReconcileResult,
+    WebAuthor,
+    fetch_web_authors,
+    reconcile_personas,
+)
 from newsroom.personas import PersonaStore
 from newsroom.runner import RunReport, build_run_deps, execute_run, start_run
 
-__all__ = ["bootstrap", "Runner"]
+__all__ = ["bootstrap", "Runner", "AuthorFetcher"]
 
 # A runner takes the shared connection and seeded persona store and runs one batch,
 # returning a machine-readable summary. Injectable so the seed path tests on its own.
 Runner = Callable[..., dict]
+
+# A fetcher returns the platform's live author list. Injectable so the reconcile is
+# tested with a fake registry instead of a real GET against the platform.
+AuthorFetcher = Callable[[], list[WebAuthor]]
 
 
 def _run_summary(report: RunReport) -> dict:
@@ -56,6 +66,33 @@ def _default_runner(
     return _run_summary(report)
 
 
+def _default_author_fetcher(settings: Settings) -> AuthorFetcher:
+    """The production fetch: GET the platform author registry with the operator key.
+    Yields [] when no operator token is configured, so the reconcile no-ops and a box
+    without platform credentials still bootstraps on its local personas."""
+
+    def fetch() -> list[WebAuthor]:
+        if not settings.operator_token:
+            return []
+        return fetch_web_authors(settings.publish_base_url, settings.operator_token)
+
+    return fetch
+
+
+def _reconcile_from_web(
+    settings: Settings, conn: Connection, fetch_authors: AuthorFetcher | None
+) -> ReconcileResult:
+    """Mirror the platform author registry into the local personas, BEST-EFFORT: if the
+    platform is unreachable (the fetch raises) the reconcile is a skipped no-op and the
+    boot proceeds on the local personas. Web being down must never empty the newsroom."""
+    fetch = fetch_authors or _default_author_fetcher(settings)
+    try:
+        authors = fetch()
+    except Exception:
+        return ReconcileResult(skipped=True)
+    return reconcile_personas(PersonaStore(conn), authors)
+
+
 def bootstrap(
     settings: Settings,
     *,
@@ -63,17 +100,26 @@ def bootstrap(
     mode: str = "managed",
     n: int | None = None,
     runner: Runner | None = None,
+    fetch_authors: AuthorFetcher | None = None,
     **seed_overrides,
 ) -> dict:
-    """Seed the newsroom idempotently, then optionally run one batch. Returns a summary
-    with the per-category seed result and (when run) the run summary.
+    """Seed the newsroom idempotently, mirror the platform authors, then optionally run
+    one batch. Returns a summary with the per-category seed result, the reconcile result,
+    and (when run) the run summary.
 
-    ``runner`` defaults to the production run; a test injects a double to assert the
-    run is invoked AFTER seeding without driving the full pipeline. ``seed_overrides``
-    are forwarded to ``seed_all`` (location/portals/personas/style) for tests."""
+    The reconcile runs AFTER the seed and BEFORE the run, so the run sees the mirrored
+    active set (a soft-deactivated author is never assigned). ``runner`` and
+    ``fetch_authors`` default to production; tests inject doubles to assert the wiring
+    without the inference pipeline or a real platform. ``seed_overrides`` are forwarded
+    to ``seed_all`` (location/portals/personas/style)."""
     conn = open_db(settings.persona_db_path, check_same_thread=False)
     seeded = seed_all(conn, **seed_overrides)
-    result: dict = {"seeded": seeded.as_dict(), "ran": False}
+    reconciled = _reconcile_from_web(settings, conn, fetch_authors)
+    result: dict = {
+        "seeded": seeded.as_dict(),
+        "reconciled": reconciled.as_dict(),
+        "ran": False,
+    }
     if run:
         persona_store = PersonaStore(conn)
         result["run"] = (runner or _default_runner)(

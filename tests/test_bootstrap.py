@@ -10,11 +10,14 @@ from __future__ import annotations
 
 import json
 
+import httpx
+
 from newsroom.bootstrap import bootstrap
 from newsroom.config import Settings
 from newsroom.cli import main
 from newsroom.db import open_db
 from newsroom.editorial import LocationStore, PortalStore, StyleStore
+from newsroom.mirror import WebAuthor
 from newsroom.personas import PersonaStore
 
 _DEFAULT_IDS = {"lara-arianna", "borge-luis-jorge", "glorieta-sadeta", "vector-omni"}
@@ -84,6 +87,59 @@ def test_bootstrap_forwards_seed_overrides(tmp_path):
     # Location and style are still seeded by the same call.
     assert result["seeded"]["location_created"] is True
     assert result["seeded"]["style_created"] is True
+
+
+# ----- the platform author mirror runs as part of bootstrap -----
+
+
+def test_bootstrap_reconciles_personas_from_web(tmp_path):
+    # Seed creates the four defaults; the platform registry then refreshes one public
+    # bio, omits one handle (soft-deactivate), and adds a web-only author (inactive
+    # shell). The reconcile runs AFTER the seed and is reflected on disk.
+    def fetch():
+        return [
+            WebAuthor("lara-arianna", "Lara Arianna", "Bio nueva de la plataforma", "lara.png"),
+            WebAuthor("borge-luis-jorge", "Borge Luis Jorge", "", ""),
+            WebAuthor("glorieta-sadeta", "Glorieta Sadeta", "", ""),
+            # vector-omni intentionally absent -> deactivated
+            WebAuthor("nuevo-web", "Nuevo Web", "creado en la web", ""),
+        ]
+
+    result = bootstrap(_settings(tmp_path), run=False, fetch_authors=fetch)
+
+    rec = result["reconciled"]
+    assert rec["skipped"] is False
+    assert "lara-arianna" in rec["refreshed"]
+    assert rec["created"] == ["nuevo-web"]
+    assert rec["deactivated"] == ["vector-omni"]
+
+    store = PersonaStore(open_db(tmp_path / "brain.db", check_same_thread=False))
+    # Public field refreshed, private prompt preserved.
+    lara = store.get("lara-arianna")
+    assert lara.about == "Bio nueva de la plataforma"
+    assert lara.who_i_am.startswith("Sos Lara Arianna")
+    # Dropped from the platform -> inactive, prompt kept (not deleted).
+    vector = store.get("vector-omni")
+    assert vector.active is False and vector.who_i_am != ""
+    # The web-only author is an inactive shell with no prompt.
+    shell = store.get("nuevo-web")
+    assert shell.active is False and shell.who_i_am == ""
+    # The run path sees only the active personas.
+    active_ids = {p.id for p in store.list()}
+    assert {"lara-arianna", "borge-luis-jorge", "glorieta-sadeta"} <= active_ids
+    assert "vector-omni" not in active_ids and "nuevo-web" not in active_ids
+
+
+def test_bootstrap_skips_reconcile_when_the_platform_is_unreachable(tmp_path):
+    def boom():
+        raise httpx.ConnectError("platform down")
+
+    result = bootstrap(_settings(tmp_path), run=False, fetch_authors=boom)
+
+    assert result["reconciled"]["skipped"] is True
+    # The newsroom was NOT emptied: all four seeded personas remain active.
+    store = PersonaStore(open_db(tmp_path / "brain.db", check_same_thread=False))
+    assert {p.id for p in store.list()} == _DEFAULT_IDS
 
 
 # ----- the CLI subcommand dispatch -----
