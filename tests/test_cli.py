@@ -23,7 +23,7 @@ import pytest
 from newsroom.cli import main
 from newsroom.config import Settings
 from newsroom.db import open_db
-from newsroom.editorial import PortalStore
+from newsroom.editorial import Portal, PortalStore
 from newsroom.personas import Persona, PersonaStore
 from newsroom.research.ledger import Ledger
 from newsroom.runner import build_run_deps
@@ -450,6 +450,109 @@ def test_cli_authors_unknown_subverb_exits_1_with_usage(tmp_path, capsys):
     # An unknown `authors` sub-verb prints a JSON error (not a usage crash) and exits 1.
     store = PersonaStore(open_db(tmp_path / "brain.db", check_same_thread=False))
     assert main(["authors", "teleport"], persona_store=store) == 1
+    assert "teleport" in json.loads(capsys.readouterr().out)["error"]
+
+
+def _link_stores(tmp_path):
+    """A persona store and a portal store over ONE brain DB connection, pre-seeded with a
+    persona and two portals, for the `authors sources` linking tests."""
+    conn = open_db(tmp_path / "brain.db", check_same_thread=False)
+    persona_store = PersonaStore(conn)
+    portal_store = PortalStore(conn)
+    persona_store.create(
+        Persona(id="ada", display_name="Ada", beat="tech", who_i_am="I cover chips.", style="dry")
+    )
+    portal_store.create(Portal(domain="clarin.com"))
+    portal_store.create(Portal(domain="lanacion.com"))
+    return persona_store, portal_store
+
+
+def test_cli_authors_sources_get_set_add_remove(tmp_path, capsys):
+    # The `authors sources` verb group curates an author's per-author source pool from the
+    # command line, the CLI parity of the HTTP linking surface. Both stores back the calls.
+    persona_store, portal_store = _link_stores(tmp_path)
+
+    def _run(args):
+        assert main(args, persona_store=persona_store, portal_store=portal_store) == 0
+        return json.loads(capsys.readouterr().out)
+
+    # get: the pool starts empty.
+    assert _run(["authors", "sources", "get", "ada"]) == {
+        "persona_id": "ada", "source_ids": [], "portals": []
+    }
+
+    # set: replaces the pool from --sources, validated, and resolves to the portals.
+    set_out = _run(["authors", "sources", "set", "ada", "--sources", "clarin-com, lanacion-com"])
+    assert set_out["source_ids"] == ["clarin-com", "lanacion-com"]
+    assert [p["id"] for p in set_out["portals"]] == ["clarin-com", "lanacion-com"]
+
+    # get reflects the set, and the persona's own `sources` field carries the same ids.
+    assert _run(["authors", "sources", "get", "ada"])["source_ids"] == ["clarin-com", "lanacion-com"]
+    assert persona_store.get("ada").sources == ["clarin-com", "lanacion-com"]
+
+    # remove unlinks one; add links it back (idempotent, appended after the survivor).
+    assert _run(["authors", "sources", "remove", "ada", "clarin-com"])["source_ids"] == ["lanacion-com"]
+    assert _run(["authors", "sources", "add", "ada", "clarin-com"])["source_ids"] == [
+        "lanacion-com", "clarin-com"
+    ]
+
+
+def test_cli_authors_sources_set_unknown_id_is_an_error_and_writes_nothing(tmp_path, capsys):
+    # `set` with an id not in the portal registry is a non-zero exit with a JSON error that
+    # names the id, and it must not partially write the pool.
+    persona_store, portal_store = _link_stores(tmp_path)
+    code = main(
+        ["authors", "sources", "set", "ada", "--sources", "clarin-com,ghost-com"],
+        persona_store=persona_store, portal_store=portal_store,
+    )
+    assert code == 1
+    assert "ghost-com" in json.loads(capsys.readouterr().out)["error"]
+    assert persona_store.get("ada").sources == []  # nothing written
+
+
+def test_cli_authors_sources_add_unknown_portal_is_an_error(tmp_path, capsys):
+    # `add` of a portal id that does not exist is rejected (non-zero exit, JSON error).
+    persona_store, portal_store = _link_stores(tmp_path)
+    code = main(
+        ["authors", "sources", "add", "ada", "ghost-com"],
+        persona_store=persona_store, portal_store=portal_store,
+    )
+    assert code == 1
+    assert "ghost-com" in json.loads(capsys.readouterr().out)["error"]
+
+
+def test_cli_authors_sources_remove_is_idempotent(tmp_path, capsys):
+    # Unlinking an absent source is a success (exit 0), not an error.
+    persona_store, portal_store = _link_stores(tmp_path)
+    code = main(
+        ["authors", "sources", "remove", "ada", "clarin-com"],
+        persona_store=persona_store, portal_store=portal_store,
+    )
+    assert code == 0
+    assert json.loads(capsys.readouterr().out)["source_ids"] == []
+
+
+def test_cli_authors_sources_on_unknown_author_is_an_error(tmp_path, capsys):
+    # Every `authors sources` verb errors (exit 1) on an unknown persona id.
+    persona_store, portal_store = _link_stores(tmp_path)
+    for argv in (
+        ["authors", "sources", "get", "ghost"],
+        ["authors", "sources", "set", "ghost", "--sources", "clarin-com"],
+        ["authors", "sources", "add", "ghost", "clarin-com"],
+        ["authors", "sources", "remove", "ghost", "clarin-com"],
+    ):
+        assert main(argv, persona_store=persona_store, portal_store=portal_store) == 1
+        assert "ghost" in json.loads(capsys.readouterr().out)["error"]
+
+
+def test_cli_authors_sources_unknown_subverb_exits_1(tmp_path, capsys):
+    # An unknown `authors sources` sub-verb prints a JSON error and exits 1.
+    persona_store, portal_store = _link_stores(tmp_path)
+    code = main(
+        ["authors", "sources", "teleport"],
+        persona_store=persona_store, portal_store=portal_store,
+    )
+    assert code == 1
     assert "teleport" in json.loads(capsys.readouterr().out)["error"]
 
 

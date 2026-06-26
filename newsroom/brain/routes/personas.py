@@ -35,6 +35,9 @@ from fastapi import APIRouter, Request, Response
 from pydantic import BaseModel
 
 from newsroom.brain.problems import _problem
+from newsroom.brain.routes.portals import PortalOut
+from newsroom.brain.routes.portals import _out as _portal_out
+from newsroom.editorial import PortalStore
 from newsroom.personas import Persona
 
 __all__ = ["router"]
@@ -177,3 +180,139 @@ async def delete_persona(persona_id: str, request: Request):
     if not removed:
         return _problem(404, "not_found", detail=f"no persona {persona_id!r}")
     return Response(status_code=204)
+
+
+# --------------------------------------------------------------------------- #
+# Source <-> author linking (infra chunk 3)
+#
+# A persona's ``sources`` field is the per-author research pool: a list of portal
+# ids the persona sweeps (it falls back to the global registry when empty). C2's
+# ``PATCH /personas/{id}`` can already overwrite that list BLIND -- it never checks
+# the ids point at real sources. These routes are the VALIDATED linking surface: a
+# persona can only be linked to a portal that exists in the ``PortalStore``, so the
+# editorial "which sources does this author read" checkbox can never persist a
+# dangling id. The link set IS the persona's ``sources`` list (no join table); these
+# handlers read/validate against the portal store and write it back via the persona
+# store's ``update``, exactly the field C2 patches.
+# --------------------------------------------------------------------------- #
+
+
+class SourceLinksIn(BaseModel):
+    """The PUT /personas/{id}/sources body: the FULL set of portal ids the persona
+    should be linked to (a replace, not a merge). An empty list clears the pool. Each
+    id is validated against the ``PortalStore`` before the write; an unknown id is
+    rejected (422) rather than silently stored, so the set can never carry a dangling
+    link."""
+
+    source_ids: list[str] = []
+
+
+class PersonaSourcesOut(BaseModel):
+    """The persona's source pool. ``source_ids`` is the persona's ``sources`` field
+    verbatim (the stored link set, in order); ``portals`` is each of those ids resolved
+    to its live ``PortalOut``. An id that no longer resolves (its portal was deleted, or
+    a blind C2 patch wrote a stray id) still appears in ``source_ids`` but NOT in
+    ``portals`` -- so a stale link is visible to the operator rather than silently
+    dropped, and can be cleaned up by unlinking it."""
+
+    persona_id: str
+    source_ids: list[str]
+    portals: list[PortalOut]
+
+
+def _dedup(ids: list[str]) -> list[str]:
+    """The id list with duplicates removed, first-seen order preserved, so the stored
+    link set is clean (a portal is linked once) without reordering the operator's set."""
+    seen: set[str] = set()
+    out: list[str] = []
+    for pid in ids:
+        if pid not in seen:
+            seen.add(pid)
+            out.append(pid)
+    return out
+
+
+def _sources_out(persona: Persona, portal_store: PortalStore) -> PersonaSourcesOut:
+    """Build the source-pool view for ``persona``: its raw ``sources`` ids plus those
+    resolved to live ``PortalOut`` rows. Skips an id whose portal is gone (it stays in
+    ``source_ids``), so the view never invents a row for a stale link. The caller holds
+    the connection lock (the portal lookups share the one connection)."""
+    portals: list[PortalOut] = []
+    for pid in persona.sources:
+        portal = portal_store.get(pid)
+        if portal is not None:
+            portals.append(_portal_out(portal))
+    return PersonaSourcesOut(
+        persona_id=persona.id, source_ids=list(persona.sources), portals=portals
+    )
+
+
+@router.get("/personas/{persona_id}/sources", status_code=200, response_model=PersonaSourcesOut)
+async def get_persona_sources(persona_id: str, request: Request):
+    """The persona's current source pool: its linked portal ids plus those resolved to
+    the live portal rows. 404 if the persona is missing."""
+    state = request.app.state
+    with state.lock:
+        persona = state.store.get(persona_id)
+        if persona is None:
+            return _problem(404, "not_found", detail=f"no persona {persona_id!r}")
+        return _sources_out(persona, state.portal_store)
+
+
+@router.put("/personas/{persona_id}/sources", status_code=200, response_model=PersonaSourcesOut)
+async def set_persona_sources(persona_id: str, body: SourceLinksIn, request: Request):
+    """SET the full link set from a list of portal ids (replace, not merge). 404 if the
+    persona is missing; 422 ``unknown_source`` (naming the offending ids) if ANY id does
+    not exist in the portal registry -- validated BEFORE the write, so a bad id never
+    lands. Duplicates collapse; an empty list clears the pool. Returns the resolved pool."""
+    state = request.app.state
+    ids = _dedup(body.source_ids)
+    with state.lock:
+        persona = state.store.get(persona_id)
+        if persona is None:
+            return _problem(404, "not_found", detail=f"no persona {persona_id!r}")
+        unknown = [pid for pid in ids if state.portal_store.get(pid) is None]
+        if unknown:
+            return _problem(422, "unknown_source", detail=f"unknown source id(s): {unknown}")
+        stored = state.store.update(persona_id, sources=ids)
+        return _sources_out(stored, state.portal_store)
+
+
+@router.post(
+    "/personas/{persona_id}/sources/{portal_id}", status_code=200, response_model=PersonaSourcesOut
+)
+async def link_persona_source(persona_id: str, portal_id: str, request: Request):
+    """Link ONE portal to the persona (idempotent add). 404 if the persona OR the portal
+    is missing. Re-linking an already-linked source is a success that leaves the pool (and
+    ``updated_at``) untouched. Returns the resolved pool."""
+    state = request.app.state
+    with state.lock:
+        persona = state.store.get(persona_id)
+        if persona is None:
+            return _problem(404, "not_found", detail=f"no persona {persona_id!r}")
+        if state.portal_store.get(portal_id) is None:
+            return _problem(404, "not_found", detail=f"no portal {portal_id!r}")
+        if portal_id in persona.sources:  # already linked: idempotent, no write
+            return _sources_out(persona, state.portal_store)
+        stored = state.store.update(persona_id, sources=[*persona.sources, portal_id])
+        return _sources_out(stored, state.portal_store)
+
+
+@router.delete(
+    "/personas/{persona_id}/sources/{portal_id}", status_code=200, response_model=PersonaSourcesOut
+)
+async def unlink_persona_source(persona_id: str, portal_id: str, request: Request):
+    """Unlink ONE portal from the persona (idempotent remove). 404 only if the PERSONA is
+    missing -- a missing portal is NOT a 404 here, so an operator can clean a stale link
+    whose portal was already deleted. Unlinking an absent source is a success that leaves
+    the pool (and ``updated_at``) untouched. Returns the resolved pool."""
+    state = request.app.state
+    with state.lock:
+        persona = state.store.get(persona_id)
+        if persona is None:
+            return _problem(404, "not_found", detail=f"no persona {persona_id!r}")
+        if portal_id not in persona.sources:  # not linked: idempotent, no write
+            return _sources_out(persona, state.portal_store)
+        remaining = [pid for pid in persona.sources if pid != portal_id]
+        stored = state.store.update(persona_id, sources=remaining)
+        return _sources_out(stored, state.portal_store)

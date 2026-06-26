@@ -406,22 +406,131 @@ def _open_persona_store() -> PersonaStore:
     return PersonaStore(conn)
 
 
-def _authors_main(argv: list[str], *, store: PersonaStore | None = None) -> int:
-    """``censurado-brain authors list|get|add|update|remove``: curate the author (persona)
-    registry from the command line WITHOUT a synthesis job, mirroring the HTTP management
-    API. Operates on a local ``PersonaStore`` over the brain DB. Prints a JSON result via
-    ``_emit`` and returns 0 on success, 1 on a store rejection (duplicate id, invalid
-    beat, unknown id, an in-use delete) or a missing/unknown sub-verb. ``store`` is
-    injectable for tests."""
+def _persona_sources_payload(persona: Persona, portal_store: PortalStore) -> dict:
+    """The author's source pool as a JSON-able dict, mirroring the HTTP
+    ``PersonaSourcesOut``: the raw linked ids plus those resolved to the live portal
+    rows (a stale id whose portal is gone stays in ``source_ids`` but not ``portals``)."""
+    portals = [
+        asdict(portal)
+        for portal in (portal_store.get(pid) for pid in persona.sources)
+        if portal is not None
+    ]
+    return {
+        "persona_id": persona.id,
+        "source_ids": list(persona.sources),
+        "portals": portals,
+    }
+
+
+def _authors_sources_main(
+    argv: list[str], *, persona_store: PersonaStore, portal_store: PortalStore | None
+) -> int:
+    """``censurado-brain authors sources get|set|add|remove <persona_id> ...``: curate an
+    author's per-author source pool (the link set), the CLI parity of the HTTP linking
+    surface. ``set`` REPLACES the pool from ``--sources`` (validating each id against the
+    portal registry; an unknown id -> error, no write); ``add``/``remove`` link/unlink one
+    (idempotent), with ``add`` rejecting an unknown portal. Prints the resolved pool via
+    ``_emit`` and returns 0 on success, 1 on a missing author/portal or unknown sub-verb."""
     if not argv:
-        _emit({"error": "usage: authors list|get|add|update|remove"})
+        _emit({"error": "usage: authors sources get|set|add|remove"})
         return _EXIT["failed"]
     verb, rest = argv[0], argv[1:]
-    if verb not in ("list", "get", "add", "update", "remove"):
+    if verb not in ("get", "set", "add", "remove"):
+        _emit({"error": f"unknown authors sources verb {verb!r}"})
+        return _EXIT["failed"]
+
+    portal_store = portal_store or _open_portal_store()
+
+    if verb == "get":
+        parser = argparse.ArgumentParser(prog="censurado-brain authors sources get")
+        parser.add_argument("persona_id", help="the persona id (e.g. ada-lovelace)")
+        args = parser.parse_args(rest)
+        persona = persona_store.get(args.persona_id)
+        if persona is None:
+            _emit({"error": f"unknown author {args.persona_id!r}"})
+            return _EXIT["failed"]
+        _emit(_persona_sources_payload(persona, portal_store))
+        return 0
+
+    if verb == "set":
+        parser = argparse.ArgumentParser(prog="censurado-brain authors sources set")
+        parser.add_argument("persona_id", help="the persona id (e.g. ada-lovelace)")
+        parser.add_argument(
+            "--sources", default="", help="comma-separated portal ids; REPLACES the link set"
+        )
+        args = parser.parse_args(rest)
+        persona = persona_store.get(args.persona_id)
+        if persona is None:
+            _emit({"error": f"unknown author {args.persona_id!r}"})
+            return _EXIT["failed"]
+        ids: list[str] = []
+        seen: set[str] = set()
+        for pid in _split_csv(args.sources):
+            if pid not in seen:
+                seen.add(pid)
+                ids.append(pid)
+        unknown = [pid for pid in ids if portal_store.get(pid) is None]
+        if unknown:
+            _emit({"error": f"unknown source id(s): {unknown}"})
+            return _EXIT["failed"]
+        stored = persona_store.update(args.persona_id, sources=ids)
+        _emit(_persona_sources_payload(stored, portal_store))
+        return 0
+
+    # verb in ("add", "remove"): link/unlink one portal id.
+    parser = argparse.ArgumentParser(prog=f"censurado-brain authors sources {verb}")
+    parser.add_argument("persona_id", help="the persona id (e.g. ada-lovelace)")
+    parser.add_argument("portal_id", help="the source id (e.g. clarin-com)")
+    args = parser.parse_args(rest)
+    persona = persona_store.get(args.persona_id)
+    if persona is None:
+        _emit({"error": f"unknown author {args.persona_id!r}"})
+        return _EXIT["failed"]
+
+    if verb == "add":
+        if portal_store.get(args.portal_id) is None:
+            _emit({"error": f"unknown source {args.portal_id!r}"})
+            return _EXIT["failed"]
+        if args.portal_id not in persona.sources:  # idempotent add
+            persona = persona_store.update(
+                args.persona_id, sources=[*persona.sources, args.portal_id]
+            )
+        _emit(_persona_sources_payload(persona, portal_store))
+        return 0
+
+    # verb == "remove": idempotent unlink (a missing portal is not an error here).
+    if args.portal_id in persona.sources:
+        remaining = [pid for pid in persona.sources if pid != args.portal_id]
+        persona = persona_store.update(args.persona_id, sources=remaining)
+    _emit(_persona_sources_payload(persona, portal_store))
+    return 0
+
+
+def _authors_main(
+    argv: list[str],
+    *,
+    store: PersonaStore | None = None,
+    portal_store: PortalStore | None = None,
+) -> int:
+    """``censurado-brain authors list|get|add|update|remove|sources``: curate the author
+    (persona) registry from the command line WITHOUT a synthesis job, mirroring the HTTP
+    management API. Operates on a local ``PersonaStore`` over the brain DB. Prints a JSON
+    result via ``_emit`` and returns 0 on success, 1 on a store rejection (duplicate id,
+    invalid beat, unknown id, an in-use delete) or a missing/unknown sub-verb. The
+    ``sources`` sub-verb curates an author's source links and also needs the
+    ``PortalStore`` to validate ids. Both stores are injectable for tests."""
+    if not argv:
+        _emit({"error": "usage: authors list|get|add|update|remove|sources"})
+        return _EXIT["failed"]
+    verb, rest = argv[0], argv[1:]
+    if verb not in ("list", "get", "add", "update", "remove", "sources"):
         _emit({"error": f"unknown authors verb {verb!r}"})
         return _EXIT["failed"]
 
     store = store or _open_persona_store()
+
+    if verb == "sources":
+        return _authors_sources_main(rest, persona_store=store, portal_store=portal_store)
 
     if verb == "list":
         parser = argparse.ArgumentParser(prog="censurado-brain authors list")
@@ -572,8 +681,9 @@ def main(
         return _sources_main(argv[1:], store=portal_store)
     if argv and argv[0] == "authors":
         # Curate the author (persona) registry without a synthesis job, mirroring the
-        # HTTP management API. A subcommand so the bare --mode run path is unchanged.
-        return _authors_main(argv[1:], store=persona_store)
+        # HTTP management API. A subcommand so the bare --mode run path is unchanged. The
+        # portal store rides along so `authors sources` can validate source ids.
+        return _authors_main(argv[1:], store=persona_store, portal_store=portal_store)
     args = _parser().parse_args(argv)
     settings = load_settings()
     deps = (build_deps or build_deps_from_env)(settings)
