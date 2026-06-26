@@ -45,7 +45,7 @@ def _big_budget() -> ArticleBudget:
     return ArticleBudget(token_budget=10_000_000, wall_clock_s=1e9, clock=lambda: 0.0)
 
 
-def _make_ledger(_assignment, _spec, _budget) -> Ledger:
+def _make_ledger(_assignment, _spec, _persona, _budget) -> Ledger:
     led = Ledger(clock=lambda: datetime(2026, 6, 23, tzinfo=timezone.utc))
     led.add(claim="grounding", url="https://src.test/a", snippet="a source")
     return led
@@ -169,10 +169,10 @@ def test_outcomes_are_in_manifest_order_not_completion_order(fake):
     # assignment (ada) sleeps at its first pipeline step, so the second (bea)
     # finishes first. The result must still come back in manifest order, which only
     # holds if collection is keyed by submission index, not by who finished first.
-    def staggered(assignment, spec, budget):
+    def staggered(assignment, spec, persona, budget):
         if assignment.persona_id == "ada":
             time.sleep(0.2)
-        return _make_ledger(assignment, spec, budget)
+        return _make_ledger(assignment, spec, persona, budget)
 
     result = env.dispatch(manifest, concurrency=2, lock=threading.Lock(), make_ledger=staggered)
 
@@ -277,9 +277,9 @@ def test_research_spend_charges_the_same_per_article_budget(fake):
     env = _Env(fake, [ada])
     manifest = Manifest(assignments=[AssignmentSpec(persona_id="ada", section="tech", angle="a story")])
 
-    def greedy_research(_assignment, _spec, budget):
+    def greedy_research(_assignment, _spec, _persona, budget):
         budget.debit_tokens(10_000_000)  # research alone spends the whole article budget
-        return _make_ledger(_assignment, _spec, budget)
+        return _make_ledger(_assignment, _spec, _persona, budget)
 
     result = env.dispatch(manifest, make_ledger=greedy_research)
 

@@ -40,8 +40,10 @@ __all__ = ["DispatchResult", "dispatch_run"]
 # Builds the grounding ledger for one assignment. In production this runs the
 # research loop (Step 4) for the assignment's angle, DEBITING the per-article budget
 # it is handed (so research charges the same shared ceiling as the pipeline, A.8);
-# tests inject a ready ledger and ignore the budget.
-LedgerBuilder = Callable[[Assignment, AssignmentSpec, ArticleBudget], Ledger]
+# the ``Persona`` is passed so research can scope to the author's own source pool
+# (its portals), per the per-author-sources design. Tests inject a ready ledger and
+# ignore both the persona and the budget.
+LedgerBuilder = Callable[[Assignment, AssignmentSpec, Persona, ArticleBudget], Ledger]
 
 
 @dataclass
@@ -99,7 +101,7 @@ def dispatch_run(
             # (research + outline + sweeps + enrich + fact-check + finalize) charges one
             # ceiling, and the wall-clock starts before research (A.8/B.2).
             budget = budget_factory()
-            ledger = make_ledger(row, manifest.assignments[idx], budget)
+            ledger = make_ledger(row, manifest.assignments[idx], persona, budget)
             return run_article_pipeline(
                 assignment=row,
                 persona=persona,

@@ -10,6 +10,8 @@ backend, that ``max_results`` trims, and that an error Envelope degrades to [].
 
 from __future__ import annotations
 
+from types import SimpleNamespace
+
 # websearch-skill is a hard dependency (pyproject [project.dependencies]); a plain
 # import means a missing/broken install fails loudly here rather than skipping.
 from websearch.layer3_agentio import build_agent_io
@@ -78,3 +80,49 @@ def test_error_envelope_degrades_to_empty_with_a_warning():
     results = tool.search("anything")
     assert results == []
     assert tool.warnings and "anything" in tool.warnings[0]
+
+
+# ----- scoping: source domains + place reach the search request -----
+
+
+class _RecordingAgent:
+    """An AgentIO double that records each AgentSearchRequest and returns an empty,
+    OK envelope, so a scoping call can be inspected without a network round-trip."""
+
+    def __init__(self):
+        self.requests = []
+
+    def web_search(self, req):
+        self.requests.append(req)
+        return SimpleNamespace(ok=True, data={"results": []}, error=None)
+
+
+def test_single_site_uses_the_structured_site_field():
+    agent = _RecordingAgent()
+    ResearchTool(agent=agent).search("milei ajuste", sites=["clarin.com"])
+    req = agent.requests[-1]
+    assert req.site == "clarin.com"
+    assert req.query == "milei ajuste"  # not OR-folded for a single source
+
+
+def test_multiple_sites_fold_into_an_or_group_on_the_query():
+    agent = _RecordingAgent()
+    ResearchTool(agent=agent).search("milei ajuste", sites=["clarin.com", "lanacion.com.ar"])
+    req = agent.requests[-1]
+    assert req.site is None
+    assert "(site:clarin.com OR site:lanacion.com.ar)" in req.query
+
+
+def test_country_and_language_reach_the_request():
+    agent = _RecordingAgent()
+    ResearchTool(agent=agent).search("q", country="AR", language="es")
+    req = agent.requests[-1]
+    assert req.country == "AR" and req.language == "es"
+
+
+def test_unscoped_search_carries_no_scoping():
+    agent = _RecordingAgent()
+    ResearchTool(agent=agent).search("q")
+    req = agent.requests[-1]
+    assert req.site is None and req.country is None and req.language is None
+    assert req.query == "q"

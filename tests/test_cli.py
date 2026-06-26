@@ -42,7 +42,7 @@ def _settings(fake, tmp_path, **over) -> Settings:
     return Settings(**base)
 
 
-def _ready_ledger(_assignment, _spec, _budget) -> Ledger:
+def _ready_ledger(_assignment, _spec, _persona, _budget) -> Ledger:
     """A make_ledger double: a non-empty grounded ledger so the rules evaluator can
     PASS, without running the research loop or touching the network."""
     led = Ledger(clock=lambda: datetime(2026, 6, 23, tzinfo=timezone.utc))

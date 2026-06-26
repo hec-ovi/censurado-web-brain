@@ -51,15 +51,45 @@ class ResearchTool:
             self._agent = build_agent_io()
         return self._agent
 
-    def search(self, query: str) -> list[SearchResult]:
-        """Run one time-filtered search. Returns mapped hits, or [] on an error
-        Envelope (the reason is appended to ``warnings``)."""
+    def search(
+        self,
+        query: str,
+        *,
+        sites: list[str] | None = None,
+        country: str | None = None,
+        language: str | None = None,
+    ) -> list[SearchResult]:
+        """Run one time-filtered search, optionally SCOPED to a set of source
+        domains and a place. ``sites`` confines results to those domains; ``country``
+        and ``language`` scope the place. All are optional, so the unscoped call is
+        byte-for-byte the previous behavior. Returns mapped hits, or [] on an error
+        Envelope (the reason is appended to ``warnings``).
+
+        The backend's ``site`` field takes a SINGLE host, so one domain uses it
+        directly (the engine adds a ``site:`` operator) while several are folded into
+        a ``(site:a OR site:b)`` group on the query, the portable way to confine a
+        search to multiple sources in one call (one call keeps the research loop's
+        per-step budget bound intact, vs one search per domain)."""
         from websearch.layer3_agentio import AgentSearchRequest
+
+        domains = [d for d in (sites or []) if d and d.strip()]
+        scoped_query = query
+        site: str | None = None
+        if len(domains) == 1:
+            site = domains[0]
+        elif len(domains) > 1:
+            group = " OR ".join(f"site:{d}" for d in domains)
+            scoped_query = f"{query} ({group})"
 
         agent = self._ensure_agent()
         env = agent.web_search(
             AgentSearchRequest(
-                query=query, max_results=self._max_results, freshness=self._freshness
+                query=scoped_query,
+                max_results=self._max_results,
+                freshness=self._freshness,
+                site=site,
+                country=country or None,
+                language=language or None,
             )
         )
         if not env.ok:

@@ -23,9 +23,11 @@ from __future__ import annotations
 
 import os
 import threading
+from contextlib import nullcontext
 
 from newsroom.config import Settings
-from newsroom.editorial import StyleStore
+from newsroom.editorial import LocationStore, PortalStore, StyleStore
+from newsroom.editorial.portals import normalize_domain
 from newsroom.imagery.comfy_client import ComfyClient
 from newsroom.imagery.illustrator import Illustrator
 from newsroom.inference.provider import DEFAULT_MODEL, DIALECTS, ProviderConfig, resolve
@@ -94,34 +96,90 @@ def roles_for_settings(settings: Settings) -> ResolvedRoles:
     )
 
 
-def _candidate_search(tool: ResearchTool) -> NewsSearch:
+def _author_domains(persona) -> list[str]:
+    """The bare domains a persona researches: its own ``sources`` normalized (a URL or
+    host reduced to ``clarin.com``), de-duplicated, order preserved. Empty when the
+    persona has no own pool, so the caller falls back to the enabled portals."""
+    out: list[str] = []
+    for raw in getattr(persona, "sources", None) or []:
+        domain = normalize_domain(str(raw))
+        if domain and domain not in out:
+            out.append(domain)
+    return out
+
+
+def _candidate_search(
+    tool: ResearchTool,
+    location_store: LocationStore | None = None,
+    lock: threading.Lock | None = None,
+) -> NewsSearch:
     """The manager's news search: a web search mapped to candidate stories. A hit's
     title becomes the candidate headline (or its snippet when the engine gave none);
-    the manager reasons over these and writes its own assignment headlines."""
+    the manager reasons over these and writes its own assignment headlines.
+
+    Discovery is PLACE-scoped: the operator-editable location supplies the search
+    country (its region / Google-News ``gl``) and language, read fresh per call under
+    the shared connection lock so a console edit takes effect on the next run without a
+    restart. No location store means an unscoped, open-web search (unchanged)."""
+    guard = lock if lock is not None else nullcontext()
 
     def search(query: str) -> list[Candidate]:
+        country = language = None
+        if location_store is not None:
+            with guard:
+                loc = location_store.get()
+            country, language = loc.region, loc.language
         return [
             Candidate(headline=(hit.title or hit.snippet), url=hit.url, snippet=hit.snippet)
-            for hit in tool.search(query)
+            for hit in tool.search(query, country=country, language=language)
         ]
 
     return search
 
 
-def _research_ledger(tool: ResearchTool, roles: ResolvedRoles, settings: Settings) -> LedgerBuilder:
+def _research_ledger(
+    tool: ResearchTool,
+    roles: ResolvedRoles,
+    settings: Settings,
+    *,
+    portal_store: PortalStore | None = None,
+    location_store: LocationStore | None = None,
+    lock: threading.Lock | None = None,
+) -> LedgerBuilder:
     """Build the grounding ledger for one assignment by running the bounded research
     loop (Step 4) over its story. Bounded by ``max_research_steps`` + the ledger-stall
     detector, so it always terminates; the single planning call uses the drafter's
     backend (the journalist planning their own research). Research DEBITS the article's
     shared budget (the plan call's tokens + the per-search gate), so it charges the same
-    per-article ceiling as the pipeline (architecture A.8/B.2), not a separate one."""
+    per-article ceiling as the pipeline (architecture A.8/B.2), not a separate one.
 
-    def make_ledger(assignment, spec, budget) -> Ledger:
+    The author's research is SOURCE-scoped: each persona searches its OWN source pool
+    (``persona.sources``) when it has one, else the globally enabled portals, so the
+    conspiracy persona and the tech persona never read the same web. The portal
+    allowlist and the location are operator-editable, so they are read fresh per
+    assignment under the shared connection lock (a brief read, released before the
+    search/inference runs)."""
+
+    def make_ledger(assignment, spec, persona, budget) -> Ledger:
         topic = spec.headline or spec.angle or assignment.angle
+        sites = _author_domains(persona) if persona is not None else []
+        country = language = None
+        # Fall back to the enabled portals when the author has no own pool, and read
+        # the editable portal/location config fresh, under the lock (worker thread).
+        with (lock if lock is not None else nullcontext()):
+            if not sites and portal_store is not None:
+                sites = portal_store.domains()
+            if location_store is not None:
+                loc = location_store.get()
+                country, language = loc.region, loc.language
+
+        def scoped(query: str):
+            return tool.search(query, sites=sites, country=country, language=language)
+
         ledger = Ledger()
         run_research(
             topic,
-            tool.search,
+            scoped,
             cfg=roles.drafter,
             prompts_dir=settings.prompts_dir,
             ledger=ledger,
@@ -176,13 +234,21 @@ def build_run_deps(
     lazily on first use) and the production art-director illustrator."""
     roles = roles or roles_for_settings(settings)
     tool = ResearchTool(freshness="month")
+    # The operator-editable sourcing config (portal allowlist + location), read fresh
+    # per run inside the seams so a console edit takes effect without a restart.
+    portal_store = PortalStore(conn)
+    location_store = LocationStore(conn)
     return RunDeps(
         store=RunStore(conn),
         persona_store=persona_store,
         coverage_store=CoverageStore(conn),
         roles=roles,
-        search_news=search_news or _candidate_search(tool),
-        make_ledger=make_ledger or _research_ledger(tool, roles, settings),
+        search_news=search_news or _candidate_search(tool, location_store, lock),
+        make_ledger=make_ledger
+        or _research_ledger(
+            tool, roles, settings,
+            portal_store=portal_store, location_store=location_store, lock=lock,
+        ),
         publish_base_url=str(settings.publish_base_url).rstrip("/"),
         operator_token=settings.operator_token,
         prompts_dir=settings.prompts_dir,

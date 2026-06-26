@@ -38,7 +38,7 @@ def _cfg(fake, model: str) -> ProviderConfig:
     )
 
 
-def _ready_ledger(_assignment, _spec, _budget) -> Ledger:
+def _ready_ledger(_assignment, _spec, _persona, _budget) -> Ledger:
     led = Ledger(clock=lambda: datetime(2026, 6, 23, tzinfo=timezone.utc))
     led.add(claim="grounding", url="https://src.test/a", snippet="a source")
     return led

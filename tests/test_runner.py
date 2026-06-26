@@ -67,7 +67,7 @@ def _roles(fake) -> ResolvedRoles:
     )
 
 
-def _ready_ledger(_assignment, _spec, _budget) -> Ledger:
+def _ready_ledger(_assignment, _spec, _persona, _budget) -> Ledger:
     """A make_ledger double: a non-empty grounded ledger (so the rules evaluator can
     PASS), without running the research loop or touching the network. Ignores the
     per-article budget it is handed (real research debits it; see test_dispatch)."""
