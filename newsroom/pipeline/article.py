@@ -38,6 +38,7 @@ from newsroom.inference.provider import ProviderConfig
 from newsroom.personas import Persona
 from newsroom.pipeline.budget import ArticleBudget
 from newsroom.pipeline.context import EditorialContext, ledger_text, persona_block
+from newsroom.pipeline.corroboration import corroboration_check
 from newsroom.pipeline.evaluate import Evaluation, evaluate_draft
 from newsroom.pipeline.factcheck import fact_check
 from newsroom.pipeline.finalize import finalize_article
@@ -60,7 +61,7 @@ class ArticleOutcome:
 
     assignment_id: str
     status: str  # "ready" (finalized, awaiting publish) | "dropped"
-    stop_reason: str  # pass | max_sweeps | stalled | budget_exhausted
+    stop_reason: str  # pass | max_sweeps | stalled | budget_exhausted | uncorroborated
     drafts: int
     ledger_digest: str
     article: PublishArticleInput | None = None
@@ -152,6 +153,16 @@ def run_article_pipeline(
 
     if budget.exhausted():
         return drop("budget_exhausted")
+    # Cross-source corroboration: a pure-code gate that the ledger rests on enough
+    # INDEPENDENT sources (co-owned outlets counting once) BEFORE any draft token is
+    # spent. Armed only when the house style configured it; an under-corroborated
+    # assignment is DROPPED here, exactly like budget exhaustion, so the same wasted
+    # spend the budget drop avoids is also avoided for a story the desk could never have
+    # backed. This drops before drafting, so it never touches the content hash.
+    if ed.min_independent_sources > 0:
+        corr = corroboration_check(ledger, ownership_of=ed.ownership_of, required=ed.min_independent_sources)
+        if not corr.ok:
+            return drop("uncorroborated")
     outline = _outline(angle=assignment.angle, section=assignment.section, ledger=ledger,
                        cfg=drafter_cfg, prompts_dir=prompts_dir, budget=budget)
 

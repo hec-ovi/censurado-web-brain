@@ -8,6 +8,7 @@ fact-checker all present the ledger identically.
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass, field
 
 from newsroom.personas import Persona
@@ -16,18 +17,32 @@ from newsroom.research.ledger import Ledger
 __all__ = ["ledger_text", "persona_block", "EditorialContext"]
 
 
+def _no_ownership(domain: str) -> str:
+    """The default ownership resolver: every domain is unknown (``""``), so the
+    corroboration gate falls back to per-domain sentinels. Used as the dataclass default
+    in place of a bare lambda so an ``EditorialContext`` built without a real resolver is
+    still picklable and introspectable, and behaves exactly as 'no co-ownership known'."""
+    return ""
+
+
 @dataclass
 class EditorialContext:
     """The operator-owned editorial inputs threaded into the per-article pipeline: the
     house style (rendered for the drafter and the evaluator), the banned lexicon (a
-    deterministic review gate), and a digest of recent coverage (so the writer does not
-    repeat published stories). All fields default empty, so a run with no style guide or
-    no prior coverage behaves exactly as before (the prompt tokens render to nothing)."""
+    deterministic review gate), a digest of recent coverage (so the writer does not
+    repeat published stories), and the cross-source corroboration inputs (the minimum
+    number of INDEPENDENT sources the ledger must rest on, plus the resolver that maps a
+    domain to its ownership group so co-owned outlets count once). All fields default
+    empty/off, so a run with no style guide or no prior coverage behaves exactly as
+    before (the prompt tokens render to nothing); ``min_independent_sources`` of 0 means
+    the corroboration gate is OFF and no assignment is ever dropped for it."""
 
     house_style_draft: str = ""
     house_style_eval: str = ""
     style_lexicon: dict = field(default_factory=dict)
     recent_coverage: str = ""
+    min_independent_sources: int = 0
+    ownership_of: Callable[[str], str] = _no_ownership
 
 
 def ledger_text(ledger: Ledger) -> str:

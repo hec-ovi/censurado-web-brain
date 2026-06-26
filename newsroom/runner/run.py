@@ -39,7 +39,7 @@ from newsroom.manager.preflight import ResolvedRoles
 from newsroom.manager.types import AssignmentSpec, Manifest
 from newsroom.personas import Persona, PersonaStore
 from newsroom.pipeline import ArticleBudget, ArticleOutcome
-from newsroom.pipeline.context import EditorialContext
+from newsroom.pipeline.context import EditorialContext, _no_ownership
 from newsroom.publish import publish_assignment, publish_batch_assignments
 from newsroom.research.ledger import Ledger
 from newsroom.runs import Run, RunStore
@@ -111,6 +111,12 @@ class RunDeps:
     # mode (``execute_direct``). None means direct mode has no primary source to seed
     # from (it falls back to corroboration only); a test injects an in-process double.
     fetch: "Callable[[str], str] | None" = None
+    # The cross-source corroboration resolver (registrable domain -> ownership-group
+    # label, "" when unknown), built ONCE from the portal registry in build_run_deps so
+    # the corroboration gate stays a pure function. Defaults to "no co-ownership known",
+    # so an injected RunDeps / test double that omits it still constructs and the gate
+    # falls back to per-domain sentinels.
+    ownership_of: "Callable[[str], str]" = _no_ownership
 
 
 @dataclass
@@ -336,6 +342,8 @@ def execute_run(*, run: Run, scope: RunScope, deps: RunDeps) -> RunReport:
             house_style_eval=style_for_eval(style_guide),
             style_lexicon=(style_guide.lexicon if style_guide is not None else {}),
             recent_coverage=recent_coverage_text(coverage),
+            min_independent_sources=(style_guide.sourcing.get("min_sources", 0) if style_guide is not None else 0),
+            ownership_of=deps.ownership_of,
         )
 
         dispatch = dispatch_run(
@@ -538,6 +546,8 @@ def execute_direct(
             house_style_eval=style_for_eval(style_guide),
             style_lexicon=(style_guide.lexicon if style_guide is not None else {}),
             recent_coverage=recent_coverage_text(coverage),
+            min_independent_sources=(style_guide.sourcing.get("min_sources", 0) if style_guide is not None else 0),
+            ownership_of=deps.ownership_of,
         )
 
         dispatch = dispatch_run(

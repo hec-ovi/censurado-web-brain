@@ -534,3 +534,69 @@ def test_lexicon_gate_forces_a_revise_inside_the_pipeline(fake):
     assert out.status == "ready"
     assert out.drafts == 2  # the gate rejected the first draft despite the model PASS
     assert "lexicon" in out.evaluations[0].failing_sections
+
+
+# ----- cross-source corroboration gate (chunk 4b): drop BEFORE any draft token -----
+
+
+def _ownership_resolver():
+    """The same dict-backed resolver shape build_run_deps produces from the portals:
+    clarin and its co-owned sibling share one ownership group; lanacion is its own."""
+    table = {"clarin.com": "grupo-clarin", "tn.com.ar": "grupo-clarin", "lanacion.com.ar": "grupo-la-nacion"}
+    return lambda domain: table.get(domain, "")
+
+
+def _ledger_with(*urls: str) -> Ledger:
+    led = Ledger(clock=lambda: datetime(2026, 6, 23, tzinfo=timezone.utc))
+    for i, url in enumerate(urls):
+        led.add(claim=f"claim {i}", url=url, snippet=f"snippet {i}")
+    return led
+
+
+def test_uncorroborated_ledger_is_dropped_before_any_draft(fake):
+    # Two co-owned outlets are ONE independent source; with min_independent_sources=2 the
+    # assignment is dropped up front. No outline/draft is ever generated (no tokens spent),
+    # exactly like the budget-exhausted drop.
+    from newsroom.pipeline.context import EditorialContext
+
+    env = _env(fake)
+    env.ledger = _ledger_with("https://www.clarin.com/a", "https://tn.com.ar/b")  # both grupo-clarin
+    ed = EditorialContext(min_independent_sources=2, ownership_of=_ownership_resolver())
+
+    out = _run(env, budget=_big_budget(), editorial=ed)
+
+    assert out.status == "dropped"
+    assert out.stop_reason == "uncorroborated"
+    assert out.drafts == 0
+    assert out.article is None
+    # The drafter/outline model was NEVER called: the gate fired before _outline.
+    assert fake.state.chat_requests == []
+    assert fake.state.publish_requests == []
+    # The assignment row records the drop, with the ledger digest kept for audit.
+    row = env.store.get_assignment(env.assignment.id)
+    assert row.status == "dropped" and row.drop_reason == "uncorroborated"
+    assert row.final_body is None
+    assert row.ledger_digest == env.ledger.digest()
+
+
+def test_corroborated_ledger_is_not_dropped_and_proceeds_to_draft(fake):
+    # Two INDEPENDENT outlets (distinct ownership groups) meet min_independent_sources=2,
+    # so the gate passes and the pipeline drafts and finalizes exactly as before.
+    from newsroom.pipeline.context import EditorialContext
+
+    env = _env(fake)
+    env.ledger = _ledger_with("https://clarin.com/a", "https://www.lanacion.com.ar/b")
+    fake.state.script_chat("OUTLINE")
+    fake.state.script_chat("draft one")
+    fake.state.script_chat(json.dumps({"verdict": "PASS"}))
+    fake.state.script_chat("enriched body")
+    fake.state.script_chat(json.dumps({"title": "T", "body": "B"}))
+    ed = EditorialContext(min_independent_sources=2, ownership_of=_ownership_resolver())
+
+    out = _run(env, budget=_big_budget(), editorial=ed)
+
+    assert out.status == "ready"  # NOT dropped for corroboration
+    assert out.stop_reason == "pass"
+    assert out.drafts == 1
+    # outline + draft + eval + enrich + finalize == 5 (eval distinct endpoint, clean body)
+    assert len(fake.state.chat_requests) == 5

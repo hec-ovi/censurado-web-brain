@@ -239,6 +239,21 @@ def build_run_deps(
     # per run inside the seams so a console edit takes effect without a restart.
     portal_store = PortalStore(conn)
     location_store = LocationStore(conn)
+    # The cross-source corroboration resolver, built ONCE here (the single place that
+    # reaches the store): a domain -> ownership_group map over the registered portals, so
+    # the pure corroboration gate can collapse co-owned outlets to one independent source
+    # without itself touching the database. Only portals that declare an ownership_group
+    # are mapped; everything else resolves to "" and the gate falls back to a per-domain
+    # sentinel. Snapshotted at deps-build time (a console edit takes effect next run).
+    ownership_map = {
+        normalize_domain(p.domain): p.ownership_group
+        for p in portal_store.list()
+        if p.ownership_group
+    }
+
+    def ownership_of(domain: str) -> str:
+        return ownership_map.get(domain, "")
+
     return RunDeps(
         store=RunStore(conn),
         persona_store=persona_store,
@@ -260,4 +275,5 @@ def build_run_deps(
         # The direct-from-link seed seam: the same research tool's page fetch (its
         # backend builds lazily on first use), overridable for tests.
         fetch=fetch if fetch is not None else tool.fetch,
+        ownership_of=ownership_of,
     )
