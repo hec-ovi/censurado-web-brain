@@ -223,6 +223,7 @@ def build_run_deps(
     roles: ResolvedRoles | None = None,
     search_news: NewsSearch | None = None,
     make_ledger: LedgerBuilder | None = None,
+    fetch=None,
     illustrate=None,
 ) -> RunDeps:
     """Assemble the run dependencies over the brain's shared connection.
@@ -256,4 +257,7 @@ def build_run_deps(
         lock=lock,
         illustrate=illustrate if illustrate is not None else _build_illustrator(settings, roles),
         style_store=StyleStore(conn),
+        # The direct-from-link seed seam: the same research tool's page fetch (its
+        # backend builds lazily on first use), overridable for tests.
+        fetch=fetch if fetch is not None else tool.fetch,
     )

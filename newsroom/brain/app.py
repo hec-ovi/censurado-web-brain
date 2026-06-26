@@ -29,7 +29,16 @@ from newsroom.contracts.sections import SECTION_ENUM, is_valid_section
 from newsroom.db import open_db
 from newsroom.inference.provider import DEFAULT_MODEL, DEFAULT_PROVIDER, DIALECTS, ProviderConfig
 from newsroom.personas import PersonaStore, slugify
-from newsroom.runner import RUN_MODES, RunDeps, RunScope, build_run_deps, execute_run, start_run
+from newsroom.runner import (
+    RUN_MODES,
+    RunDeps,
+    RunScope,
+    build_run_deps,
+    execute_direct,
+    execute_run,
+    start_direct,
+    start_run,
+)
 from newsroom.runs import Run
 
 __all__ = ["create_app", "Job"]
@@ -53,6 +62,17 @@ class RunRequest(BaseModel):
     mode: str
     n: int | None = None
     persona_ids: list[str] | None = None
+    images: bool | None = None
+
+
+class DirectLinkRequest(BaseModel):
+    """The POST /articles/from-link request body (run mode 3). One persona writes one
+    article seeded from ``url``; ``brief`` is the optional angle ("cover the budget
+    angle"), defaulting to a generic "write about this source"."""
+
+    url: str
+    persona_id: str
+    brief: str | None = None
     images: bool | None = None
 
 
@@ -98,6 +118,20 @@ def _run_in_background(deps: RunDeps, run: Run, scope: RunScope) -> None:
         execute_run(run=run, scope=scope, deps=deps)
     except Exception:
         pass  # the run record was marked failed inside execute_run; nothing to add
+
+
+def _run_direct_in_background(
+    deps: RunDeps, run: Run, *, url: str, persona_id: str, brief: str | None, images: bool | None
+) -> None:
+    """Background worker for the direct-from-link run, mirroring ``_run_in_background``.
+    ``execute_direct`` records the run ``failed`` on any error, so a fault here is
+    persisted (pollable over GET /runs/{id}), not lost."""
+    try:
+        execute_direct(
+            run=run, url=url, persona_id=persona_id, deps=deps, brief=brief, images=images
+        )
+    except Exception:
+        pass
 
 
 def create_app(
@@ -216,6 +250,32 @@ def create_app(
             body.mode, deps=deps, n=body.n, persona_ids=body.persona_ids, images=body.images
         )
         background_tasks.add_task(_run_in_background, deps, run, scope)
+        return JSONResponse(
+            status_code=202,
+            content={"run_id": run.id, "mode": run.mode, "status": run.status},
+            headers={"Location": f"/runs/{run.id}"},
+        )
+
+    @app.post("/articles/from-link")
+    async def create_from_link(
+        body: DirectLinkRequest, background_tasks: BackgroundTasks, request: Request
+    ):
+        """Run mode 3: one persona writes one article seeded from a URL, bypassing the
+        manager. Validates the persona up front (404 if unknown), creates a ``direct``
+        run, executes OFF the request, and returns 202 + a poll Location, exactly like
+        POST /runs."""
+        deps: RunDeps = request.app.state.run_deps
+        if not body.url.strip():
+            return _problem(422, "validation_failed", detail="url is required")
+        with request.app.state.lock:
+            persona = deps.persona_store.get(body.persona_id)
+        if persona is None:
+            return _problem(404, "persona_not_found", detail=f"no persona {body.persona_id!r}")
+        run = start_direct(deps=deps)
+        background_tasks.add_task(
+            _run_direct_in_background, deps, run,
+            url=body.url, persona_id=body.persona_id, brief=body.brief, images=body.images,
+        )
         return JSONResponse(
             status_code=202,
             content={"run_id": run.id, "mode": run.mode, "status": run.status},

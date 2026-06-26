@@ -109,3 +109,25 @@ class ResearchTool:
             )
             for hit in data.get("results", [])
         ]
+
+    def fetch(self, url: str) -> str:
+        """Fetch ONE page and return its extracted text (trafilatura -> markdown), or
+        "" on an error Envelope (the reason is appended to ``warnings``, like ``search``).
+
+        This is the seed-from-URL primitive for the direct-from-link mode: hand a
+        journalist a link and they read that page first, then corroborate. The
+        websearch layer's SSRF guard already blocks private hosts, so a hostile URL
+        degrades to "" rather than reaching an internal address."""
+        from websearch.layer3_agentio import AgentFetchRequest
+
+        agent = self._ensure_agent()
+        env = agent.web_fetch(AgentFetchRequest(url=url))
+        if not env.ok:
+            self.warnings.append(f"fetch failed for {url!r}: {env.error}")
+            return ""
+        data = env.data
+        if hasattr(data, "model_dump"):
+            data = data.model_dump()
+        data = data or {}
+        pages = data.get("pages") or []
+        return (pages[0].get("content") or "") if pages else ""

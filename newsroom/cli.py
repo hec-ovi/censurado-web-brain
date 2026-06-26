@@ -45,6 +45,7 @@ from newsroom.runner import (
     RunReport,
     build_run_deps,
     execute_run,
+    run_direct,
     start_run,
 )
 
@@ -154,6 +155,44 @@ def _bootstrap_main(argv: list[str]) -> int:
     return 0
 
 
+def _direct_main(argv: list[str], *, build_deps: DepsBuilder | None = None) -> int:
+    """``censurado-brain direct --url URL --persona ID [--brief TEXT]``: run mode 3,
+    one persona writes one article seeded from a link, BYPASSING the manager. Prints a
+    JSON summary and returns the run's exit code (the same code map as a batch run)."""
+    parser = argparse.ArgumentParser(
+        prog="censurado-brain direct",
+        description="Write one article from a link with one persona (bypasses the manager).",
+    )
+    parser.add_argument("--url", required=True, help="the source URL to write about")
+    parser.add_argument("--persona", required=True, help="the persona id that writes it")
+    parser.add_argument(
+        "--brief", default=None,
+        help="the angle/brief for the article (default: a generic 'write about this source')",
+    )
+    parser.add_argument(
+        "--images", action=argparse.BooleanOptionalAction, default=None,
+        help="generate a hero image for this article (default: the server setting)",
+    )
+    args = parser.parse_args(argv)
+
+    settings = load_settings()
+    deps = (build_deps or build_deps_from_env)(settings)
+    try:
+        if deps.persona_store.get(args.persona) is None:
+            _emit({"run_id": None, "mode": "direct", "status": "failed",
+                   "error": f"unknown persona {args.persona!r}"})
+            return _EXIT["failed"]
+        report = run_direct(
+            deps=deps, url=args.url, persona_id=args.persona, brief=args.brief, images=args.images
+        )
+    except Exception as exc:
+        _emit({"run_id": None, "mode": "direct", "status": "failed", "error": str(exc)})
+        return _EXIT["failed"]
+
+    _emit(_summary(report))
+    return _EXIT.get(report.status, _EXIT["failed"])
+
+
 def main(argv: list[str] | None = None, *, build_deps: DepsBuilder | None = None) -> int:
     """Parse args, run once, print a JSON summary, return an exit code.
 
@@ -164,6 +203,10 @@ def main(argv: list[str] | None = None, *, build_deps: DepsBuilder | None = None
         # The one-command setup path: seed the newsroom, then run. Kept as a subcommand
         # so the bare invocation (a plain --mode run) is unchanged for the trigger.
         return _bootstrap_main(argv[1:])
+    if argv and argv[0] == "direct":
+        # Run mode 3: write one article from a link, bypassing the manager. A subcommand
+        # so the bare --mode invocation (the periodic trigger) is unchanged.
+        return _direct_main(argv[1:], build_deps=build_deps)
     args = _parser().parse_args(argv)
     settings = load_settings()
     deps = (build_deps or build_deps_from_env)(settings)

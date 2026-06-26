@@ -39,7 +39,7 @@ from newsroom.db import open_db
 
 __all__ = ["Assignment", "Run", "RunStore", "open_runs_store"]
 
-_RUN_MODES = ("manual", "express", "managed")
+_RUN_MODES = ("manual", "express", "managed", "direct")
 
 
 @dataclass

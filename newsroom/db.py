@@ -46,7 +46,9 @@ CREATE TABLE IF NOT EXISTS personas (
 
 CREATE TABLE IF NOT EXISTS runs (
   id          TEXT PRIMARY KEY,
-  mode        TEXT NOT NULL CHECK (mode IN ('manual','express','managed')),
+  mode        TEXT NOT NULL,                -- validated in code (RunStore._RUN_MODES); no CHECK,
+                                            -- so a new mode (e.g. 'direct') is a free addition,
+                                            -- like assignments.status
   status      TEXT NOT NULL,
   n_requested INTEGER,
   created_at  TEXT NOT NULL,
@@ -216,3 +218,43 @@ def _migrate(conn: sqlite3.Connection) -> None:
         for name, decl in columns:
             if name not in existing:
                 conn.execute(f"ALTER TABLE {table} ADD COLUMN {name} {decl}")
+    _migrate_runs_mode_check(conn)
+
+
+def _migrate_runs_mode_check(conn: sqlite3.Connection) -> None:
+    """Drop the legacy 3-mode CHECK on ``runs.mode`` so the direct-from-link run
+    record (``mode='direct'``) is accepted.
+
+    A DB created before that change constrained ``mode`` to ('manual','express',
+    'managed'); ``CREATE TABLE IF NOT EXISTS`` never recreates an existing table, so the
+    old CHECK lingers and rejects a new mode. Recreate the table WITHOUT the CHECK
+    (mode is validated in code, exactly like ``assignments.status`` carries no CHECK).
+    A fresh DB already has the no-CHECK schema, so this is a no-op there. Best-effort
+    and guarded: it copies before dropping inside one transaction and rolls back on any
+    error, so a failure leaves the existing table intact."""
+    row = conn.execute(
+        "SELECT sql FROM sqlite_master WHERE type='table' AND name='runs'"
+    ).fetchone()
+    if row is None or "CHECK" not in (row[0] or "").upper():
+        return  # fresh schema (no CHECK) or no runs table yet
+    if conn.in_transaction:
+        conn.commit()
+    conn.execute("PRAGMA foreign_keys = OFF")
+    try:
+        conn.execute("BEGIN")
+        conn.execute(
+            "CREATE TABLE _runs_migrated ("
+            " id TEXT PRIMARY KEY, mode TEXT NOT NULL, status TEXT NOT NULL,"
+            " n_requested INTEGER, created_at TEXT NOT NULL, finished_at TEXT)"
+        )
+        conn.execute(
+            "INSERT INTO _runs_migrated (id, mode, status, n_requested, created_at, finished_at)"
+            " SELECT id, mode, status, n_requested, created_at, finished_at FROM runs"
+        )
+        conn.execute("DROP TABLE runs")
+        conn.execute("ALTER TABLE _runs_migrated RENAME TO runs")
+        conn.execute("COMMIT")
+    except Exception:
+        conn.execute("ROLLBACK")
+    finally:
+        conn.execute("PRAGMA foreign_keys = ON")

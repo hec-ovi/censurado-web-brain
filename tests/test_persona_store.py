@@ -294,16 +294,45 @@ def test_beat_check_constraint_enforced_at_sql_level():
         )
 
 
-def test_run_mode_check_constraint_enforced():
+def test_run_mode_validated_in_code_not_by_a_sql_check():
+    # runs.mode carries NO SQL CHECK, so adding a mode (e.g. the direct-from-link
+    # 'direct') is a free, non-breaking change, like assignments.status. Validation
+    # moved to RunStore.create_run instead.
+    from newsroom.runs import RunStore
+
     conn = open_db(":memory:")
-    with pytest.raises(sqlite3.IntegrityError):
-        conn.execute(
-            "INSERT INTO runs (id, mode, status, created_at) VALUES ('r1','cron','queued','t')"
-        )
-    # A valid mode inserts fine.
+    # The SQL level accepts any mode string (the CHECK is gone) ...
     conn.execute(
-        "INSERT INTO runs (id, mode, status, created_at) VALUES ('r2','managed','queued','t')"
+        "INSERT INTO runs (id, mode, status, created_at) VALUES ('rraw','whatever','queued','t')"
     )
+    # ... but the store validates: a bad mode raises, and 'direct' (run mode 3) is valid.
+    store = RunStore(conn)
+    with pytest.raises(ValueError, match="invalid run mode"):
+        store.create_run(mode="cron")
+    assert store.create_run(mode="direct").mode == "direct"
+
+
+def test_open_db_migrates_a_legacy_runs_mode_check(tmp_path):
+    # A DB created before the direct-from-link mode constrained runs.mode to a 3-mode
+    # CHECK that rejects 'direct'. open_db must recreate the table WITHOUT the CHECK,
+    # preserving existing rows, so mode 3 is accepted on an upgraded DB.
+    db = tmp_path / "legacy.db"
+    raw = sqlite3.connect(db)
+    raw.executescript(
+        "CREATE TABLE runs (id TEXT PRIMARY KEY,"
+        " mode TEXT NOT NULL CHECK (mode IN ('manual','express','managed')),"
+        " status TEXT NOT NULL, n_requested INTEGER, created_at TEXT NOT NULL, finished_at TEXT);"
+        "INSERT INTO runs (id, mode, status, created_at) VALUES ('old','managed','done','t');"
+    )
+    raw.commit()
+    raw.close()
+
+    conn = open_db(db, check_same_thread=False)
+    # The legacy row survived the recreation ...
+    assert conn.execute("SELECT mode FROM runs WHERE id='old'").fetchone()[0] == "managed"
+    # ... and 'direct' now inserts (the CHECK is gone, validation lives in code).
+    conn.execute("INSERT INTO runs (id, mode, status, created_at) VALUES ('d','direct','running','t')")
+    assert conn.execute("SELECT mode FROM runs WHERE id='d'").fetchone()[0] == "direct"
 
 
 def test_assignment_foreign_keys_enforced():

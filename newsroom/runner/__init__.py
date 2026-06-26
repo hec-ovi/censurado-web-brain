@@ -19,12 +19,15 @@ from newsroom.runner.run import (
     RunDeps,
     RunReport,
     RunScope,
+    execute_direct,
     execute_run,
     plan_run,
+    run_direct,
     run_express,
     run_managed,
     run_manual,
     run_now,
+    start_direct,
     start_run,
 )
 
@@ -41,6 +44,9 @@ __all__ = [
     "run_manual",
     "run_express",
     "run_managed",
+    "start_direct",
+    "execute_direct",
+    "run_direct",
     "build_run_deps",
     "roles_for_settings",
 ]

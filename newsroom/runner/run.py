@@ -36,11 +36,12 @@ from newsroom.manager.coverage import CoverageStore, recent_coverage_text
 from newsroom.manager.dispatch import LedgerBuilder
 from newsroom.manager.manager import NewsSearch
 from newsroom.manager.preflight import ResolvedRoles
-from newsroom.manager.types import Manifest
+from newsroom.manager.types import AssignmentSpec, Manifest
 from newsroom.personas import Persona, PersonaStore
 from newsroom.pipeline import ArticleBudget, ArticleOutcome
 from newsroom.pipeline.context import EditorialContext
 from newsroom.publish import publish_assignment, publish_batch_assignments
+from newsroom.research.ledger import Ledger
 from newsroom.runs import Run, RunStore
 
 __all__ = [
@@ -56,6 +57,9 @@ __all__ = [
     "run_manual",
     "run_express",
     "run_managed",
+    "start_direct",
+    "execute_direct",
+    "run_direct",
 ]
 
 # The entire trigger surface: the automation layer picks exactly one of these.
@@ -103,6 +107,10 @@ class RunDeps:
     # The active house style guide source (operator-editable, over the shared
     # connection). None disables style injection (an unconfigured newsroom).
     style_store: "StyleStore | None" = None
+    # The seed-from-URL fetch seam (url -> extracted text) for the direct-from-link
+    # mode (``execute_direct``). None means direct mode has no primary source to seed
+    # from (it falls back to corroboration only); a test injects an in-process double.
+    fetch: "Callable[[str], str] | None" = None
 
 
 @dataclass
@@ -432,3 +440,153 @@ def run_managed(*, deps: RunDeps, n: int | None = None, persona_ids: list[str] |
                 images: bool | None = None) -> RunReport:
     """Entry point: the full automated run."""
     return run_now("managed", deps=deps, n=n, persona_ids=persona_ids, images=images)
+
+
+# ----- mode 3: direct-from-link (bypasses the manager) -----
+
+
+def _direct_ledger_builder(deps: RunDeps, url: str, brief: str | None):
+    """A ``make_ledger`` for the ONE direct assignment: seed the ledger from the given
+    URL (fetch + add it as the primary grounded source), then BEST-EFFORT corroborate
+    with the author's normal scoped research loop (the persona's own portals), merging
+    its rows in. Both the fetch and the corroboration DEBIT the same per-article budget
+    so the direct path is bounded exactly like every other article.
+
+    A failed/empty fetch is not fatal: the article then grounds on corroboration alone,
+    or (if both are empty) the ledger is empty and the evaluator's grounding gate drops
+    it. Nothing here raises into the pipeline."""
+
+    def make_ledger(assignment, spec, persona, budget) -> Ledger:
+        ledger = Ledger()
+        text = deps.fetch(url) if deps.fetch is not None else ""
+        if text:
+            # The fetch counts toward the per-article bound: charge a rough token cost
+            # for the page so a huge document cannot ground for free (a real debit, no
+            # output cap, it only bounds the INPUT we paid to read).
+            budget.debit_tokens(len(text) // 4)
+            ledger.add(claim=(brief or spec.angle or "primary source"), url=url, snippet=text)
+        # Corroboration: the author's normal research loop on the brief/angle, scoped to
+        # its own source pool, charging the SAME budget. Skipped once the budget is spent
+        # (the fetch may have exhausted it), and isolated so a research fault never sinks
+        # the directly-requested article.
+        if not budget.exhausted():
+            try:
+                corroboration = deps.make_ledger(assignment, spec, persona, budget)
+                for row in corroboration:
+                    ledger.add(claim=row.claim, url=row.url, snippet=row.snippet)
+            except Exception:
+                pass
+        return ledger
+
+    return make_ledger
+
+
+def start_direct(*, deps: RunDeps) -> Run:
+    """Create the ``direct`` run record WITHOUT executing it, so the HTTP surface can
+    return a run id immediately (202 + poll) and run ``execute_direct`` in the
+    background, mirroring ``start_run``."""
+    guard = deps.lock if deps.lock is not None else nullcontext()
+    with guard:
+        return deps.store.create_run(mode="direct", n_requested=1)
+
+
+def execute_direct(
+    *, run: Run, url: str, persona_id: str, deps: RunDeps, brief: str | None = None,
+    images: bool | None = None,
+) -> RunReport:
+    """Run mode 3: hand ONE persona a link and get an article, BYPASSING the manager.
+
+    There is no triage and no manager call. The single assignment is funneled through
+    the EXACT same per-article pipeline + publish tail as a managed run by reusing
+    ``dispatch_run`` with a one-item manifest, so ``dispatch_run`` remains the sole
+    fan-out point (a single direct article simply has nothing to fan out). The ledger
+    is seeded from the URL instead of from a manager-driven research topic.
+
+    The article still passes every normal gate (evaluate, fact-check, finalize) and a
+    grounding-empty result is dropped, never published unbacked."""
+    store = deps.store
+    settings = deps.settings
+    guard = deps.lock if deps.lock is not None else nullcontext()
+    try:
+        with guard:
+            persona = deps.persona_store.get(persona_id)
+            coverage = deps.coverage_store.recent(limit=settings.coverage_lookback)
+            style_guide = deps.style_store.active() if deps.style_store is not None else None
+
+        # An unknown persona (the HTTP/CLI entry validates first; this is the safety
+        # net): finish clean with nothing assigned rather than crash the background run.
+        if persona is None:
+            with guard:
+                store.finish_run(run.id, status="done")
+            return RunReport(
+                run_id=run.id, mode=run.mode, status="done", manifest=Manifest(assignments=[])
+            )
+
+        spec = AssignmentSpec(
+            persona_id=persona.id,
+            section=persona.beat,  # authoritative: a persona writes their own beat
+            angle=(brief or "Write an article about this source."),
+            headline=(brief or ""),
+        )
+        manifest = Manifest(assignments=[spec])
+
+        images_enabled = images if images is not None else settings.auto_generate_image
+        illustrate = deps.illustrate if (images_enabled and deps.illustrate is not None) else None
+
+        editorial = EditorialContext(
+            house_style_draft=style_for_draft(style_guide),
+            house_style_eval=style_for_eval(style_guide),
+            style_lexicon=(style_guide.lexicon if style_guide is not None else {}),
+            recent_coverage=recent_coverage_text(coverage),
+        )
+
+        dispatch = dispatch_run(
+            run_id=run.id,
+            manifest=manifest,
+            persona_index={persona.id: persona},
+            store=store,
+            make_ledger=_direct_ledger_builder(deps, url, brief),
+            drafter_cfg=deps.roles.drafter,
+            evaluator_cfg=deps.roles.evaluator,
+            finalize_cfg=deps.roles.finalize,
+            prompts_dir=deps.prompts_dir,
+            budget_factory=_budget_factory(settings),
+            max_sweeps=settings.max_sweeps,
+            concurrency=1,  # one article: nothing to fan out
+            lock=deps.lock,
+            illustrate=illustrate,
+            editorial=editorial,
+        )
+
+        published = _publish_ready(dispatch, deps)
+        status = "done" if all(p.ok for p in published) else "done_with_errors"
+        with guard:
+            store.finish_run(run.id, status=status)
+        return RunReport(
+            run_id=run.id,
+            mode=run.mode,
+            status=status,
+            manifest=manifest,
+            outcomes=dispatch.outcomes,
+            published=published,
+        )
+    except Exception:
+        try:
+            with guard:
+                store.finish_run(run.id, status="failed")
+        except Exception:
+            pass
+        raise
+
+
+def run_direct(
+    *, deps: RunDeps, url: str, persona_id: str, brief: str | None = None,
+    images: bool | None = None,
+) -> RunReport:
+    """Synchronous direct-from-link run: create the record and execute it on this
+    thread (the CLI path; the HTTP surface uses ``start_direct`` + a background
+    ``execute_direct`` instead)."""
+    run = start_direct(deps=deps)
+    return execute_direct(
+        run=run, url=url, persona_id=persona_id, deps=deps, brief=brief, images=images
+    )
