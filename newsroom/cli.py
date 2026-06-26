@@ -50,8 +50,10 @@ from newsroom.editorial import (
 )
 from newsroom.mirror import (
     AuthorPush,
+    BackendProbe,
     PushResult,
     backfill_web_authors,
+    probe_backend,
     push_web_author,
 )
 from newsroom.personas import Persona, PersonaStore
@@ -290,6 +292,41 @@ def _env_author_push(settings: Settings) -> AuthorPush:
         )
 
     return push
+
+
+# A probe takes the backend base URL + operator token and returns a typed connection
+# verdict. Injected so the `status` verb tests without contacting a real backend.
+BackendProbeFn = Callable[[str, str], BackendProbe]
+
+
+def _status_main(argv: list[str], *, probe: BackendProbeFn | None = None) -> int:
+    """``censurado-brain status``: print the brain<->backend connection diagnostic, the
+    CLI parity of ``GET /status/backend``. Reads the backend base URL + operator token
+    from the environment and probes the backend read API (GET /authors) with a bounded
+    timeout, NEVER raising. Prints the same JSON shape the HTTP route returns (base URL,
+    whether the token is configured, reachable / authorized / remote author count) via
+    ``_emit``. Returns 0 when the backend is reachable AND the token is authorized, else
+    1, so a health check can branch on the exit code. ``probe`` is injectable for tests."""
+    parser = argparse.ArgumentParser(
+        prog="censurado-brain status",
+        description="Report the brain's connection to the platform backend (live probe).",
+    )
+    parser.parse_args(argv)  # no flags; surfaces -h and rejects stray args
+
+    settings = load_settings()
+    base_url = str(settings.publish_base_url).rstrip("/")
+    probe = probe or probe_backend
+    result = probe(base_url, settings.operator_token)
+    _emit({
+        "backend_base_url": base_url,
+        "token_configured": bool(settings.operator_token),
+        "reachable": result.reachable,
+        "authorized": result.authorized,
+        "author_count": result.author_count,
+        "status_code": result.status,
+        "detail": result.detail,
+    })
+    return 0 if (result.reachable and result.authorized) else _EXIT["failed"]
 
 
 def _open_portal_store() -> PortalStore:
@@ -1087,6 +1124,7 @@ def main(
     run_store: RunStore | None = None,
     style_store: StyleStore | None = None,
     location_store: LocationStore | None = None,
+    backend_probe: BackendProbeFn | None = None,
 ) -> int:
     """Parse args, run once, print a JSON summary, return an exit code.
 
@@ -1105,6 +1143,10 @@ def main(
         # The one-time author backfill: push local personas to the platform registry.
         # A subcommand so the bare --mode run path stays untouched.
         return _mirror_authors_main(argv[1:])
+    if argv and argv[0] == "status":
+        # Report the brain<->backend connection (live probe), the CLI parity of
+        # GET /status/backend. A subcommand so the bare --mode run path is unchanged.
+        return _status_main(argv[1:], probe=backend_probe)
     if argv and argv[0] == "sources":
         # Curate the source (portal) registry, mirroring the HTTP management API. A
         # subcommand so the bare --mode run path (the periodic trigger) is unchanged.

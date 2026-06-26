@@ -17,5 +17,12 @@ from newsroom.brain.routes.editorial import router as editorial_router
 from newsroom.brain.routes.personas import router as personas_router
 from newsroom.brain.routes.portals import router as portals_router
 from newsroom.brain.routes.runs import router as runs_router
+from newsroom.brain.routes.status import router as status_router
 
-__all__ = ["editorial_router", "personas_router", "portals_router", "runs_router"]
+__all__ = [
+    "editorial_router",
+    "personas_router",
+    "portals_router",
+    "runs_router",
+    "status_router",
+]

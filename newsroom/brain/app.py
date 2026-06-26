@@ -25,7 +25,13 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
 from newsroom.brain.problems import _problem
-from newsroom.brain.routes import editorial_router, personas_router, portals_router, runs_router
+from newsroom.brain.routes import (
+    editorial_router,
+    personas_router,
+    portals_router,
+    runs_router,
+    status_router,
+)
 from newsroom.brain.synthesis import PersonaSeed, synthesize_persona
 from newsroom.config import Settings, load_settings
 from newsroom.contracts.sections import SECTION_ENUM, is_valid_section
@@ -212,6 +218,11 @@ def create_app(
         location_store = LocationStore(conn)
 
     caps = DIALECTS[DEFAULT_PROVIDER]
+    # The full settings ride on app.state so the status router can read the backend base
+    # URL + operator token (the env-driven publish/mirror/read seam config) to probe the
+    # backend connection. The other routers read their own stores off state; this is the
+    # one that needs the connection config rather than a store.
+    app.state.settings = settings
     app.state.store = store
     app.state.portal_store = portal_store
     app.state.style_store = style_store
@@ -397,5 +408,11 @@ def create_app(
     # lexicon + sourcing sub-resources) and the publication location, under /editorial.
     # Added as its own router; it reads the StyleStore / LocationStore off app.state.
     app.include_router(editorial_router)
+
+    # The backend-connection STATUS API: GET /status/backend reports the configured
+    # backend base URL + whether the operator token is set, plus a live, bounded probe of
+    # the backend read API (reachable / authorized / remote author count). Reads
+    # ``settings`` off app.state; degrades gracefully (a down backend is a 200 verdict).
+    app.include_router(status_router)
 
     return app

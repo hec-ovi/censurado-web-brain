@@ -15,9 +15,12 @@ from newsroom.mirror.backfill import (
 )
 from newsroom.mirror.client import (
     DEFAULT_TIMEOUT,
+    PROBE_TIMEOUT,
+    BackendProbe,
     PushResult,
     WebAuthor,
     fetch_web_authors,
+    probe_backend,
     push_web_author,
 )
 from newsroom.mirror.reconcile import SHELL_BEAT, ReconcileResult, reconcile_personas
@@ -28,6 +31,9 @@ __all__ = [
     "PushResult",
     "push_web_author",
     "DEFAULT_TIMEOUT",
+    "PROBE_TIMEOUT",
+    "BackendProbe",
+    "probe_backend",
     "ReconcileResult",
     "reconcile_personas",
     "SHELL_BEAT",
