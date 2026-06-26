@@ -32,6 +32,15 @@ export function field(labelText, control, id) {
   return el("div", { class: "field" }, [el("label", { for: id }, labelText), control]);
 }
 
+// A small inline (?) marker that carries an explanation for the control next to
+// it. Both `title` (hover tooltip) and `aria-label` (screen readers + tests)
+// carry the text, and tabindex makes it keyboard-focusable so the tooltip is
+// reachable without a mouse. Used across sections so every control is
+// self-explaining.
+export function help(text) {
+  return el("span", { class: "help", role: "img", tabindex: "0", "aria-label": text, title: text }, "?");
+}
+
 // Only render an image src we trust: a same-origin path or an explicit http(s)
 // or data:image URL. Anything else (a javascript: or other odd scheme) is
 // rejected so the caller can fall back. Shared by the persona avatar and the

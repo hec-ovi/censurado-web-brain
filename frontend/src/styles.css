@@ -90,22 +90,69 @@ body {
   background: var(--warn);
 }
 
-/* Layout */
-.grid {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: var(--gap);
-  align-items: start;
+/* Tabs */
+.tablist {
+  display: flex;
+  gap: 4px;
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 24px;
 }
-.col {
+.tab {
+  font: inherit;
+  font-weight: 600;
+  color: var(--muted);
+  background: transparent;
+  border: none;
+  border-bottom: 2px solid transparent;
+  border-radius: 8px 8px 0 0;
+  padding: 10px 16px;
+  margin-bottom: -1px;
+  cursor: pointer;
+  align-self: auto;
+}
+.tab:hover {
+  color: var(--text);
+  background: var(--surface);
+}
+.tab[aria-selected="true"] {
+  color: var(--text);
+  border-bottom-color: var(--accent);
+}
+.tab:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+.tab-panel[hidden] {
+  display: none;
+}
+.tab-panel:focus {
+  outline: none;
+}
+.tab-stack {
   display: flex;
   flex-direction: column;
   gap: var(--gap);
 }
-@media (max-width: 760px) {
-  .grid {
-    grid-template-columns: 1fr;
-  }
+
+/* Inline (?) help marker */
+.help {
+  display: inline-grid;
+  place-items: center;
+  width: 16px;
+  height: 16px;
+  margin-left: 6px;
+  font-size: 0.7rem;
+  font-weight: 700;
+  line-height: 1;
+  color: var(--muted);
+  border: 1px solid var(--border);
+  border-radius: 50%;
+  cursor: help;
+  user-select: none;
+}
+.help:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
 }
 
 /* Panels */
@@ -299,6 +346,35 @@ button:disabled {
 .status[data-state="publish_failed"] {
   color: var(--err);
   border-color: rgba(239, 68, 68, 0.4);
+}
+
+/* Backend status panel */
+.backend-status {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.backend-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--gap);
+  font-size: 0.85rem;
+}
+.backend-label {
+  color: var(--muted);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+.backend-value {
+  color: var(--text);
+  word-break: break-all;
+  text-align: right;
+}
+.backend-value[data-state="online"] {
+  color: var(--ok);
+}
+.backend-value[data-state="offline"] {
+  color: var(--err);
 }
 
 /* Utility */

@@ -73,3 +73,70 @@ test("a non-JSON error body is captured as raw text", async () => {
     },
   );
 });
+
+test("listPortals hits /portals and forwards the enabled filter, omitting null filters", async () => {
+  let url;
+  server.use(
+    http.get(`${ORIGIN}/api/portals`, ({ request }) => {
+      url = new URL(request.url);
+      return HttpResponse.json({ portals: [{ id: "p1", enabled: true }] });
+    }),
+  );
+  const data = await api.listPortals({ enabled: true });
+  assert.equal(data.portals[0].id, "p1");
+  assert.equal(url.searchParams.get("enabled"), "true");
+  assert.equal(url.searchParams.has("limit"), false, "null/absent filters are omitted");
+  assert.equal(url.searchParams.has("offset"), false);
+});
+
+test("deletePortal issues a DELETE and resolves to null on 204", async () => {
+  let method;
+  server.use(
+    http.delete(`${ORIGIN}/api/portals/p%201`, ({ request }) => {
+      method = request.method;
+      return new HttpResponse(null, { status: 204 });
+    }),
+  );
+  const result = await api.deletePortal("p 1"); // id is percent-encoded in the path
+  assert.equal(method, "DELETE");
+  assert.equal(result, null);
+});
+
+test("putPersonaSources sends PUT with a {sources} body", async () => {
+  let body;
+  server.use(
+    http.put(`${ORIGIN}/api/personas/ada/sources`, async ({ request }) => {
+      body = await request.json();
+      return HttpResponse.json({ sources: body.sources });
+    }),
+  );
+  const data = await api.putPersonaSources("ada", ["example.com", "another.org"]);
+  assert.deepEqual(body, { sources: ["example.com", "another.org"] });
+  assert.deepEqual(data.sources, ["example.com", "another.org"]);
+});
+
+test("getPrompt forwards the key as a query param on /prompts/template", async () => {
+  let key;
+  server.use(
+    http.get(`${ORIGIN}/api/prompts/template`, ({ request }) => {
+      key = new URL(request.url).searchParams.get("key");
+      return HttpResponse.json({ key, body: "tmpl" });
+    }),
+  );
+  const data = await api.getPrompt("manager.system");
+  assert.equal(key, "manager.system");
+  assert.equal(data.body, "tmpl");
+});
+
+test("promoteStyleVersion POSTs to the version's promote endpoint", async () => {
+  let method;
+  server.use(
+    http.post(`${ORIGIN}/api/editorial/style/versions/5/promote`, ({ request }) => {
+      method = request.method;
+      return HttpResponse.json({ version: 5, active: true });
+    }),
+  );
+  const data = await api.promoteStyleVersion(5);
+  assert.equal(method, "POST");
+  assert.equal(data.version, 5);
+});
