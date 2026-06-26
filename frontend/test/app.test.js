@@ -22,6 +22,7 @@ function baseHandlers(extra = []) {
     http.get(`${ORIGIN}/api/health`, () => HttpResponse.json({ ok: true })),
     http.get(`${ORIGIN}/api/personas`, () => HttpResponse.json({ personas: [] })),
     http.get(`${ORIGIN}/api/portals`, () => HttpResponse.json({ portals: [], total: 0 })),
+    http.get(`${ORIGIN}/api/runs`, () => HttpResponse.json({ runs: [], total: 0 })),
     http.get(`${ORIGIN}/api/status/backend`, () =>
       HttpResponse.json({
         backend_base_url: "http://backend.local",
@@ -57,6 +58,7 @@ test("mounts the app, shows health, and refreshes the roster after a create", as
           : [],
       })),
     http.get(`${ORIGIN}/api/portals`, () => HttpResponse.json({ portals: [], total: 0 })),
+    http.get(`${ORIGIN}/api/runs`, () => HttpResponse.json({ runs: [], total: 0 })),
     http.post(`${ORIGIN}/api/personas`, () =>
       HttpResponse.json({ job_id: "j", persona_id: "ada-reporter", status: "pending" }, { status: 202 })),
     http.get(`${ORIGIN}/api/personas/jobs/j`, () => {

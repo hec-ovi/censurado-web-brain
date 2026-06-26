@@ -123,6 +123,8 @@ export function mountApp(root, deps = {}) {
   backend.refresh();
   list.reload();
   sources.reload();
+  runs.loadAuthors();
+  runs.reloadHistory();
 
   return { health, backend, list, form, sources, runs, tabs: tabButtons, panels, select };
 }
