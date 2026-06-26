@@ -227,6 +227,45 @@ def test_publish_assignment_marks_published_and_records_coverage(fake):
     assert recent[0].published_id == result.id
 
 
+def test_publish_records_entities_so_a_reworded_dup_is_caught(fake):
+    # The publish path is the ONLY place a coverage row is written, so it must carry the
+    # assignment's entities. Without them the stored fingerprint has no entity tokens and
+    # a later, REWORDED headline about the same event scores as NEW and gets republished
+    # (the silent bug the de-dup channel was meant to prevent). This drives the real
+    # publish path and pins the last link (row -> coverage) plus the end-to-end effect.
+    from newsroom.manager.coverage import classify, fingerprint
+    from newsroom.manager.types import Triage
+
+    env = _env()
+    article = _article(env, title="Milei anuncia un fuerte recorte del gasto", topics=["economia"])
+    a = env.store.create_assignment(
+        run_id=env.run_id, persona_id=env.author, section=article.section,
+        entities=["Javier Milei", "Casa Rosada"],
+    )
+    chash = content_hash(article.title, article.body, article.author, article.section)
+    env.store.finalize_assignment(
+        a.id, final_body=article.body, content_hash=chash,
+        idempotency_key=idempotency_key(a.id, chash), ledger_digest="sha256:abc",
+    )
+    assignment = env.store.get_assignment(a.id)
+
+    result = publish_assignment(article, assignment=assignment, store=env.store,
+                                base_url=fake.base_url, token="op-token", coverage=env.coverage)
+    assert result.ok is True
+
+    row = env.coverage.recent(limit=1)[0]
+    assert row.entities == ["Javier Milei", "Casa Rosada"]  # persisted, not silently dropped
+
+    # A later run surfaces a REWORDED headline about the SAME event (same entities). Now
+    # that the entity channel is alive it must NOT come back as NEW.
+    candidate = fingerprint(headline="El Gobierno presenta un ajuste del gasto publico",
+                            entities=["Javier Milei", "Casa Rosada"])
+    verdict = classify(candidate, env.coverage.recent(limit=10),
+                       duplicate_threshold=0.6, followup_threshold=0.3)
+    assert verdict.triage is not Triage.NEW
+    assert verdict.matched is not None
+
+
 def test_publish_assignment_does_not_double_record_coverage_on_replay(fake):
     env = _env()
     article = _article(env)

@@ -27,10 +27,11 @@ so this is a free, non-breaking addition.
 
 from __future__ import annotations
 
+import json
 import sqlite3
 import uuid
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -60,6 +61,7 @@ class Assignment:
     angle: str
     status: str
     created_at: str
+    entities: list[str] = field(default_factory=list)
     drop_reason: str | None = None
     final_body: str | None = None
     content_hash: str | None = None
@@ -114,16 +116,18 @@ class RunStore:
     # ----- assignments -----
 
     def create_assignment(self, *, run_id: str, persona_id: str, section: str, angle: str = "",
+                          entities: list[str] | None = None,
                           id: str | None = None, status: str = "assigned") -> Assignment:
         assignment_id = (id or "").strip() or uuid.uuid4().hex
         now = self._clock().isoformat()
         try:
             self._conn.execute(
                 """
-                INSERT INTO assignments (id, run_id, persona_id, section, angle, status, created_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?)
+                INSERT INTO assignments (id, run_id, persona_id, section, angle, entities, status, created_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
                 """,
-                (assignment_id, run_id, persona_id, section, angle, status, now),
+                (assignment_id, run_id, persona_id, section, angle,
+                 json.dumps(list(entities or [])), status, now),
             )
         except sqlite3.IntegrityError as exc:
             # A bad run_id / persona_id (foreign key) or a duplicate id both land here.
@@ -215,6 +219,7 @@ def _row_to_assignment(row: sqlite3.Row) -> Assignment:
         angle=row["angle"] or "",
         status=row["status"],
         created_at=row["created_at"],
+        entities=json.loads(row["entities"]) if row["entities"] else [],
         drop_reason=row["drop_reason"],
         final_body=row["final_body"],
         content_hash=row["content_hash"],

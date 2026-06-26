@@ -180,6 +180,26 @@ def test_outcomes_are_in_manifest_order_not_completion_order(fake):
     assert [r.persona_id for r in result.assignments] == ["ada", "bea"]
 
 
+def test_dispatch_persists_entities_onto_the_assignment_row(fake):
+    # The spec's entities must land on the persisted assignment row: the row is what
+    # carries them to the publish step (the coverage write). This pins the middle link
+    # of the de-dup chain (spec -> row).
+    ada = Persona(id="ada", display_name="Ada", beat="tech", who_i_am="tech", style="dry")
+    env = _Env(fake, [ada])
+    manifest = Manifest(assignments=[
+        AssignmentSpec(persona_id="ada", section="tech", angle="a story",
+                       entities=["Javier Milei", "Casa Rosada"]),
+    ])
+    for body in ("outline", "draft", "enriched"):
+        fake.state.script_chat(body)
+    fake.state.script_chat(_finalize_ok())
+
+    result = env.dispatch(manifest)
+
+    row = env.store.get_assignment(result.assignments[0].id)
+    assert row.entities == ["Javier Milei", "Casa Rosada"]
+
+
 # ----- per-article failure isolation -----
 
 

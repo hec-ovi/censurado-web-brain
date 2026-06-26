@@ -59,6 +59,7 @@ CREATE TABLE IF NOT EXISTS assignments (
   persona_id      TEXT NOT NULL REFERENCES personas(id),
   section         TEXT NOT NULL,
   angle           TEXT,
+  entities        TEXT,                         -- JSON array of story entities (de-dup signature)
   status          TEXT NOT NULL,
   drop_reason     TEXT,
   final_body      TEXT,
@@ -196,6 +197,9 @@ _ADDED_COLUMNS = {
     "assignments": (
         ("image_url", "TEXT"),
         ("image_prompt", "TEXT"),
+        # The entity de-dup channel shipped after the initial assignments table; a live
+        # brain DB predates it, so it is added explicitly (NULL on old rows -> []).
+        ("entities", "TEXT"),
     ),
     # The persona writer language shipped after the initial personas table. A live
     # personas.db predates it, so the column is added explicitly with the Spanish

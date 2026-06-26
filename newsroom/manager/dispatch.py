@@ -82,7 +82,8 @@ def dispatch_run(
     for spec in manifest.assignments:
         with guard:
             row = store.create_assignment(
-                run_id=run_id, persona_id=spec.persona_id, section=spec.section, angle=spec.angle
+                run_id=run_id, persona_id=spec.persona_id, section=spec.section, angle=spec.angle,
+                entities=spec.entities,  # ride to the coverage row for next-run de-dup
             )
         assignments.append(row)
 

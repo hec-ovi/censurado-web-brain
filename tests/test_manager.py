@@ -199,6 +199,22 @@ def test_follow_up_attaches_the_prior_slug_and_brief(fake):
     assert "FOLLOW-UP" in spec.angle and "openai-gpt6" in spec.angle
 
 
+def test_emitted_assignment_carries_entities_for_dedup(fake):
+    # The entities the manager triaged on must ride onto the AssignmentSpec. Otherwise
+    # they never reach the published article's coverage row and the entity de-dup
+    # channel is dead, so a reworded headline about the same event slips the floor next
+    # run. This pins the first link of that chain (model verdict -> spec).
+    personas = [_persona("ada", "tech")]
+    fake.state.script_chat(_assign([
+        {"persona_id": "ada", "headline": "Milei anuncia recortes", "angle": "el ajuste",
+         "entities": ["Javier Milei", "Casa Rosada"]},
+    ]))
+    m = _run(fake, FakeNews(), personas, [], n_max=4)
+
+    assert len(m.assignments) == 1
+    assert m.assignments[0].entities == ["Javier Milei", "Casa Rosada"]
+
+
 # ----- guards on the emitted assignments -----
 
 

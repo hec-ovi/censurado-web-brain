@@ -73,6 +73,7 @@ def _record_publish_success(
                 section=article.section,
                 headline=article.title,
                 topics=list(article.topics),
+                entities=list(assignment.entities),  # the de-dup signature, persisted at last
                 slug=slug,
                 published_id=published_id,
                 assignment_id=assignment.id,

@@ -210,6 +210,7 @@ def _triage_and_clamp(
                 triage=triage,
                 follow_up_slug=follow_up_slug,
                 headline=headline,
+                entities=entities,  # carried to the article's coverage row for next-run de-dup
             )
         )
         accepted_fps.append(fp)

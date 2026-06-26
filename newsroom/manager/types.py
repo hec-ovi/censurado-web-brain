@@ -49,7 +49,11 @@ class AssignmentSpec:
     """One assignment the manager emits: WHO writes (``persona_id``), in which
     ``section`` (authoritative: the persona's own beat), and the ``angle`` brief.
     ``triage`` records the coverage decision that produced it; a ``FOLLOW_UP`` also
-    carries the ``follow_up_slug`` of the prior article it extends."""
+    carries the ``follow_up_slug`` of the prior article it extends. ``entities`` are the
+    people/orgs/places the story is about: they ride all the way to the published
+    article's ``coverage`` row so the NEXT run's de-dup fingerprint compares the same
+    entity set the manager triaged on (without them the entity channel is dead and a
+    reworded headline about the same event slips past the duplicate floor)."""
 
     persona_id: str
     section: str
@@ -57,6 +61,7 @@ class AssignmentSpec:
     triage: Triage = Triage.NEW
     follow_up_slug: str | None = None
     headline: str = ""
+    entities: list[str] = field(default_factory=list)
 
 
 @dataclass
