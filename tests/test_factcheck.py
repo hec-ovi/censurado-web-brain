@@ -65,7 +65,7 @@ def test_clean_body_makes_no_model_call(fake):
     body = "A grounded article with no fabricated links."
     out, result = fact_check(body, ledger=_ledger("https://src.test/a"), cfg=_cfg(fake),
                              prompts_dir=_prompts_dir())
-    assert out == body and result.ok
+    assert out == body and result.ok and result.citation.ok and result.preservation.ok
     assert fake.state.chat_requests == []  # nothing was sent
 
 
@@ -75,7 +75,7 @@ def test_failing_body_triggers_exactly_one_revise(fake):
     out, result = fact_check(body, ledger=_ledger("https://src.test/a"), cfg=_cfg(fake),
                              prompts_dir=_prompts_dir())
     assert "made-up.test" not in out  # the revise replaced the fabricated citation
-    assert result.ok
+    assert result.ok and result.citation.ok
     assert len(fake.state.chat_requests) == 1  # exactly one bounded revise
 
 
@@ -86,4 +86,44 @@ def test_revise_is_bounded_to_one_pass_even_if_still_failing(fake):
     out, result = fact_check(body, ledger=_ledger("https://src.test/a"), cfg=_cfg(fake),
                              prompts_dir=_prompts_dir())
     assert not result.ok  # one pass did not clear it...
+    assert not result.citation.ok  # the residual fault is a citation fault
     assert len(fake.state.chat_requests) == 1  # ...and it did NOT revise again
+
+
+# ----- preservation gate folded into the same single bounded revise -----
+
+
+def _grounding_ledger() -> Ledger:
+    """A ledger whose source text names Milei and the year 2023, so a body that
+    respells the name or invents a different year is ungrounded against it."""
+    led = Ledger(clock=lambda: datetime(2026, 6, 23, tzinfo=timezone.utc))
+    led.add(claim="Javier Milei firmo el decreto",
+            url="https://src.test/a", snippet="El presidente Javier Milei asumio en 2023")
+    return led
+
+
+def test_preservation_failure_routes_to_the_single_bounded_revise(fake):
+    # Citations are clean (no URLs, no markers), but the body invents a year (2099) and
+    # respells the entity (Miley). That must drive the ONE bounded revise, with both
+    # problems named in the same prompt.
+    fake.state.script_chat("El presidente Javier Milei firmo el decreto en 2023.")
+    body = "El presidente Javier Miley firmo el decreto el 5 de enero de 2099."
+    out, result = fact_check(body, ledger=_grounding_ledger(), entities=["Javier Milei"],
+                             cfg=_cfg(fake), prompts_dir=_prompts_dir())
+
+    assert len(fake.state.chat_requests) == 1  # exactly one bounded revise
+    prompt = fake.state.chat_requests[0]["body"]["messages"][0]["content"]
+    assert "2099" in prompt  # the invented year is named
+    assert "Javier Miley" in prompt and "Javier Milei" in prompt  # the respelling and its fix
+    # The revised body restored the name and the year, so the re-checked grounding is ok.
+    assert out == "El presidente Javier Milei firmo el decreto en 2023."
+    assert result.ok and result.preservation.ok and result.citation.ok
+
+
+def test_clean_body_with_entities_makes_no_model_call(fake):
+    # Preservation passing (name verbatim, year grounded) keeps the no-call fast path.
+    body = "El presidente Javier Milei asumio en 2023."
+    out, result = fact_check(body, ledger=_grounding_ledger(), entities=["Javier Milei"],
+                             cfg=_cfg(fake), prompts_dir=_prompts_dir())
+    assert out == body and result.ok
+    assert fake.state.chat_requests == []

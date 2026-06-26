@@ -200,7 +200,8 @@ def run_article_pipeline(
 
     if budget.exhausted():
         return drop("budget_exhausted")
-    body, _verify = fact_check(body, ledger=ledger, cfg=drafter_cfg, prompts_dir=prompts_dir, budget=budget)
+    body, _verify = fact_check(body, ledger=ledger, entities=assignment.entities, cfg=drafter_cfg,
+                               prompts_dir=prompts_dir, budget=budget)
 
     if budget.exhausted():
         return drop("budget_exhausted")

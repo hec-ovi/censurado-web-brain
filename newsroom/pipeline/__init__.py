@@ -11,15 +11,19 @@ from __future__ import annotations
 from newsroom.pipeline.article import ArticleOutcome, run_article_pipeline
 from newsroom.pipeline.budget import ArticleBudget
 from newsroom.pipeline.evaluate import Evaluation, evaluate_draft
-from newsroom.pipeline.factcheck import CitationResult, citation_verify, fact_check
+from newsroom.pipeline.factcheck import CitationResult, GroundingResult, citation_verify, fact_check
 from newsroom.pipeline.finalize import finalize_article
+from newsroom.pipeline.preservation import PreservationResult, preservation_check
 
 __all__ = [
     "ArticleBudget",
     "ArticleOutcome",
     "CitationResult",
     "Evaluation",
+    "GroundingResult",
+    "PreservationResult",
     "citation_verify",
+    "preservation_check",
     "evaluate_draft",
     "fact_check",
     "finalize_article",
