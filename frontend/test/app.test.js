@@ -21,6 +21,7 @@ function baseHandlers(extra = []) {
     ...extra,
     http.get(`${ORIGIN}/api/health`, () => HttpResponse.json({ ok: true })),
     http.get(`${ORIGIN}/api/personas`, () => HttpResponse.json({ personas: [] })),
+    http.get(`${ORIGIN}/api/portals`, () => HttpResponse.json({ portals: [], total: 0 })),
     http.get(`${ORIGIN}/api/status/backend`, () =>
       HttpResponse.json({
         backend_base_url: "http://backend.local",
@@ -55,6 +56,7 @@ test("mounts the app, shows health, and refreshes the roster after a create", as
           ? [{ id: "ada-reporter", display_name: "Ada Reporter", beat: "world", who_i_am: "world desk" }]
           : [],
       })),
+    http.get(`${ORIGIN}/api/portals`, () => HttpResponse.json({ portals: [], total: 0 })),
     http.post(`${ORIGIN}/api/personas`, () =>
       HttpResponse.json({ job_id: "j", persona_id: "ada-reporter", status: "pending" }, { status: 202 })),
     http.get(`${ORIGIN}/api/personas/jobs/j`, () => {
@@ -133,10 +135,26 @@ test("placeholder tabs show their heading", async () => {
   mount();
   await screen.findByText("online");
 
-  for (const name of ["Sources", "Editorial", "Prompts"]) {
+  for (const name of ["Editorial", "Prompts"]) {
     await user.click(screen.getByRole("tab", { name }));
     const heading = screen.getByRole("heading", { name });
     assert.ok(heading, `${name} heading should render`);
     assert.match(heading.closest(".panel").textContent, /built in a later step/i);
   }
+});
+
+test("the Sources tab renders the portals manager, not a placeholder", async () => {
+  server.use(...baseHandlers());
+  const user = userEvent.setup();
+  mount();
+  await screen.findByText("online");
+
+  await user.click(screen.getByRole("tab", { name: /sources/i }));
+  const panel = screen.getByRole("tabpanel", { name: /sources/i });
+  // The create form is mounted (its domain field is reachable) and the list
+  // resolved to its empty state, so this is the real panel, not the stub.
+  assert.ok(within(panel).getByRole("heading", { name: "Add source" }));
+  assert.ok(within(panel).getByLabelText(/^domain$/i), "the create form is present");
+  await within(panel).findByText("No sources yet.");
+  assert.equal(within(panel).queryByText(/built in a later step/i), null);
 });

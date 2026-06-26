@@ -4,6 +4,7 @@ import { Health } from "./components/health.js";
 import { BackendStatus } from "./components/backendStatus.js";
 import { PersonaList } from "./components/personaList.js";
 import { PersonaForm } from "./components/personaForm.js";
+import { SourcesPanel } from "./components/sourcesPanel.js";
 import { RunPanel } from "./components/runPanel.js";
 
 // Mount the console into `root`. `deps.api` is injectable so a test can mount
@@ -12,8 +13,8 @@ import { RunPanel } from "./components/runPanel.js";
 //
 // The console is a six-tab ARIA tablist. Switching tabs only toggles `hidden`
 // (hide, not unmount), so controls in inactive tabs stay in the DOM and remain
-// findable by tests and assistive tech instead of being rebuilt. Sources,
-// Editorial, and Prompts are placeholders here; they get filled in later phases.
+// findable by tests and assistive tech instead of being rebuilt. Editorial and
+// Prompts are placeholders here; they get filled in later phases.
 export function mountApp(root, deps = {}) {
   const api = deps.api || defaultApi;
 
@@ -21,6 +22,7 @@ export function mountApp(root, deps = {}) {
   const backend = BackendStatus({ api });
   const list = PersonaList({ api });
   const form = PersonaForm({ api, onCreated: () => list.reload() });
+  const sources = SourcesPanel({ api });
   const runs = RunPanel({ api });
 
   const newPersonaPanel = el("section", { class: "panel" }, [
@@ -41,7 +43,7 @@ export function mountApp(root, deps = {}) {
 
   const tabs = [
     { id: "authors", label: "Authors", content: [newPersonaPanel, list.element] },
-    { id: "sources", label: "Sources", content: [placeholder("Sources")] },
+    { id: "sources", label: "Sources", content: [sources.element] },
     { id: "runs", label: "Runs", content: [runs.element] },
     { id: "editorial", label: "Editorial", content: [placeholder("Editorial")] },
     { id: "prompts", label: "Prompts", content: [placeholder("Prompts")] },
@@ -120,8 +122,9 @@ export function mountApp(root, deps = {}) {
   health.check();
   backend.refresh();
   list.reload();
+  sources.reload();
 
-  return { health, backend, list, form, runs, tabs: tabButtons, panels, select };
+  return { health, backend, list, form, sources, runs, tabs: tabButtons, panels, select };
 }
 
 // A stand-in panel for a section that lands in a later phase: just the heading
