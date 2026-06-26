@@ -37,3 +37,22 @@ def test_load_prompt_reads_the_role_play_synthesis_prompt():
     assert "You ARE {{DISPLAY_NAME}}" in text
     assert "few_shots_neg" in text
     assert "no length limit" in text.lower()
+
+
+def test_load_prompt_overrides_returns_override_and_falls_back_to_fs():
+    prompts_dir = load_settings().prompts_dir
+    overrides = {"persona/synthesize.md": "OVERRIDDEN BODY"}
+
+    # A key present in the overrides map short-circuits the file read.
+    assert load_prompt(prompts_dir, "persona", "synthesize.md", overrides=overrides) == (
+        "OVERRIDDEN BODY"
+    )
+
+    # A key NOT in the map falls back to the real on-disk prompt.
+    journalist = load_prompt(prompts_dir, "journalist", "research.md", overrides=overrides)
+    assert journalist == load_prompt(prompts_dir, "journalist", "research.md")
+
+    # No overrides at all behaves exactly as before (FS read).
+    assert load_prompt(prompts_dir, "persona", "synthesize.md", overrides=None) == load_prompt(
+        prompts_dir, "persona", "synthesize.md"
+    )

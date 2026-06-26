@@ -35,6 +35,7 @@ from newsroom.brain.routes import (
     editorial_router,
     personas_router,
     portals_router,
+    prompts_router,
     runs_router,
     status_router,
 )
@@ -43,7 +44,7 @@ from newsroom.brain.synthesis import PersonaSeed, synthesize_persona
 from newsroom.config import Settings, load_settings
 from newsroom.contracts.sections import SECTION_ENUM, is_valid_section
 from newsroom.db import open_db
-from newsroom.editorial import LocationStore, PortalStore, StyleStore
+from newsroom.editorial import LocationStore, PortalStore, PromptStore, StyleStore
 from newsroom.inference.provider import DEFAULT_MODEL, DEFAULT_PROVIDER, DIALECTS, ProviderConfig
 from newsroom.personas import PersonaStore, slugify
 from newsroom.runner import (
@@ -259,6 +260,7 @@ def create_app(
     portal_store: PortalStore | None = None,
     style_store: StyleStore | None = None,
     location_store: LocationStore | None = None,
+    prompt_store: PromptStore | None = None,
     auth_dependency: Callable | None = None,
 ) -> FastAPI:
     """Build the brain app. A test passes a ``settings`` pointed at the fake; for runs
@@ -338,6 +340,14 @@ def create_app(
     if location_store is None and conn is not None:
         location_store = LocationStore(conn)
 
+    # The prompt-library API (the versioned journalist/manager/etc. prompt templates) shares
+    # the same one connection, so a console prompt edit and a running pipeline serialize on
+    # the same lock. Built from the shared conn when not injected; a test that injects a
+    # pre-built persona store (conn is None) injects it alongside when the prompt routes are
+    # exercised.
+    if prompt_store is None and conn is not None:
+        prompt_store = PromptStore(conn)
+
     caps = DIALECTS[DEFAULT_PROVIDER]
     # The full settings ride on app.state so the status router can read the backend base
     # URL + operator token (the env-driven publish/mirror/read seam config) to probe the
@@ -348,6 +358,7 @@ def create_app(
     app.state.portal_store = portal_store
     app.state.style_store = style_store
     app.state.location_store = location_store
+    app.state.prompt_store = prompt_store
     app.state.run_deps = run_deps
     app.state.jobs = {}
     app.state.lock = lock
@@ -537,6 +548,11 @@ def create_app(
     # lexicon + sourcing sub-resources) and the publication location, under /editorial.
     # Added as its own router; it reads the StyleStore / LocationStore off app.state.
     app.include_router(editorial_router)
+
+    # The prompt-library MANAGEMENT API: the versioned journalist/manager/etc. prompt
+    # templates, under /prompts. Added as its own router; it reads the PromptStore off
+    # app.state. Keys carry a slash, so the key rides as a query/body param, never the path.
+    app.include_router(prompts_router)
 
     # The backend-connection STATUS API: GET /status/backend reports the configured
     # backend base URL + whether the operator token is set, plus a live, bounded probe of

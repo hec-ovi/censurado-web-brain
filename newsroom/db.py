@@ -158,6 +158,28 @@ CREATE TABLE IF NOT EXISTS style_guide_active (
   id      INTEGER PRIMARY KEY CHECK (id = 1),
   version INTEGER NOT NULL REFERENCES style_guide(version)
 );
+
+-- The prompt library (the journalist/manager/etc. prompt .md files) lifted into the SAME
+-- immutable-versions + active-pointer shape as the style guide: an edit inserts a new
+-- version and promote/rollback just moves the pointer, so every prompt is auditable and
+-- restorable. UNLIKE style_guide_active's single id=1 row, the active pointer is KEYED by
+-- the prompt's key (its relative path, e.g. 'journalist/research.md'), so each key tracks
+-- its own live version. open_db enables foreign_keys, so a version row is inserted BEFORE
+-- the active pointer that references it.
+CREATE TABLE IF NOT EXISTS prompt_template (
+  version    INTEGER PRIMARY KEY AUTOINCREMENT,
+  key        TEXT NOT NULL,
+  body       TEXT NOT NULL DEFAULT '',
+  created_by TEXT NOT NULL DEFAULT '',
+  created_at TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_prompt_template_key ON prompt_template(key);
+
+CREATE TABLE IF NOT EXISTS prompt_template_active (
+  key     TEXT PRIMARY KEY,
+  version INTEGER NOT NULL REFERENCES prompt_template(version)
+);
 """
 
 

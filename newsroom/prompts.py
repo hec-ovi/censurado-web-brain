@@ -17,8 +17,19 @@ __all__ = ["load_prompt", "render"]
 _TOKEN = re.compile(r"\{\{(\w+)\}\}")
 
 
-def load_prompt(prompts_dir: Path | str, *parts: str) -> str:
-    """Read a prompt's raw text, e.g. ``load_prompt(dir, "persona", "synthesize.md")``."""
+def load_prompt(
+    prompts_dir: Path | str, *parts: str, overrides: dict[str, str] | None = None
+) -> str:
+    """Read a prompt's raw text, e.g. ``load_prompt(dir, "persona", "synthesize.md")``.
+
+    ``overrides`` is an optional ``{key: body}`` map keyed by the prompt's path joined with
+    ``/`` (e.g. ``persona/synthesize.md``); when a key is present its body is returned in
+    place of the file, so a versioned store can override the on-disk prompt. A missing key
+    (or no ``overrides`` at all) falls back to reading the file."""
+    if overrides is not None:
+        body = overrides.get("/".join(parts))
+        if body is not None:
+            return body
     return Path(prompts_dir).joinpath(*parts).read_text(encoding="utf-8")
 
 

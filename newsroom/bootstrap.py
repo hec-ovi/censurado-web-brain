@@ -111,8 +111,10 @@ def bootstrap(
     active set (a soft-deactivated author is never assigned). ``runner`` and
     ``fetch_authors`` default to production; tests inject doubles to assert the wiring
     without the inference pipeline or a real platform. ``seed_overrides`` are forwarded
-    to ``seed_all`` (location/portals/personas/style)."""
+    to ``seed_all`` (location/portals/personas/style/prompts_dir)."""
     conn = open_db(settings.persona_db_path, check_same_thread=False)
+    # Seed the prompt library from the configured prompts_dir unless a caller overrode it.
+    seed_overrides.setdefault("prompts_dir", settings.prompts_dir)
     seeded = seed_all(conn, **seed_overrides)
     reconciled = _reconcile_from_web(settings, conn, fetch_authors)
     result: dict = {

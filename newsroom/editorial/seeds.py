@@ -17,9 +17,11 @@ from __future__ import annotations
 
 import sqlite3
 from dataclasses import dataclass
+from pathlib import Path
 
 from newsroom.editorial.location import DEFAULT_LOCATION, Location, LocationStore
 from newsroom.editorial.portals import Portal, PortalStore
+from newsroom.editorial.prompts_store import PromptStore
 from newsroom.editorial.style import StyleGuide, StyleStore
 from newsroom.personas.store import Persona, PersonaStore
 
@@ -27,13 +29,20 @@ __all__ = [
     "DEFAULT_PORTALS",
     "DEFAULT_PERSONAS",
     "DEFAULT_STYLE",
+    "DEFAULT_PROMPTS_DIR",
     "SeedResult",
     "seed_location",
     "seed_portals",
     "seed_personas",
     "seed_style",
+    "seed_prompts",
     "seed_all",
 ]
+
+# The on-disk prompt library the seeder lifts into the versioned prompt store. Same value
+# config.Settings defaults ``prompts_dir`` to (the repo's ``prompts/``); bootstrap passes
+# ``settings.prompts_dir`` explicitly, this default keeps ``seed_all`` self-contained.
+DEFAULT_PROMPTS_DIR: Path = Path(__file__).resolve().parents[2] / "prompts"
 
 
 # The operator's own local news portals. The three the operator named, plus a few more
@@ -202,6 +211,8 @@ class SeedResult:
     personas_created: list[str] | None = None
     personas_skipped: list[str] | None = None
     style_created: bool = False
+    prompts_created: list[str] | None = None
+    prompts_skipped: list[str] | None = None
 
     def as_dict(self) -> dict:
         return {
@@ -211,6 +222,8 @@ class SeedResult:
             "personas_created": self.personas_created or [],
             "personas_skipped": self.personas_skipped or [],
             "style_created": self.style_created,
+            "prompts_created": self.prompts_created or [],
+            "prompts_skipped": self.prompts_skipped or [],
         }
 
 
@@ -261,6 +274,28 @@ def seed_style(conn: sqlite3.Connection, style: StyleGuide = DEFAULT_STYLE) -> b
     return True
 
 
+def seed_prompts(
+    conn: sqlite3.Connection, prompts_dir: Path | str = DEFAULT_PROMPTS_DIR
+) -> tuple[list[str], list[str]]:
+    """Lift each ``<role>/<name>.md`` prompt file into the versioned prompt store as the
+    active v1 of its key (the relative path with forward slashes, e.g.
+    ``journalist/research.md``). Find-or-create per key: a key that already has an active
+    version is never replaced, so an operator's later edit is preserved. Returns
+    (created_keys, skipped_keys)."""
+    store = PromptStore(conn)
+    root = Path(prompts_dir)
+    created: list[str] = []
+    skipped: list[str] = []
+    for path in sorted(root.rglob("*.md")):
+        key = path.relative_to(root).as_posix()
+        if store.active(key) is not None:
+            skipped.append(key)
+            continue
+        store.add_version(key, path.read_text(encoding="utf-8"), created_by="seed", activate=True)
+        created.append(key)
+    return created, skipped
+
+
 def seed_all(
     conn: sqlite3.Connection,
     *,
@@ -268,13 +303,16 @@ def seed_all(
     portals=DEFAULT_PORTALS,
     personas=DEFAULT_PERSONAS,
     style: StyleGuide = DEFAULT_STYLE,
+    prompts_dir: Path | str = DEFAULT_PROMPTS_DIR,
 ) -> SeedResult:
-    """Seed location, portals, personas, and the house style over one connection,
-    idempotently. Returns a per-category summary of what was created versus skipped."""
+    """Seed location, portals, personas, the house style, and the prompt library over one
+    connection, idempotently. Returns a per-category summary of what was created versus
+    skipped."""
     location_created = seed_location(conn, location)
     portals_created, portals_skipped = seed_portals(conn, portals)
     personas_created, personas_skipped = seed_personas(conn, personas)
     style_created = seed_style(conn, style)
+    prompts_created, prompts_skipped = seed_prompts(conn, prompts_dir)
     return SeedResult(
         location_created=location_created,
         portals_created=portals_created,
@@ -282,4 +320,6 @@ def seed_all(
         personas_created=personas_created,
         personas_skipped=personas_skipped,
         style_created=style_created,
+        prompts_created=prompts_created,
+        prompts_skipped=prompts_skipped,
     )
