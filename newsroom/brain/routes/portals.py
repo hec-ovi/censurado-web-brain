@@ -15,9 +15,9 @@ methods (``create``/``update``/``delete``/``set_enabled``/``get``/``list``) and 
 store's ``ValueError``/``KeyError`` to problem responses.
 
 No auth here by design (the brain API has none today; ``operator_token`` is the
-brain->web credential, not a guard on the brain's own API). The router is structured
-so a future central auth dependency can be added on the ``APIRouter`` (or a shared
-``Depends``) without touching the handlers.
+brain->web credential, not a guard on the brain's own API). Auth is wired in ONE place:
+``create_app`` hangs the shared ``newsroom.brain.auth.require_auth`` seam on the app, so
+it covers this router with every other route at once, no per-handler change.
 """
 
 from __future__ import annotations
@@ -32,7 +32,7 @@ from newsroom.editorial import Portal
 
 __all__ = ["router"]
 
-router = APIRouter()
+router = APIRouter(tags=["portals"])
 
 
 class PortalIn(BaseModel):
@@ -124,7 +124,7 @@ async def create_portal(body: PortalIn, request: Request):
     return _out(stored)
 
 
-@router.get("/portals", response_model=PortalListOut)
+@router.get("/portals", status_code=200, response_model=PortalListOut)
 async def list_portals(
     request: Request,
     enabled: bool | None = None,
@@ -144,17 +144,17 @@ async def list_portals(
     return PortalListOut(portals=[_out(p) for p in window], total=total)
 
 
-@router.get("/portals/{portal_id}", response_model=PortalOut)
+@router.get("/portals/{portal_id}", status_code=200, response_model=PortalOut)
 async def get_portal(portal_id: str, request: Request):
     state = request.app.state
     with state.lock:
         portal = state.portal_store.get(portal_id)
     if portal is None:
-        return _problem(404, "not_found", detail=f"no portal {portal_id!r}")
+        return _problem(404, "portal_not_found", detail=f"no portal {portal_id!r}")
     return _out(portal)
 
 
-@router.patch("/portals/{portal_id}", response_model=PortalOut)
+@router.patch("/portals/{portal_id}", status_code=200, response_model=PortalOut)
 async def patch_portal(portal_id: str, body: PortalPatch, request: Request):
     """Partial update: only the fields the body NAMES (non-``None``) are applied. 404 if
     the portal is missing; 422 on a value the store rejects (e.g. an invalid
@@ -165,13 +165,13 @@ async def patch_portal(portal_id: str, body: PortalPatch, request: Request):
         with state.lock:
             portal = state.portal_store.get(portal_id)
         if portal is None:
-            return _problem(404, "not_found", detail=f"no portal {portal_id!r}")
+            return _problem(404, "portal_not_found", detail=f"no portal {portal_id!r}")
         return _out(portal)
     try:
         with state.lock:
             stored = state.portal_store.update(portal_id, **changes)
     except KeyError:
-        return _problem(404, "not_found", detail=f"no portal {portal_id!r}")
+        return _problem(404, "portal_not_found", detail=f"no portal {portal_id!r}")
     except ValueError as exc:
         return _problem(422, "invalid_portal", detail=str(exc))
     return _out(stored)
@@ -184,16 +184,16 @@ async def delete_portal(portal_id: str, request: Request):
     with state.lock:
         removed = state.portal_store.delete(portal_id)
     if not removed:
-        return _problem(404, "not_found", detail=f"no portal {portal_id!r}")
+        return _problem(404, "portal_not_found", detail=f"no portal {portal_id!r}")
     return Response(status_code=204)
 
 
-@router.post("/portals/{portal_id}/enable", response_model=PortalOut)
+@router.post("/portals/{portal_id}/enable", status_code=200, response_model=PortalOut)
 async def enable_portal(portal_id: str, request: Request):
     return _set_enabled(request, portal_id, True)
 
 
-@router.post("/portals/{portal_id}/disable", response_model=PortalOut)
+@router.post("/portals/{portal_id}/disable", status_code=200, response_model=PortalOut)
 async def disable_portal(portal_id: str, request: Request):
     return _set_enabled(request, portal_id, False)
 
@@ -206,5 +206,5 @@ def _set_enabled(request: Request, portal_id: str, enabled: bool):
         with state.lock:
             stored = state.portal_store.set_enabled(portal_id, enabled)
     except KeyError:
-        return _problem(404, "not_found", detail=f"no portal {portal_id!r}")
+        return _problem(404, "portal_not_found", detail=f"no portal {portal_id!r}")
     return _out(stored)

@@ -32,7 +32,7 @@ from newsroom.mirror import probe_backend
 
 __all__ = ["router"]
 
-router = APIRouter()
+router = APIRouter(tags=["status"])
 
 
 class BackendStatusOut(BaseModel):

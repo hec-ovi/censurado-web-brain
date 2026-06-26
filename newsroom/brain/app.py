@@ -17,21 +17,28 @@ from __future__ import annotations
 
 import threading
 import uuid
+from collections.abc import Callable
 from dataclasses import asdict, dataclass
+from importlib.metadata import PackageNotFoundError
+from importlib.metadata import version as _pkg_version
 
-from fastapi import BackgroundTasks, FastAPI, Request
+from fastapi import BackgroundTasks, Depends, FastAPI, Request
 from fastapi.exceptions import RequestValidationError
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
+from newsroom.brain.auth import require_auth
 from newsroom.brain.problems import _problem
 from newsroom.brain.routes import (
+    admin_router,
     editorial_router,
     personas_router,
     portals_router,
     runs_router,
     status_router,
 )
+from newsroom.brain.routes.personas import PersonaOut
 from newsroom.brain.synthesis import PersonaSeed, synthesize_persona
 from newsroom.config import Settings, load_settings
 from newsroom.contracts.sections import SECTION_ENUM, is_valid_section
@@ -52,6 +59,18 @@ from newsroom.runner import (
 from newsroom.runs import Run
 
 __all__ = ["create_app", "Job"]
+
+try:  # the installed distribution version, surfaced in the OpenAPI/Swagger metadata
+    API_VERSION = _pkg_version("censurado-web-brain")
+except PackageNotFoundError:  # running from a source tree without an installed dist
+    API_VERSION = "0.0.0"
+
+API_DESCRIPTION = (
+    "The agentic newsroom brain: a headless-drivable HTTP surface over source/author/"
+    "editorial config CRUD, the run lifecycle (managed/express/manual batches and the "
+    "direct-from-brief path), asynchronous persona synthesis, the platform-author backfill, "
+    "newsroom bootstrap, and the backend-connection status probe."
+)
 
 
 class PersonaSeedIn(BaseModel):
@@ -90,6 +109,78 @@ class DirectBriefRequest(BaseModel):
     focus: str | None = None
     url: str | None = None
     images: bool | None = None
+
+
+class HealthOut(BaseModel):
+    """The GET /health liveness body: ``ok`` is always True when the process answers."""
+
+    ok: bool
+
+
+class JobAcceptedOut(BaseModel):
+    """The POST /personas (synthesis) 202 body: the ``job_id`` to poll, the ``persona_id``
+    the finished draft will land under, and the initial ``status`` (``pending``)."""
+
+    job_id: str
+    persona_id: str
+    status: str
+
+
+class JobStatusOut(BaseModel):
+    """The GET /personas/jobs/{job_id} body: the synthesis job's state. ``status`` is
+    ``pending`` | ``done`` | ``failed``; ``persona_id`` is the (eventual) draft id;
+    ``error`` carries the failure reason when ``status == "failed"``, else empty."""
+
+    job_id: str
+    status: str
+    persona_id: str
+    error: str
+
+
+class PersonaListOut(BaseModel):
+    """The GET /personas response: the ``limit``/``offset`` window plus ``total``, the
+    count BEFORE pagination -- matching the source/run/version listings so a client pages
+    the persona collection the same way."""
+
+    personas: list[PersonaOut]
+    total: int
+
+
+class RunAcceptedOut(BaseModel):
+    """The POST /runs and POST /articles/from-link 202 body: the ``run_id`` to poll, the
+    resolved ``mode``, and the initial ``status``."""
+
+    run_id: str
+    mode: str
+    status: str
+
+
+class AssignmentOut(BaseModel):
+    """One assignment inside a run detail: the editorial slot plus its terminal status
+    (``published_id`` when it published, ``drop_reason`` when it was dropped,
+    ``image_url`` when a hero image was attached)."""
+
+    id: str
+    persona_id: str
+    section: str
+    status: str
+    published_id: str | None = None
+    drop_reason: str | None = None
+    image_url: str | None = None
+
+
+class RunDetailOut(BaseModel):
+    """The GET /runs/{run_id} body: one run record plus its per-assignment statuses (the
+    drill-in the compact ``GET /runs`` listing points at). Identity is ``run_id`` by the
+    run/job convention (see ``routes.runs.RunOut``)."""
+
+    run_id: str
+    mode: str
+    status: str
+    n_requested: int | None
+    created_at: str
+    finished_at: str | None
+    assignments: list[AssignmentOut]
 
 
 @dataclass
@@ -168,15 +259,45 @@ def create_app(
     portal_store: PortalStore | None = None,
     style_store: StyleStore | None = None,
     location_store: LocationStore | None = None,
+    auth_dependency: Callable | None = None,
 ) -> FastAPI:
     """Build the brain app. A test passes a ``settings`` pointed at the fake; for runs
     it also injects ``run_deps`` (with in-process search/research doubles) so a run
     never leaves the box. Production lets everything default from the environment.
 
     The persona store and the run deps share ONE SQLite connection and ONE lock, so
-    synthesis writes and run writes serialize on the same connection."""
+    synthesis writes and run writes serialize on the same connection.
+
+    ``auth_dependency`` overrides the app-wide auth seam: by default the no-op
+    ``newsroom.brain.auth.require_auth`` is wired onto ``FastAPI(dependencies=[...])``,
+    which runs ahead of EVERY route (the inline lifecycle routes AND every included
+    router) -- so turning auth on later is a one-place change. A test passes a dependency
+    that raises to prove the seam guards the whole surface at once."""
     settings = settings or load_settings()
-    app = FastAPI(title="censurado-web-brain")
+
+    # The single auth seam, wired app-wide: it covers the inline routes and every router
+    # below in one place. Default is the no-op; pass ``auth_dependency`` to override.
+    auth = auth_dependency or require_auth
+    app = FastAPI(
+        title="censurado-web-brain",
+        description=API_DESCRIPTION,
+        version=API_VERSION,
+        dependencies=[Depends(auth)],
+    )
+
+    # Browser CORS: a browser admin/mobile-web client served from another origin must
+    # clear the preflight to call the brain. Origins are env-driven
+    # (``NEWSROOM_CORS_ORIGINS``); a bare ``*`` allows any origin but drops credentialed
+    # CORS (the spec forbids ``*`` with credentials, and the brain authenticates by
+    # header, not cookie).
+    origins = list(settings.cors_origins)
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=origins,
+        allow_credentials="*" not in origins,
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
 
     # Every body/query validation failure becomes the shared problem+json envelope
     # (code == "validation_failed"), so clients branch on one error shape across the
@@ -239,11 +360,11 @@ def create_app(
         **caps,
     )
 
-    @app.get("/health")
+    @app.get("/health", status_code=200, response_model=HealthOut, tags=["system"])
     async def health() -> dict:
         return {"ok": True}
 
-    @app.post("/personas")
+    @app.post("/personas", status_code=202, response_model=JobAcceptedOut, tags=["personas"])
     async def create_persona(body: PersonaSeedIn, background_tasks: BackgroundTasks, request: Request):
         if not is_valid_section(body.beat):
             return _problem(422, "invalid_beat", detail=f"beat must be one of {SECTION_ENUM}")
@@ -268,7 +389,7 @@ def create_app(
             headers={"Location": f"/personas/jobs/{job_id}"},
         )
 
-    @app.get("/personas/jobs/{job_id}")
+    @app.get("/personas/jobs/{job_id}", status_code=200, response_model=JobStatusOut, tags=["personas"])
     async def get_job(job_id: str, request: Request):
         state = request.app.state
         with state.lock:
@@ -282,7 +403,7 @@ def create_app(
             "error": job.error,
         }
 
-    @app.get("/personas/{persona_id}")
+    @app.get("/personas/{persona_id}", status_code=200, response_model=PersonaOut, tags=["personas"])
     async def get_persona(persona_id: str, request: Request):
         state = request.app.state
         with state.lock:
@@ -291,17 +412,25 @@ def create_app(
             return _problem(404, "persona_not_found")
         return asdict(persona)
 
-    @app.get("/personas")
-    async def list_personas(request: Request, beat: str | None = None):
+    @app.get("/personas", status_code=200, response_model=PersonaListOut, tags=["personas"])
+    async def list_personas(
+        request: Request, beat: str | None = None, limit: int = 100, offset: int = 0
+    ):
         state = request.app.state
         with state.lock:
             # The registry view shows every persona, active or soft-deactivated, so an
             # operator can see a mirror tombstone and its ``active`` flag. The run path
             # is the one that filters to active (see runner._select_personas).
             items = state.store.list(beat=beat, include_inactive=True)
-        return {"personas": [asdict(p) for p in items]}
+        total = len(items)
+        limit = max(0, limit)
+        offset = max(0, offset)
+        # ``total`` is the count BEFORE the window (so a client can page), matching the
+        # source/run/version listings; ``personas`` is the limit/offset slice.
+        window = items[offset : offset + limit]
+        return {"personas": [asdict(p) for p in window], "total": total}
 
-    @app.post("/runs")
+    @app.post("/runs", status_code=202, response_model=RunAcceptedOut, tags=["runs"])
     async def create_run(body: RunRequest, background_tasks: BackgroundTasks, request: Request):
         deps: RunDeps = request.app.state.run_deps
         if body.mode not in RUN_MODES:
@@ -318,7 +447,7 @@ def create_app(
             headers={"Location": f"/runs/{run.id}"},
         )
 
-    @app.post("/articles/from-link")
+    @app.post("/articles/from-link", status_code=202, response_model=RunAcceptedOut, tags=["runs"])
     async def create_from_link(
         body: DirectBriefRequest, background_tasks: BackgroundTasks, request: Request
     ):
@@ -358,7 +487,7 @@ def create_app(
             headers={"Location": f"/runs/{run.id}"},
         )
 
-    @app.get("/runs/{run_id}")
+    @app.get("/runs/{run_id}", status_code=200, response_model=RunDetailOut, tags=["runs"])
     async def get_run(run_id: str, request: Request):
         deps: RunDeps = request.app.state.run_deps
         with request.app.state.lock:
@@ -414,5 +543,10 @@ def create_app(
     # the backend read API (reachable / authorized / remote author count). Reads
     # ``settings`` off app.state; degrades gracefully (a down backend is a 200 verdict).
     app.include_router(status_router)
+
+    # The MANAGEMENT API: POST /mirror/authors (the brain->backend author backfill) and
+    # POST /bootstrap (seed a fresh box, optionally run one batch) -- the two lifecycle
+    # actions that were CLI-only, now headless-drivable over HTTP like the rest of the infra.
+    app.include_router(admin_router)
 
     return app

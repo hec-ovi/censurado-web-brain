@@ -47,21 +47,21 @@ def test_link_lifecycle_get_put_post_delete(tmp_path):
     assert got.status_code == 200
     body = got.json()
     assert body["persona_id"] == "ada-lovelace"
-    assert body["source_ids"] == []
+    assert body["sources"] == []
     assert body["portals"] == []
 
     # PUT a validated set: both ids exist, so the set lands and resolves to the portals.
     put = client.put(
         "/personas/ada-lovelace/sources",
-        json={"source_ids": ["clarin-com", "lanacion-com"]},
+        json={"sources": ["clarin-com", "lanacion-com"]},
     )
     assert put.status_code == 200
     pj = put.json()
-    assert pj["source_ids"] == ["clarin-com", "lanacion-com"]
+    assert pj["sources"] == ["clarin-com", "lanacion-com"]
     assert [p["id"] for p in pj["portals"]] == ["clarin-com", "lanacion-com"]
 
     # GET reflects the PUT, and the persona's own `sources` field carries the same ids.
-    assert client.get("/personas/ada-lovelace/sources").json()["source_ids"] == [
+    assert client.get("/personas/ada-lovelace/sources").json()["sources"] == [
         "clarin-com",
         "lanacion-com",
     ]
@@ -70,12 +70,12 @@ def test_link_lifecycle_get_put_post_delete(tmp_path):
     # DELETE unlinks one; the other remains.
     deleted = client.delete("/personas/ada-lovelace/sources/clarin-com")
     assert deleted.status_code == 200
-    assert deleted.json()["source_ids"] == ["lanacion-com"]
+    assert deleted.json()["sources"] == ["lanacion-com"]
 
     # POST links it back (idempotent add appends after the survivor).
     linked = client.post("/personas/ada-lovelace/sources/clarin-com")
     assert linked.status_code == 200
-    assert linked.json()["source_ids"] == ["lanacion-com", "clarin-com"]
+    assert linked.json()["sources"] == ["lanacion-com", "clarin-com"]
 
 
 def test_put_with_unknown_id_is_422_naming_it_and_writes_nothing(tmp_path):
@@ -84,7 +84,7 @@ def test_put_with_unknown_id_is_422_naming_it_and_writes_nothing(tmp_path):
 
     resp = client.put(
         "/personas/ada-lovelace/sources",
-        json={"source_ids": ["clarin-com", "ghost-com"]},
+        json={"sources": ["clarin-com", "ghost-com"]},
     )
     assert resp.status_code == 422
     assert resp.headers["content-type"] == "application/problem+json"
@@ -93,17 +93,17 @@ def test_put_with_unknown_id_is_422_naming_it_and_writes_nothing(tmp_path):
     assert "ghost-com" in j["detail"]  # the offending id is named
 
     # The rejected PUT wrote nothing: the pool is still empty.
-    assert client.get("/personas/ada-lovelace/sources").json()["source_ids"] == []
+    assert client.get("/personas/ada-lovelace/sources").json()["sources"] == []
 
 
 def test_put_empty_list_clears_the_pool(tmp_path):
     client = _client(tmp_path)
     _seed(client)
-    client.put("/personas/ada-lovelace/sources", json={"source_ids": ["clarin-com"]})
+    client.put("/personas/ada-lovelace/sources", json={"sources": ["clarin-com"]})
 
-    cleared = client.put("/personas/ada-lovelace/sources", json={"source_ids": []})
+    cleared = client.put("/personas/ada-lovelace/sources", json={"sources": []})
     assert cleared.status_code == 200
-    assert cleared.json()["source_ids"] == []
+    assert cleared.json()["sources"] == []
 
 
 def test_put_dedups_repeated_ids(tmp_path):
@@ -111,10 +111,10 @@ def test_put_dedups_repeated_ids(tmp_path):
     _seed(client)
     resp = client.put(
         "/personas/ada-lovelace/sources",
-        json={"source_ids": ["clarin-com", "clarin-com", "lanacion-com"]},
+        json={"sources": ["clarin-com", "clarin-com", "lanacion-com"]},
     )
     assert resp.status_code == 200
-    assert resp.json()["source_ids"] == ["clarin-com", "lanacion-com"]  # collapsed, order kept
+    assert resp.json()["sources"] == ["clarin-com", "lanacion-com"]  # collapsed, order kept
 
 
 def test_post_link_is_idempotent(tmp_path):
@@ -123,12 +123,12 @@ def test_post_link_is_idempotent(tmp_path):
 
     first = client.post("/personas/ada-lovelace/sources/clarin-com")
     assert first.status_code == 200
-    assert first.json()["source_ids"] == ["clarin-com"]
+    assert first.json()["sources"] == ["clarin-com"]
 
     # Linking the same source again is a success that does not duplicate it.
     again = client.post("/personas/ada-lovelace/sources/clarin-com")
     assert again.status_code == 200
-    assert again.json()["source_ids"] == ["clarin-com"]
+    assert again.json()["sources"] == ["clarin-com"]
 
 
 def test_delete_unlink_is_idempotent(tmp_path):
@@ -137,11 +137,11 @@ def test_delete_unlink_is_idempotent(tmp_path):
     client.post("/personas/ada-lovelace/sources/clarin-com")
 
     once = client.delete("/personas/ada-lovelace/sources/clarin-com")
-    assert once.status_code == 200 and once.json()["source_ids"] == []
+    assert once.status_code == 200 and once.json()["sources"] == []
 
     # Unlinking an absent source is a success, not a 404.
     twice = client.delete("/personas/ada-lovelace/sources/clarin-com")
-    assert twice.status_code == 200 and twice.json()["source_ids"] == []
+    assert twice.status_code == 200 and twice.json()["sources"] == []
 
 
 def test_post_link_unknown_portal_is_404(tmp_path):
@@ -150,7 +150,7 @@ def test_post_link_unknown_portal_is_404(tmp_path):
     resp = client.post("/personas/ada-lovelace/sources/ghost-com")
     assert resp.status_code == 404
     assert resp.headers["content-type"] == "application/problem+json"
-    assert resp.json()["code"] == "not_found"
+    assert resp.json()["code"] == "portal_not_found"
     assert "ghost-com" in resp.json()["detail"]
 
 
@@ -159,14 +159,14 @@ def test_delete_unlink_tolerates_a_missing_portal(tmp_path):
     # link, NOT 404 on the missing portal -- DELETE 404s only on a missing persona.
     client = _client(tmp_path)
     _seed(client)
-    client.put("/personas/ada-lovelace/sources", json={"source_ids": ["clarin-com"]})
+    client.put("/personas/ada-lovelace/sources", json={"sources": ["clarin-com"]})
     assert client.delete("/portals/clarin-com").status_code == 204  # portal gone, link stays
 
-    # The stale link is visible (in source_ids, not portals) and can be unlinked.
+    # The stale link is visible (in sources, not portals) and can be unlinked.
     pool = client.get("/personas/ada-lovelace/sources").json()
-    assert pool["source_ids"] == ["clarin-com"] and pool["portals"] == []
+    assert pool["sources"] == ["clarin-com"] and pool["portals"] == []
     cleaned = client.delete("/personas/ada-lovelace/sources/clarin-com")
-    assert cleaned.status_code == 200 and cleaned.json()["source_ids"] == []
+    assert cleaned.status_code == 200 and cleaned.json()["sources"] == []
 
 
 def test_routes_404_on_a_missing_persona(tmp_path):
@@ -180,10 +180,10 @@ def test_routes_404_on_a_missing_persona(tmp_path):
         resp = getattr(client, method)(path)
         assert resp.status_code == 404
         assert resp.headers["content-type"] == "application/problem+json"
-        assert resp.json()["code"] == "not_found"
+        assert resp.json()["code"] == "persona_not_found"
 
-    put = client.put("/personas/ghost/sources", json={"source_ids": ["clarin-com"]})
-    assert put.status_code == 404 and put.json()["code"] == "not_found"
+    put = client.put("/personas/ghost/sources", json={"sources": ["clarin-com"]})
+    assert put.status_code == 404 and put.json()["code"] == "persona_not_found"
 
 
 def test_openapi_types_the_linking_responses(tmp_path):

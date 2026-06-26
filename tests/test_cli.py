@@ -379,6 +379,25 @@ def test_cli_sources_unknown_subverb_exits_1_with_usage(tmp_path, capsys):
     assert "teleport" in json.loads(capsys.readouterr().out)["error"]
 
 
+def test_cli_sources_get_returns_one_source(tmp_path, capsys):
+    # `sources get <id>` reads a single source by id, the CLI parity of GET /portals/{id}.
+    store = PortalStore(open_db(tmp_path / "brain.db", check_same_thread=False))
+    assert main(["sources", "add", "--domain", "clarin.com"], portal_store=store) == 0
+    capsys.readouterr()
+
+    assert main(["sources", "get", "clarin-com"], portal_store=store) == 0
+    got = json.loads(capsys.readouterr().out)
+    assert got["id"] == "clarin-com" and got["domain"] == "clarin.com"
+
+
+def test_cli_sources_get_unknown_id_exits_1_with_a_json_error(tmp_path, capsys):
+    # `sources get` on an unknown id is the CLI parity of the route's 404: a JSON error and
+    # a non-zero exit, never a traceback.
+    store = PortalStore(open_db(tmp_path / "brain.db", check_same_thread=False))
+    assert main(["sources", "get", "ghost"], portal_store=store) == 1
+    assert "ghost" in json.loads(capsys.readouterr().out)["error"]
+
+
 def test_cli_authors_add_get_list_update_remove(tmp_path, capsys):
     # The `authors` verb group curates the persona registry from the command line WITHOUT
     # a synthesis job, mirroring the HTTP management API. One injected store backs every
@@ -523,21 +542,21 @@ def test_cli_authors_sources_get_set_add_remove(tmp_path, capsys):
 
     # get: the pool starts empty.
     assert _run(["authors", "sources", "get", "ada"]) == {
-        "persona_id": "ada", "source_ids": [], "portals": []
+        "persona_id": "ada", "sources": [], "portals": []
     }
 
     # set: replaces the pool from --sources, validated, and resolves to the portals.
     set_out = _run(["authors", "sources", "set", "ada", "--sources", "clarin-com, lanacion-com"])
-    assert set_out["source_ids"] == ["clarin-com", "lanacion-com"]
+    assert set_out["sources"] == ["clarin-com", "lanacion-com"]
     assert [p["id"] for p in set_out["portals"]] == ["clarin-com", "lanacion-com"]
 
     # get reflects the set, and the persona's own `sources` field carries the same ids.
-    assert _run(["authors", "sources", "get", "ada"])["source_ids"] == ["clarin-com", "lanacion-com"]
+    assert _run(["authors", "sources", "get", "ada"])["sources"] == ["clarin-com", "lanacion-com"]
     assert persona_store.get("ada").sources == ["clarin-com", "lanacion-com"]
 
     # remove unlinks one; add links it back (idempotent, appended after the survivor).
-    assert _run(["authors", "sources", "remove", "ada", "clarin-com"])["source_ids"] == ["lanacion-com"]
-    assert _run(["authors", "sources", "add", "ada", "clarin-com"])["source_ids"] == [
+    assert _run(["authors", "sources", "remove", "ada", "clarin-com"])["sources"] == ["lanacion-com"]
+    assert _run(["authors", "sources", "add", "ada", "clarin-com"])["sources"] == [
         "lanacion-com", "clarin-com"
     ]
 
@@ -574,7 +593,7 @@ def test_cli_authors_sources_remove_is_idempotent(tmp_path, capsys):
         persona_store=persona_store, portal_store=portal_store,
     )
     assert code == 0
-    assert json.loads(capsys.readouterr().out)["source_ids"] == []
+    assert json.loads(capsys.readouterr().out)["sources"] == []
 
 
 def test_cli_authors_sources_on_unknown_author_is_an_error(tmp_path, capsys):
@@ -599,6 +618,108 @@ def test_cli_authors_sources_unknown_subverb_exits_1(tmp_path, capsys):
     )
     assert code == 1
     assert "teleport" in json.loads(capsys.readouterr().out)["error"]
+
+
+# ----- authors synthesize (the model path, CLI parity of POST /personas synthesis) -----
+
+# A complete synthesized persona as the model is scripted to return it (the same shape the
+# HTTP synthesis test uses), for the end-to-end CLI synthesize test against the fake.
+_PERSONA_JSON = {
+    "who_i_am": "I am Ada Rez. I cover machine learning the way a mechanic covers engines.",
+    "about": "Ada Rez is a technology reporter focused on applied machine learning.",
+    "style": "Short declaratives. Name the system, the claim, and the evidence. No hype.",
+    "few_shots_pos": [],
+    "few_shots_neg": [{"prompt": "a launch", "bad": "This GAME-CHANGING AI will BLOW YOUR MIND!"}],
+    "sources": ["arxiv-org"],
+}
+
+
+def test_cli_authors_synthesize_creates_a_persona_via_injected_synth(tmp_path, capsys):
+    # `authors synthesize` is the CLI parity of the async POST /personas synthesis: it grows
+    # a persona from a free-text seed via one (here injected) model call, run synchronously,
+    # and prints the resulting PersonaOut. The injected synth persists from the seed it is
+    # handed, proving the verb wires the seed through and prints the stored row.
+    store = PersonaStore(open_db(tmp_path / "brain.db", check_same_thread=False))
+
+    def fake_synth(seed, *, store, settings):
+        created = store.create(
+            Persona(
+                display_name=seed.display_name,
+                beat=seed.beat,
+                who_i_am=f"I am {seed.display_name}. {seed.seed}",
+                style="dry",
+                sources=list(seed.sources or []),
+            )
+        )
+        return created.id
+
+    code = main(
+        ["authors", "synthesize", "--display-name", "Ada Rez", "--beat", "tech",
+         "--seed", "wire-style ML reporter", "--sources", "arxiv-org"],
+        persona_store=store, synthesize=fake_synth,
+    )
+    assert code == 0
+    out = json.loads(capsys.readouterr().out)
+    assert out["id"] == "ada-rez" and out["beat"] == "tech"
+    assert out["who_i_am"].startswith("I am Ada Rez")
+    assert out["sources"] == ["arxiv-org"]  # the seed's sources rode through
+
+
+def test_cli_authors_synthesize_invalid_beat_is_rejected_before_the_model(tmp_path, capsys):
+    # A bad beat is rejected UP FRONT (the same code path POST /personas takes), so no model
+    # call is made: the injected synth is never reached.
+    store = PersonaStore(open_db(tmp_path / "brain.db", check_same_thread=False))
+    called: list[int] = []
+
+    def fake_synth(seed, *, store, settings):
+        called.append(1)
+        return "x"
+
+    code = main(
+        ["authors", "synthesize", "--display-name", "Ada", "--beat", "gossip", "--seed", "x"],
+        persona_store=store, synthesize=fake_synth,
+    )
+    assert code == 1
+    assert "invalid beat" in json.loads(capsys.readouterr().out)["error"]
+    assert called == []  # no model call
+
+
+def test_cli_authors_synthesize_failure_is_a_clean_exit_1(tmp_path, capsys):
+    # A synthesis failure (bad model output, a store conflict) is surfaced as a JSON error
+    # and a non-zero exit, never a traceback.
+    from newsroom.brain.synthesis import SynthesisError
+
+    store = PersonaStore(open_db(tmp_path / "brain.db", check_same_thread=False))
+
+    def fake_synth(seed, *, store, settings):
+        raise SynthesisError("model did not return valid JSON")
+
+    code = main(
+        ["authors", "synthesize", "--display-name", "Ada", "--beat", "tech", "--seed", "x"],
+        persona_store=store, synthesize=fake_synth,
+    )
+    assert code == 1
+    assert "JSON" in json.loads(capsys.readouterr().out)["error"]
+
+
+def test_cli_authors_synthesize_end_to_end_against_the_fake(fake, tmp_path, monkeypatch, capsys):
+    # The REAL synthesis capability over the CLI: no injected synth, the production
+    # _default_synthesize calls the model (the fake, scripted) and persists the persona.
+    # Proves the synthesis CAPABILITY is genuinely CLI-reachable, not just the wiring.
+    monkeypatch.setenv("NEWSROOM_PERSONA_DB_PATH", str(tmp_path / "brain.db"))
+    monkeypatch.setenv("NEWSROOM_INFERENCE_BASE_URL", f"{fake.base_url}/v1")
+    fake.state.script_chat(json.dumps(_PERSONA_JSON))
+
+    code = main(
+        ["authors", "synthesize", "--display-name", "Ada Rez", "--beat", "tech",
+         "--seed", "a wire-style ML reporter who hates hype"],
+    )
+    assert code == 0
+    out = json.loads(capsys.readouterr().out)
+    assert out["id"] == "ada-rez"
+    assert out["who_i_am"].startswith("I am Ada Rez")
+    # The accepted chat carried no length cap (the fake's teardown guard also checks this).
+    assert "max_tokens" not in fake.state.chat_requests[-1]["body"]
 
 
 # ----- editorial config (house style + location) -----

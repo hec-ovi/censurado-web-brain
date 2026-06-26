@@ -19,12 +19,13 @@ Every handler reads the shared ``PersonaStore`` and the single connection lock o
 uses); writes go under the lock so a console edit and a running pipeline never race on
 the connection. The router holds NO SQL: it calls the store's existing methods
 (``create``/``update``/``delete``/``get``) and maps the store's ``ValueError``/``KeyError``
-to problem responses (404 not_found, 409 on a duplicate id or an in-use delete, 422 on
-an invalid field/beat).
+to problem responses (404 ``persona_not_found`` -- the resource-specific code the inline
+``GET /personas/{id}`` also uses -- 409 on a duplicate id or an in-use delete, 422 on an
+invalid field/beat).
 
-No auth here by design (the brain API has none today). The router is structured so a
-future central auth dependency can be added on the ``APIRouter`` without touching the
-handlers.
+No auth here by design (the brain API has none today). Auth is wired in ONE place:
+``create_app`` hangs the shared ``newsroom.brain.auth.require_auth`` seam on the app, so
+it covers this router with every other route at once, no per-handler change.
 """
 
 from __future__ import annotations
@@ -37,12 +38,13 @@ from pydantic import BaseModel
 from newsroom.brain.problems import _problem
 from newsroom.brain.routes.portals import PortalOut
 from newsroom.brain.routes.portals import _out as _portal_out
+from newsroom.contracts.sections import SECTION_ENUM, is_valid_section
 from newsroom.editorial import PortalStore
 from newsroom.personas import Persona
 
 __all__ = ["router"]
 
-router = APIRouter()
+router = APIRouter(tags=["personas"])
 
 
 class PersonaIn(BaseModel):
@@ -114,10 +116,14 @@ def _out(persona: Persona) -> PersonaOut:
 async def create_persona_direct(body: PersonaIn, request: Request):
     """Create a persona from explicit fields, with NO synthesis job: the row is
     persisted immediately and the stored ``PersonaOut`` returned with 201. The id is the
-    body's ``id`` when given, else derived from ``display_name``. A duplicate id -> 409
-    ``duplicate_id``; any other store rejection (invalid beat, underivable id) -> 422
-    ``invalid_persona``."""
+    body's ``id`` when given, else derived from ``display_name``. A bad beat is rejected
+    UP FRONT with 422 ``invalid_beat`` (the SAME code the synthesis ``POST /personas``
+    returns, so a client validating beats branches on one code regardless of create path);
+    a duplicate id -> 409 ``duplicate_id``; any other store rejection (underivable id) ->
+    422 ``invalid_persona``."""
     state = request.app.state
+    if not is_valid_section(body.beat):
+        return _problem(422, "invalid_beat", detail=f"beat must be one of {SECTION_ENUM}")
     persona = Persona(
         display_name=body.display_name,
         beat=body.beat,
@@ -142,7 +148,7 @@ async def create_persona_direct(body: PersonaIn, request: Request):
     return _out(stored)
 
 
-@router.patch("/personas/{persona_id}", response_model=PersonaOut)
+@router.patch("/personas/{persona_id}", status_code=200, response_model=PersonaOut)
 async def patch_persona(persona_id: str, body: PersonaPatch, request: Request):
     """Partial update: only the fields the body NAMES (non-``None``) are applied. 404 if
     the persona is missing; 422 on a value the store rejects (e.g. an invalid ``beat``).
@@ -154,13 +160,13 @@ async def patch_persona(persona_id: str, body: PersonaPatch, request: Request):
         with state.lock:
             persona = state.store.get(persona_id)
         if persona is None:
-            return _problem(404, "not_found", detail=f"no persona {persona_id!r}")
+            return _problem(404, "persona_not_found", detail=f"no persona {persona_id!r}")
         return _out(persona)
     try:
         with state.lock:
             stored = state.store.update(persona_id, **changes)
     except KeyError:
-        return _problem(404, "not_found", detail=f"no persona {persona_id!r}")
+        return _problem(404, "persona_not_found", detail=f"no persona {persona_id!r}")
     except ValueError as exc:
         return _problem(422, "invalid_persona", detail=str(exc))
     return _out(stored)
@@ -178,7 +184,7 @@ async def delete_persona(persona_id: str, request: Request):
     except ValueError as exc:
         return _problem(409, "persona_in_use", detail=str(exc))
     if not removed:
-        return _problem(404, "not_found", detail=f"no persona {persona_id!r}")
+        return _problem(404, "persona_not_found", detail=f"no persona {persona_id!r}")
     return Response(status_code=204)
 
 
@@ -199,24 +205,26 @@ async def delete_persona(persona_id: str, request: Request):
 
 class SourceLinksIn(BaseModel):
     """The PUT /personas/{id}/sources body: the FULL set of portal ids the persona
-    should be linked to (a replace, not a merge). An empty list clears the pool. Each
-    id is validated against the ``PortalStore`` before the write; an unknown id is
-    rejected (422) rather than silently stored, so the set can never carry a dangling
-    link."""
+    should be linked to (a replace, not a merge). The field is ``sources`` -- the SAME
+    name the persona carries everywhere else (``PersonaIn`` / ``PersonaPatch`` /
+    ``PersonaOut``), since the link set IS the persona's ``sources`` list. An empty list
+    clears the pool. Each id is validated against the ``PortalStore`` before the write; an
+    unknown id is rejected (422) rather than silently stored, so the set can never carry a
+    dangling link."""
 
-    source_ids: list[str] = []
+    sources: list[str] = []
 
 
 class PersonaSourcesOut(BaseModel):
-    """The persona's source pool. ``source_ids`` is the persona's ``sources`` field
+    """The persona's source pool. ``sources`` is the persona's ``sources`` field
     verbatim (the stored link set, in order); ``portals`` is each of those ids resolved
     to its live ``PortalOut``. An id that no longer resolves (its portal was deleted, or
-    a blind C2 patch wrote a stray id) still appears in ``source_ids`` but NOT in
+    a blind C2 patch wrote a stray id) still appears in ``sources`` but NOT in
     ``portals`` -- so a stale link is visible to the operator rather than silently
     dropped, and can be cleaned up by unlinking it."""
 
     persona_id: str
-    source_ids: list[str]
+    sources: list[str]
     portals: list[PortalOut]
 
 
@@ -235,7 +243,7 @@ def _dedup(ids: list[str]) -> list[str]:
 def _sources_out(persona: Persona, portal_store: PortalStore) -> PersonaSourcesOut:
     """Build the source-pool view for ``persona``: its raw ``sources`` ids plus those
     resolved to live ``PortalOut`` rows. Skips an id whose portal is gone (it stays in
-    ``source_ids``), so the view never invents a row for a stale link. The caller holds
+    ``sources``), so the view never invents a row for a stale link. The caller holds
     the connection lock (the portal lookups share the one connection)."""
     portals: list[PortalOut] = []
     for pid in persona.sources:
@@ -243,7 +251,7 @@ def _sources_out(persona: Persona, portal_store: PortalStore) -> PersonaSourcesO
         if portal is not None:
             portals.append(_portal_out(portal))
     return PersonaSourcesOut(
-        persona_id=persona.id, source_ids=list(persona.sources), portals=portals
+        persona_id=persona.id, sources=list(persona.sources), portals=portals
     )
 
 
@@ -255,7 +263,7 @@ async def get_persona_sources(persona_id: str, request: Request):
     with state.lock:
         persona = state.store.get(persona_id)
         if persona is None:
-            return _problem(404, "not_found", detail=f"no persona {persona_id!r}")
+            return _problem(404, "persona_not_found", detail=f"no persona {persona_id!r}")
         return _sources_out(persona, state.portal_store)
 
 
@@ -266,11 +274,11 @@ async def set_persona_sources(persona_id: str, body: SourceLinksIn, request: Req
     not exist in the portal registry -- validated BEFORE the write, so a bad id never
     lands. Duplicates collapse; an empty list clears the pool. Returns the resolved pool."""
     state = request.app.state
-    ids = _dedup(body.source_ids)
+    ids = _dedup(body.sources)
     with state.lock:
         persona = state.store.get(persona_id)
         if persona is None:
-            return _problem(404, "not_found", detail=f"no persona {persona_id!r}")
+            return _problem(404, "persona_not_found", detail=f"no persona {persona_id!r}")
         unknown = [pid for pid in ids if state.portal_store.get(pid) is None]
         if unknown:
             return _problem(422, "unknown_source", detail=f"unknown source id(s): {unknown}")
@@ -289,9 +297,9 @@ async def link_persona_source(persona_id: str, portal_id: str, request: Request)
     with state.lock:
         persona = state.store.get(persona_id)
         if persona is None:
-            return _problem(404, "not_found", detail=f"no persona {persona_id!r}")
+            return _problem(404, "persona_not_found", detail=f"no persona {persona_id!r}")
         if state.portal_store.get(portal_id) is None:
-            return _problem(404, "not_found", detail=f"no portal {portal_id!r}")
+            return _problem(404, "portal_not_found", detail=f"no portal {portal_id!r}")
         if portal_id in persona.sources:  # already linked: idempotent, no write
             return _sources_out(persona, state.portal_store)
         stored = state.store.update(persona_id, sources=[*persona.sources, portal_id])
@@ -310,7 +318,7 @@ async def unlink_persona_source(persona_id: str, portal_id: str, request: Reques
     with state.lock:
         persona = state.store.get(persona_id)
         if persona is None:
-            return _problem(404, "not_found", detail=f"no persona {persona_id!r}")
+            return _problem(404, "persona_not_found", detail=f"no persona {persona_id!r}")
         if portal_id not in persona.sources:  # not linked: idempotent, no write
             return _sources_out(persona, state.portal_store)
         remaining = [pid for pid in persona.sources if pid != portal_id]

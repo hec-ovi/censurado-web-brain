@@ -38,7 +38,7 @@ from dataclasses import asdict, replace
 
 from newsroom.bootstrap import bootstrap
 from newsroom.config import Settings, load_settings
-from newsroom.contracts.sections import SECTION_ENUM
+from newsroom.contracts.sections import SECTION_ENUM, is_valid_section
 from newsroom.db import open_db
 from newsroom.editorial import (
     Location,
@@ -346,20 +346,31 @@ def _split_csv(raw: str | None) -> list[str]:
 
 
 def _sources_main(argv: list[str], *, store: PortalStore | None = None) -> int:
-    """``censurado-brain sources list|add|update|remove|enable|disable``: curate the
+    """``censurado-brain sources list|get|add|update|remove|enable|disable``: curate the
     source (portal) registry from the command line, mirroring the HTTP management API.
     Operates on a local ``PortalStore`` over the brain DB. Prints a JSON result via
     ``_emit`` and returns 0 on success, 1 on a store rejection (duplicate domain, invalid
     feed_type, unknown id) or a missing/unknown sub-verb. ``store`` is injectable for tests."""
     if not argv:
-        _emit({"error": "usage: sources list|add|update|remove|enable|disable"})
+        _emit({"error": "usage: sources list|get|add|update|remove|enable|disable"})
         return _EXIT["failed"]
     verb, rest = argv[0], argv[1:]
-    if verb not in ("list", "add", "update", "remove", "enable", "disable"):
+    if verb not in ("list", "get", "add", "update", "remove", "enable", "disable"):
         _emit({"error": f"unknown sources verb {verb!r}"})
         return _EXIT["failed"]
 
     store = store or _open_portal_store()
+
+    if verb == "get":
+        parser = argparse.ArgumentParser(prog="censurado-brain sources get")
+        parser.add_argument("portal_id", help="the source id (e.g. clarin-com)")
+        args = parser.parse_args(rest)
+        portal = store.get(args.portal_id)
+        if portal is None:  # the CLI parity of GET /portals/{id}'s 404
+            _emit({"error": f"unknown source {args.portal_id!r}"})
+            return _EXIT["failed"]
+        _emit(asdict(portal))
+        return 0
 
     if verb == "list":
         parser = argparse.ArgumentParser(prog="censurado-brain sources list")
@@ -564,8 +575,9 @@ def _open_persona_store() -> PersonaStore:
 
 def _persona_sources_payload(persona: Persona, portal_store: PortalStore) -> dict:
     """The author's source pool as a JSON-able dict, mirroring the HTTP
-    ``PersonaSourcesOut``: the raw linked ids plus those resolved to the live portal
-    rows (a stale id whose portal is gone stays in ``source_ids`` but not ``portals``)."""
+    ``PersonaSourcesOut``: the raw linked ids (``sources`` -- the same key the persona
+    carries everywhere) plus those resolved to the live portal rows (a stale id whose
+    portal is gone stays in ``sources`` but not ``portals``)."""
     portals = [
         asdict(portal)
         for portal in (portal_store.get(pid) for pid in persona.sources)
@@ -573,7 +585,7 @@ def _persona_sources_payload(persona: Persona, portal_store: PortalStore) -> dic
     ]
     return {
         "persona_id": persona.id,
-        "source_ids": list(persona.sources),
+        "sources": list(persona.sources),
         "portals": portals,
     }
 
@@ -662,24 +674,104 @@ def _authors_sources_main(
     return 0
 
 
+# A synth takes a seed plus the persona store and the loaded settings and returns the new
+# persona id (running the model call synchronously). Injected so the `authors synthesize`
+# verb tests without a real model call, exactly like the run/probe seams.
+SynthesizeFn = Callable[..., str]
+
+
+def _default_synthesize(seed, *, store: PersonaStore, settings: Settings) -> str:
+    """The production synth: build the persona-synth provider config from settings (the
+    same ``ProviderConfig`` the HTTP synthesis route assembles) and run one synthesis
+    SYNCHRONOUSLY, returning the new persona id. A CLI process has no request to return to,
+    so unlike the 202-then-poll HTTP route this blocks on the model and writes the persona
+    before returning."""
+    from newsroom.brain.synthesis import synthesize_persona
+    from newsroom.inference.provider import (
+        DEFAULT_MODEL,
+        DEFAULT_PROVIDER,
+        DIALECTS,
+        ProviderConfig,
+    )
+
+    cfg = ProviderConfig(
+        role="persona_synth",
+        provider=DEFAULT_PROVIDER,
+        base_url=str(settings.inference_base_url).rstrip("/"),
+        model=DEFAULT_MODEL,
+        **DIALECTS[DEFAULT_PROVIDER],
+    )
+    return synthesize_persona(seed, cfg=cfg, store=store, prompts_dir=settings.prompts_dir)
+
+
+def _authors_synthesize_main(
+    argv: list[str], *, store: PersonaStore, synthesize: SynthesizeFn | None = None
+) -> int:
+    """``censurado-brain authors synthesize --display-name --beat --seed [--sources]``: grow
+    a persona from a free-text SEED brief via one model call, the CLI parity of the async
+    ``POST /personas`` synthesis. The beat is validated UP FRONT against the section enum
+    (rejected before any model call, like the HTTP route), then the model drafts the voice
+    and the persona is persisted. Runs synchronously (no job to poll). Prints the resulting
+    ``PersonaOut`` (the stored persona) via ``_emit`` and returns 0; on a synthesis failure
+    (bad model output, duplicate id) prints a JSON error and returns 1. ``synthesize`` is
+    injectable for tests."""
+    from newsroom.brain.synthesis import PersonaSeed, SynthesisError
+
+    parser = argparse.ArgumentParser(prog="censurado-brain authors synthesize")
+    parser.add_argument("--display-name", required=True, help="the author's display name")
+    parser.add_argument("--beat", required=True, help=f"one of {', '.join(SECTION_ENUM)}")
+    parser.add_argument(
+        "--seed", required=True, help="the free-text brief the model grows into a voice"
+    )
+    parser.add_argument(
+        "--sources", default=None, help="comma-separated source ids/urls the persona seeds with"
+    )
+    args = parser.parse_args(argv)
+
+    if not is_valid_section(args.beat):  # reject before any model call, like POST /personas
+        _emit({"error": f"invalid beat {args.beat!r}; must be one of {', '.join(SECTION_ENUM)}"})
+        return _EXIT["failed"]
+
+    seed = PersonaSeed(
+        display_name=args.display_name,
+        beat=args.beat,
+        seed=args.seed,
+        sources=_split_csv(args.sources),
+    )
+    settings = load_settings()
+    synth = synthesize or _default_synthesize
+    try:
+        persona_id = synth(seed, store=store, settings=settings)
+    except SynthesisError as exc:  # bad model output or a store conflict: a clean exit 1
+        _emit({"error": str(exc)})
+        return _EXIT["failed"]
+    persona = store.get(persona_id)
+    _emit(asdict(persona))
+    return 0
+
+
 def _authors_main(
     argv: list[str],
     *,
     store: PersonaStore | None = None,
     portal_store: PortalStore | None = None,
+    synthesize: SynthesizeFn | None = None,
 ) -> int:
-    """``censurado-brain authors list|get|add|update|remove|sources``: curate the author
-    (persona) registry from the command line WITHOUT a synthesis job, mirroring the HTTP
-    management API. Operates on a local ``PersonaStore`` over the brain DB. Prints a JSON
-    result via ``_emit`` and returns 0 on success, 1 on a store rejection (duplicate id,
-    invalid beat, unknown id, an in-use delete) or a missing/unknown sub-verb. The
-    ``sources`` sub-verb curates an author's source links and also needs the
-    ``PortalStore`` to validate ids. Both stores are injectable for tests."""
+    """``censurado-brain authors list|get|add|synthesize|update|remove|sources``: curate the
+    author (persona) registry from the command line, mirroring the HTTP management API.
+    ``add`` builds a persona from EXPLICIT fields with no model call (POST /personas/direct);
+    ``synthesize`` drafts a voice from a free-text seed brief via ONE model call (the CLI
+    parity of the async POST /personas synthesis, run synchronously so it needs no job
+    poll). Operates on a local ``PersonaStore`` over the brain DB. Prints a JSON result via
+    ``_emit`` and returns 0 on success, 1 on a store rejection (duplicate id, invalid beat,
+    unknown id, an in-use delete), a synthesis failure, or a missing/unknown sub-verb. The
+    ``sources`` sub-verb curates an author's source links and also needs the ``PortalStore``
+    to validate ids. The stores and the ``synthesize`` callable are injectable for tests."""
     if not argv:
-        _emit({"error": "usage: authors list|get|add|update|remove|sources"})
+        _emit({"error": "usage: authors list|get|add|synthesize|update|remove|sources"})
         return _EXIT["failed"]
     verb, rest = argv[0], argv[1:]
-    if verb not in ("list", "get", "add", "update", "remove", "sources"):
+    if verb not in ("list", "get", "add", "synthesize", "update", "remove", "sources"):
         _emit({"error": f"unknown authors verb {verb!r}"})
         return _EXIT["failed"]
 
@@ -687,6 +779,9 @@ def _authors_main(
 
     if verb == "sources":
         return _authors_sources_main(rest, persona_store=store, portal_store=portal_store)
+
+    if verb == "synthesize":
+        return _authors_synthesize_main(rest, store=store, synthesize=synthesize)
 
     if verb == "list":
         parser = argparse.ArgumentParser(prog="censurado-brain authors list")
@@ -1125,6 +1220,7 @@ def main(
     style_store: StyleStore | None = None,
     location_store: LocationStore | None = None,
     backend_probe: BackendProbeFn | None = None,
+    synthesize: SynthesizeFn | None = None,
 ) -> int:
     """Parse args, run once, print a JSON summary, return an exit code.
 
@@ -1152,10 +1248,13 @@ def main(
         # subcommand so the bare --mode run path (the periodic trigger) is unchanged.
         return _sources_main(argv[1:], store=portal_store)
     if argv and argv[0] == "authors":
-        # Curate the author (persona) registry without a synthesis job, mirroring the
-        # HTTP management API. A subcommand so the bare --mode run path is unchanged. The
-        # portal store rides along so `authors sources` can validate source ids.
-        return _authors_main(argv[1:], store=persona_store, portal_store=portal_store)
+        # Curate the author (persona) registry, mirroring the HTTP management API (direct
+        # CRUD AND the `synthesize` model path). A subcommand so the bare --mode run path is
+        # unchanged. The portal store rides along so `authors sources` can validate source
+        # ids; `synthesize` is injectable so a test drives it without a real model call.
+        return _authors_main(
+            argv[1:], store=persona_store, portal_store=portal_store, synthesize=synthesize
+        )
     if argv and argv[0] == "runs":
         # Inspect the run records (list / get), mirroring the HTTP run surface. A
         # subcommand so the bare --mode run path (the periodic trigger) is unchanged.

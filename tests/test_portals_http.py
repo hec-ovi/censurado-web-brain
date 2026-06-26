@@ -89,14 +89,14 @@ def test_get_missing_is_404(tmp_path):
     client = _client(tmp_path)
     resp = client.get("/portals/ghost")
     assert resp.status_code == 404
-    assert resp.json()["code"] == "not_found"
+    assert resp.json()["code"] == "portal_not_found"
 
 
 def test_patch_missing_is_404(tmp_path):
     client = _client(tmp_path)
     resp = client.patch("/portals/ghost", json={"description": "x"})
     assert resp.status_code == 404
-    assert resp.json()["code"] == "not_found"
+    assert resp.json()["code"] == "portal_not_found"
 
 
 def test_create_missing_domain_is_422(tmp_path):
@@ -147,7 +147,7 @@ def test_enable_disable_on_missing_id_is_404_problem_json(tmp_path):
         resp = client.post(f"/portals/ghost/{verb}")
         assert resp.status_code == 404
         assert resp.headers["content-type"] == "application/problem+json"
-        assert resp.json()["code"] == "not_found"
+        assert resp.json()["code"] == "portal_not_found"
 
 
 def test_patch_empty_body_returns_current_state_without_bumping_updated_at(tmp_path):
@@ -174,7 +174,7 @@ def test_error_responses_are_problem_json_with_a_code(tmp_path):
     not_found = client.get("/portals/ghost")
     assert not_found.status_code == 404
     assert not_found.headers["content-type"] == "application/problem+json"
-    assert not_found.json()["code"] == "not_found"
+    assert not_found.json()["code"] == "portal_not_found"
 
     missing_domain = client.post("/portals", json={"description": "no domain"})
     assert missing_domain.status_code == 422

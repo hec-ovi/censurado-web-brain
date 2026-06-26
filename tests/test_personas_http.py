@@ -96,7 +96,7 @@ def test_invalid_beat_on_create_is_422(tmp_path):
     client = _client(tmp_path)
     resp = client.post("/personas/direct", json=_new_persona(beat="gossip"))
     assert resp.status_code == 422
-    assert resp.json()["code"] == "invalid_persona"
+    assert resp.json()["code"] == "invalid_beat"
 
 
 def test_missing_required_field_on_create_is_422_validation(tmp_path):
@@ -114,7 +114,7 @@ def test_patch_missing_is_404(tmp_path):
     resp = client.patch("/personas/ghost", json={"about": "x"})
     assert resp.status_code == 404
     assert resp.headers["content-type"] == "application/problem+json"
-    assert resp.json()["code"] == "not_found"
+    assert resp.json()["code"] == "persona_not_found"
 
 
 def test_patch_invalid_beat_is_422(tmp_path):
@@ -143,7 +143,7 @@ def test_delete_missing_is_404(tmp_path):
     client = _client(tmp_path)
     resp = client.delete("/personas/ghost")
     assert resp.status_code == 404
-    assert resp.json()["code"] == "not_found"
+    assert resp.json()["code"] == "persona_not_found"
 
 
 def test_openapi_types_the_persona_management_responses(tmp_path):

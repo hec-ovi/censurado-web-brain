@@ -15,9 +15,9 @@ uses); the read goes under the lock so a console list and a running pipeline nev
 the connection. The router holds NO SQL: it calls the store's ``list_runs`` method and
 windows the result, exactly like ``portals.list_portals``.
 
-No auth here by design (the brain API has none today). The router is structured so a
-future central auth dependency can be added on the ``APIRouter`` without touching the
-handler.
+No auth here by design (the brain API has none today). Auth is wired in ONE place:
+``create_app`` hangs the shared ``newsroom.brain.auth.require_auth`` seam on the app, so
+it covers this router with every other route at once, no per-handler change.
 """
 
 from __future__ import annotations
@@ -30,13 +30,19 @@ from newsroom.runs import Run
 
 __all__ = ["router"]
 
-router = APIRouter()
+router = APIRouter(tags=["runs"])
 
 
 class RunOut(BaseModel):
     """The run-level view in the listing: the same run record fields ``GET /runs/{id}``
     returns, MINUS the per-assignment list (the collection view stays compact; a client
-    drills into one run for its assignments)."""
+    drills into one run for its assignments).
+
+    The identity key here is ``run_id`` (and a synthesis job's is ``job_id``), NOT the
+    generic ``id`` that ``PortalOut`` / ``PersonaOut`` carry. This is intentional and kept
+    for compatibility: a run/job id is what a client POSTs for and then POLLs on (it rides
+    in the ``Location`` header and the 202 body), so the lifecycle name is the stable one
+    callers already use; renaming it to ``id`` would break those pollers for no gain."""
 
     run_id: str
     mode: str

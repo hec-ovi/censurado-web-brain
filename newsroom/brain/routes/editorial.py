@@ -26,9 +26,9 @@ methods (``active``/``add_version``/``promote``/``list_versions`` and ``get``/``
 maps their ``KeyError``/``ValueError`` to problem responses (404 not_found, 422
 invalid_location).
 
-No auth here by design (the brain API has none today). The router is structured so a
-future central auth dependency can be added on the ``APIRouter`` without touching the
-handlers.
+No auth here by design (the brain API has none today). Auth is wired in ONE place:
+``create_app`` hangs the shared ``newsroom.brain.auth.require_auth`` seam on the app, so
+it covers this router with every other route at once, no per-handler change.
 """
 
 from __future__ import annotations
@@ -43,7 +43,7 @@ from newsroom.editorial import Location, StyleGuide
 
 __all__ = ["router"]
 
-router = APIRouter()
+router = APIRouter(tags=["editorial"])
 
 
 # --------------------------------------------------------------------------- #
@@ -86,9 +86,10 @@ class StyleGuideOut(BaseModel):
 
 
 class StyleVersionsOut(BaseModel):
-    """The GET /editorial/style/versions response: every version, NEWEST first, each
-    marked with ``is_active``, plus ``total`` (the full count) so an operator sees the
-    whole audit trail and which one is live."""
+    """The GET /editorial/style/versions response: the ``limit``/``offset`` window over
+    the version history (NEWEST first, each marked with ``is_active``) plus ``total``, the
+    count BEFORE pagination -- so an operator pages the audit trail exactly like the
+    source/run listings rather than always pulling every version."""
 
     versions: list[StyleGuideOut]
     total: int
@@ -102,6 +103,12 @@ class LexiconOut(BaseModel):
     preferred_swaps: dict[str, str] = {}
 
 
+class LexiconIn(LexiconOut):
+    """The PUT /editorial/style/lexicon body. Same shape as ``LexiconOut`` but named for
+    INPUT, so an ``-Out`` model is never bound as a request body (the In/Out naming the
+    other write routes follow: ``PortalIn`` / ``PersonaIn`` / ``StyleGuideIn``)."""
+
+
 class SourcingOut(BaseModel):
     """The sourcing facet of the active style: ``min_sources`` (the cross-source
     corroboration floor the evaluator enforces), plus the attribution / no-fabricated-quote
@@ -110,6 +117,12 @@ class SourcingOut(BaseModel):
     min_sources: int | None = None
     require_attribution: bool = False
     no_fabricated_quotes: bool = False
+
+
+class SourcingIn(SourcingOut):
+    """The PUT /editorial/style/sourcing body. Same shape as ``SourcingOut`` but named for
+    INPUT, so an ``-Out`` model is never bound as a request body (the In/Out naming the
+    other write routes follow)."""
 
 
 class LocationOut(BaseModel):
@@ -212,13 +225,19 @@ async def publish_style(body: StyleGuideIn, request: Request):
 
 
 @router.get("/editorial/style/versions", status_code=200, response_model=StyleVersionsOut)
-async def list_style_versions(request: Request):
-    """The full version history, NEWEST first, each marked with ``is_active`` -- the
-    audit trail an operator promotes (or rolls back) from."""
+async def list_style_versions(request: Request, limit: int = 100, offset: int = 0):
+    """The version history, NEWEST first, each marked with ``is_active`` -- the audit trail
+    an operator promotes (or rolls back) from. ``total`` is the count BEFORE pagination (so
+    a client can page), ``versions`` is the ``limit``/``offset`` window, exactly like the
+    source/run listings."""
     state = request.app.state
     with state.lock:
         versions = state.style_store.list_versions()
-    return StyleVersionsOut(versions=[_style_out(g) for g in versions], total=len(versions))
+    total = len(versions)
+    limit = max(0, limit)
+    offset = max(0, offset)
+    window = versions[offset : offset + limit]
+    return StyleVersionsOut(versions=[_style_out(g) for g in window], total=total)
 
 
 @router.post(
@@ -250,7 +269,7 @@ async def get_lexicon(request: Request):
 
 
 @router.put("/editorial/style/lexicon", status_code=200, response_model=LexiconOut)
-async def set_lexicon(body: LexiconOut, request: Request):
+async def set_lexicon(body: LexiconIn, request: Request):
     """Replace the lexicon facet. Respecting the versioned store, this derives a NEW
     active version from the active one with ONLY the lexicon replaced (the rest of the
     guide is carried over), so the change is auditable and reversible. 404 ``not_found``
@@ -280,7 +299,7 @@ async def get_sourcing(request: Request):
 
 
 @router.put("/editorial/style/sourcing", status_code=200, response_model=SourcingOut)
-async def set_sourcing(body: SourcingOut, request: Request):
+async def set_sourcing(body: SourcingIn, request: Request):
     """Replace the sourcing facet (the ``min_sources`` corroboration floor lives here).
     Like the lexicon PUT, this derives a NEW active version from the active one with only
     sourcing replaced, so the edit is versioned. 404 ``not_found`` if there is no active

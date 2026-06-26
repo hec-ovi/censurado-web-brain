@@ -94,6 +94,26 @@ def test_style_second_publish_activates_and_versions_list_and_rollback(tmp_path)
     assert client.get("/editorial/style").json()["voice"] == "v1 voice"
 
 
+def test_style_versions_are_paginated(tmp_path):
+    # The version history is a LIST route, so it pages like the source/run listings:
+    # ``total`` is the full count BEFORE the window, ``versions`` is the limit/offset slice
+    # over the newest-first order.
+    client = _client(tmp_path)
+    for i in range(3):
+        assert client.post("/editorial/style", json=_guide(voice=f"v{i}")).status_code == 201
+
+    full = client.get("/editorial/style/versions").json()
+    assert full["total"] == 3 and len(full["versions"]) == 3
+    assert [v["version"] for v in full["versions"]] == [3, 2, 1]  # newest first
+
+    page = client.get("/editorial/style/versions", params={"limit": 1, "offset": 1}).json()
+    assert page["total"] == 3  # the count before the window, not the page size
+    assert [v["version"] for v in page["versions"]] == [2]  # the middle of the newest-first list
+
+    past = client.get("/editorial/style/versions", params={"limit": 10, "offset": 5}).json()
+    assert past["versions"] == [] and past["total"] == 3
+
+
 def test_style_publish_staged_without_activating(tmp_path):
     # activate=False stages a version without moving the pointer: the active read stays on
     # the prior version until an explicit promote.
