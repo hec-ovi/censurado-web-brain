@@ -25,7 +25,7 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
 from newsroom.brain.problems import _problem
-from newsroom.brain.routes import portals_router
+from newsroom.brain.routes import personas_router, portals_router
 from newsroom.brain.synthesis import PersonaSeed, synthesize_persona
 from newsroom.config import Settings, load_settings
 from newsroom.contracts.sections import SECTION_ENUM, is_valid_section
@@ -345,5 +345,11 @@ def create_app(
     # seven tested-thin inline routes above stay untouched. A future chunk migrates
     # those onto routers too.
     app.include_router(portals_router)
+
+    # The author (persona) MANAGEMENT API: the non-synthesis direct-create, update, and
+    # delete routes. Added as its own router beside the inline synthesis/list/get routes,
+    # which stay untouched; direct-create sits at POST /personas/direct so it never
+    # collides with the synthesis POST /personas.
+    app.include_router(personas_router)
 
     return app

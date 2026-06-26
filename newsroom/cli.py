@@ -38,6 +38,7 @@ from dataclasses import asdict
 
 from newsroom.bootstrap import bootstrap
 from newsroom.config import Settings, load_settings
+from newsroom.contracts.sections import SECTION_ENUM
 from newsroom.db import open_db
 from newsroom.editorial import Portal, PortalStore
 from newsroom.mirror import (
@@ -396,11 +397,157 @@ def _sources_main(argv: list[str], *, store: PortalStore | None = None) -> int:
     return 0 if removed else _EXIT["failed"]
 
 
+def _open_persona_store() -> PersonaStore:
+    """Open the brain DB the API uses and wrap it in a ``PersonaStore``. The CLI author
+    verbs are their own process (a separate connection from a live brain); WAL + the busy
+    timeout (see ``open_db``) let that connection share the file safely."""
+    settings = load_settings()
+    conn = open_db(settings.persona_db_path, check_same_thread=False)
+    return PersonaStore(conn)
+
+
+def _authors_main(argv: list[str], *, store: PersonaStore | None = None) -> int:
+    """``censurado-brain authors list|get|add|update|remove``: curate the author (persona)
+    registry from the command line WITHOUT a synthesis job, mirroring the HTTP management
+    API. Operates on a local ``PersonaStore`` over the brain DB. Prints a JSON result via
+    ``_emit`` and returns 0 on success, 1 on a store rejection (duplicate id, invalid
+    beat, unknown id, an in-use delete) or a missing/unknown sub-verb. ``store`` is
+    injectable for tests."""
+    if not argv:
+        _emit({"error": "usage: authors list|get|add|update|remove"})
+        return _EXIT["failed"]
+    verb, rest = argv[0], argv[1:]
+    if verb not in ("list", "get", "add", "update", "remove"):
+        _emit({"error": f"unknown authors verb {verb!r}"})
+        return _EXIT["failed"]
+
+    store = store or _open_persona_store()
+
+    if verb == "list":
+        parser = argparse.ArgumentParser(prog="censurado-brain authors list")
+        parser.add_argument("--beat", default=None, help=f"filter to one beat ({', '.join(SECTION_ENUM)})")
+        parser.add_argument(
+            "--include-inactive", action="store_true",
+            help="include soft-deactivated personas (default: active only)",
+        )
+        args = parser.parse_args(rest)
+        personas = store.list(beat=args.beat, include_inactive=args.include_inactive)
+        _emit({"personas": [asdict(p) for p in personas], "total": len(personas)})
+        return 0
+
+    if verb == "get":
+        parser = argparse.ArgumentParser(prog="censurado-brain authors get")
+        parser.add_argument("persona_id", help="the persona id (e.g. ada-lovelace)")
+        args = parser.parse_args(rest)
+        persona = store.get(args.persona_id)
+        if persona is None:
+            _emit({"error": f"unknown author {args.persona_id!r}"})
+            return _EXIT["failed"]
+        _emit(asdict(persona))
+        return 0
+
+    if verb == "add":
+        parser = argparse.ArgumentParser(prog="censurado-brain authors add")
+        parser.add_argument("--display-name", required=True, help="the author's display name")
+        parser.add_argument("--beat", required=True, help=f"one of {', '.join(SECTION_ENUM)}")
+        parser.add_argument("--who-i-am", required=True, help="the persona's first-person identity")
+        parser.add_argument("--style", required=True, help="the persona's writing style")
+        parser.add_argument(
+            "--id", default="", help="explicit id (default: derived from display-name)"
+        )
+        parser.add_argument("--about", default="", help="the public bio")
+        parser.add_argument("--language", default="español neutro")
+        parser.add_argument("--sources", default=None, help="comma-separated source ids/urls")
+        parser.add_argument("--avatar-path", default="")
+        parser.add_argument(
+            "--inactive", action="store_true", help="add the author soft-deactivated (default: active)"
+        )
+        args = parser.parse_args(rest)
+        persona = Persona(
+            display_name=args.display_name,
+            beat=args.beat,
+            who_i_am=args.who_i_am,
+            style=args.style,
+            id=args.id,
+            about=args.about,
+            language=args.language,
+            sources=_split_csv(args.sources),
+            avatar_path=args.avatar_path,
+            active=not args.inactive,
+        )
+        try:
+            stored = store.create(persona)
+        except ValueError as exc:
+            _emit({"error": str(exc)})
+            return _EXIT["failed"]
+        _emit(asdict(stored))
+        return 0
+
+    if verb == "update":
+        parser = argparse.ArgumentParser(prog="censurado-brain authors update")
+        parser.add_argument("persona_id", help="the persona id (e.g. ada-lovelace)")
+        parser.add_argument("--display-name", default=None)
+        parser.add_argument("--beat", default=None, help=f"one of {', '.join(SECTION_ENUM)}")
+        parser.add_argument("--who-i-am", default=None)
+        parser.add_argument("--about", default=None)
+        parser.add_argument("--style", default=None)
+        parser.add_argument("--language", default=None)
+        parser.add_argument("--sources", default=None, help="comma-separated; replaces the list")
+        parser.add_argument("--avatar-path", default=None)
+        parser.add_argument(
+            "--active", action=argparse.BooleanOptionalAction, default=None,
+            help="activate (--active) or soft-deactivate (--no-active) the author",
+        )
+        args = parser.parse_args(rest)
+        changes: dict = {}
+        if args.display_name is not None:
+            changes["display_name"] = args.display_name
+        if args.beat is not None:
+            changes["beat"] = args.beat
+        if args.who_i_am is not None:
+            changes["who_i_am"] = args.who_i_am
+        if args.about is not None:
+            changes["about"] = args.about
+        if args.style is not None:
+            changes["style"] = args.style
+        if args.language is not None:
+            changes["language"] = args.language
+        if args.sources is not None:
+            changes["sources"] = _split_csv(args.sources)
+        if args.avatar_path is not None:
+            changes["avatar_path"] = args.avatar_path
+        if args.active is not None:
+            changes["active"] = args.active
+        try:
+            stored = store.update(args.persona_id, **changes)
+        except KeyError:
+            _emit({"error": f"unknown author {args.persona_id!r}"})
+            return _EXIT["failed"]
+        except ValueError as exc:
+            _emit({"error": str(exc)})
+            return _EXIT["failed"]
+        _emit(asdict(stored))
+        return 0
+
+    # verb == "remove"
+    parser = argparse.ArgumentParser(prog="censurado-brain authors remove")
+    parser.add_argument("persona_id", help="the persona id (e.g. ada-lovelace)")
+    args = parser.parse_args(rest)
+    try:
+        removed = store.delete(args.persona_id)
+    except ValueError as exc:  # referenced by an assignment: a conflict, not a clean delete
+        _emit({"error": str(exc)})
+        return _EXIT["failed"]
+    _emit({"id": args.persona_id, "removed": removed})
+    return 0 if removed else _EXIT["failed"]
+
+
 def main(
     argv: list[str] | None = None,
     *,
     build_deps: DepsBuilder | None = None,
     portal_store: PortalStore | None = None,
+    persona_store: PersonaStore | None = None,
 ) -> int:
     """Parse args, run once, print a JSON summary, return an exit code.
 
@@ -423,6 +570,10 @@ def main(
         # Curate the source (portal) registry, mirroring the HTTP management API. A
         # subcommand so the bare --mode run path (the periodic trigger) is unchanged.
         return _sources_main(argv[1:], store=portal_store)
+    if argv and argv[0] == "authors":
+        # Curate the author (persona) registry without a synthesis job, mirroring the
+        # HTTP management API. A subcommand so the bare --mode run path is unchanged.
+        return _authors_main(argv[1:], store=persona_store)
     args = _parser().parse_args(argv)
     settings = load_settings()
     deps = (build_deps or build_deps_from_env)(settings)

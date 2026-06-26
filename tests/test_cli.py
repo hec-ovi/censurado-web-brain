@@ -334,6 +334,125 @@ def test_cli_sources_unknown_subverb_exits_1_with_usage(tmp_path, capsys):
     assert "teleport" in json.loads(capsys.readouterr().out)["error"]
 
 
+def test_cli_authors_add_get_list_update_remove(tmp_path, capsys):
+    # The `authors` verb group curates the persona registry from the command line WITHOUT
+    # a synthesis job, mirroring the HTTP management API. One injected store backs every
+    # call (the real PersonaStore over a brain DB), so the verbs see each other's writes.
+    store = PersonaStore(open_db(tmp_path / "brain.db", check_same_thread=False))
+
+    # add: the id derives from the display name; required identity fields ride along.
+    code = main(
+        [
+            "authors", "add",
+            "--display-name", "Ada Lovelace",
+            "--beat", "tech",
+            "--who-i-am", "I cover chips.",
+            "--style", "dry",
+            "--about", "A bio.",
+            "--sources", "clarin-com, lanacion-com",
+        ],
+        persona_store=store,
+    )
+    assert code == 0
+    added = json.loads(capsys.readouterr().out)
+    assert added["id"] == "ada-lovelace" and added["display_name"] == "Ada Lovelace"
+    assert added["about"] == "A bio." and added["sources"] == ["clarin-com", "lanacion-com"]
+    assert added["active"] is True
+
+    # get: reads the row back by id.
+    assert main(["authors", "get", "ada-lovelace"], persona_store=store) == 0
+    got = json.loads(capsys.readouterr().out)
+    assert got["who_i_am"] == "I cover chips."
+
+    # list: shows the author, total is right.
+    assert main(["authors", "list"], persona_store=store) == 0
+    listed = json.loads(capsys.readouterr().out)
+    assert listed["total"] == 1 and listed["personas"][0]["id"] == "ada-lovelace"
+
+    # update: changes the bio and the beat (and only those).
+    assert main(
+        ["authors", "update", "ada-lovelace", "--about", "New bio.", "--beat", "world"],
+        persona_store=store,
+    ) == 0
+    updated = json.loads(capsys.readouterr().out)
+    assert updated["about"] == "New bio." and updated["beat"] == "world"
+    assert updated["style"] == "dry"  # untouched
+
+    # update --no-active soft-deactivates; the active filter then hides it.
+    assert main(["authors", "update", "ada-lovelace", "--no-active"], persona_store=store) == 0
+    assert json.loads(capsys.readouterr().out)["active"] is False
+    assert main(["authors", "list"], persona_store=store) == 0
+    assert json.loads(capsys.readouterr().out)["total"] == 0  # active-only by default
+    assert main(["authors", "list", "--include-inactive"], persona_store=store) == 0
+    assert json.loads(capsys.readouterr().out)["total"] == 1
+
+    # remove: deletes; a second remove reports nothing removed and exits non-zero.
+    assert main(["authors", "remove", "ada-lovelace"], persona_store=store) == 0
+    assert json.loads(capsys.readouterr().out)["removed"] is True
+    assert main(["authors", "remove", "ada-lovelace"], persona_store=store) == 1
+    assert json.loads(capsys.readouterr().out)["removed"] is False
+
+
+def test_cli_authors_explicit_id_is_honored(tmp_path, capsys):
+    # --id overrides the derived slug, so an operator can pin a stable author handle.
+    store = PersonaStore(open_db(tmp_path / "brain.db", check_same_thread=False))
+    code = main(
+        ["authors", "add", "--display-name", "Ada", "--beat", "tech",
+         "--who-i-am", "x", "--style", "y", "--id", "ada-custom"],
+        persona_store=store,
+    )
+    assert code == 0
+    assert json.loads(capsys.readouterr().out)["id"] == "ada-custom"
+
+
+def test_cli_authors_duplicate_id_is_an_error(tmp_path, capsys):
+    # A duplicate id is rejected by the store and surfaced as a non-zero exit with a JSON
+    # error, not a traceback.
+    store = PersonaStore(open_db(tmp_path / "brain.db", check_same_thread=False))
+    args = ["authors", "add", "--display-name", "Ada", "--beat", "tech",
+            "--who-i-am", "x", "--style", "y"]
+    assert main(args, persona_store=store) == 0
+    capsys.readouterr()
+    code = main(args, persona_store=store)
+    assert code == 1
+    assert "already exists" in json.loads(capsys.readouterr().out)["error"]
+
+
+def test_cli_authors_invalid_beat_is_an_error(tmp_path, capsys):
+    # An invalid beat (outside the section enum) is a store rejection: a JSON error and a
+    # non-zero exit, never a crash.
+    store = PersonaStore(open_db(tmp_path / "brain.db", check_same_thread=False))
+    code = main(
+        ["authors", "add", "--display-name", "Ada", "--beat", "gossip",
+         "--who-i-am", "x", "--style", "y"],
+        persona_store=store,
+    )
+    assert code == 1
+    assert "invalid beat" in json.loads(capsys.readouterr().out)["error"]
+
+
+def test_cli_authors_verbs_on_unknown_id_exit_1_with_a_json_error(tmp_path, capsys):
+    # get / update / remove on an id that does not exist are surfaced as a JSON error and a
+    # non-zero exit, never a traceback. The store has no such id.
+    store = PersonaStore(open_db(tmp_path / "brain.db", check_same_thread=False))
+    for argv in (
+        ["authors", "get", "ghost"],
+        ["authors", "update", "ghost", "--about", "x"],
+    ):
+        assert main(argv, persona_store=store) == 1
+        assert "ghost" in json.loads(capsys.readouterr().out)["error"]
+    # remove of a missing id is not an error message, but it does exit non-zero.
+    assert main(["authors", "remove", "ghost"], persona_store=store) == 1
+    assert json.loads(capsys.readouterr().out)["removed"] is False
+
+
+def test_cli_authors_unknown_subverb_exits_1_with_usage(tmp_path, capsys):
+    # An unknown `authors` sub-verb prints a JSON error (not a usage crash) and exits 1.
+    store = PersonaStore(open_db(tmp_path / "brain.db", check_same_thread=False))
+    assert main(["authors", "teleport"], persona_store=store) == 1
+    assert "teleport" in json.loads(capsys.readouterr().out)["error"]
+
+
 def test_cli_rejects_an_unknown_mode(fake, tmp_path):
     # argparse's choices= guard rejects a mode outside the trigger surface before any
     # run is built: a SystemExit (the standard argparse usage-error exit).

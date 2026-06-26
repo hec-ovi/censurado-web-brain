@@ -10,7 +10,8 @@ Platform schema source resolution, per contract file:
   1. ``NEWSROOM_PLATFORM_SCHEMA`` (a path or http(s) URL) for ``article.schema.json``,
   2. ``NEWSROOM_PLATFORM_CONTRACTS`` (a directory path or http(s) base URL) for any
      contract file, or
-  3. the sibling ``censurado-web/contracts`` checkout next to this repo.
+  3. the sibling ``censurado-web-backend/contracts`` checkout next to this repo
+     (the publish/write contracts moved there in the 2026-06 backend split).
 If none resolves, the test FAILS loudly unless ``NEWSROOM_SKIP_DRIFT=1`` is set
 (an explicit, documented escape for environments without the platform checkout).
 """
@@ -34,7 +35,7 @@ from newsroom.contracts.schema import (
 )
 
 _REPO_ROOT = Path(__file__).resolve().parents[1]
-_SIBLING_CONTRACTS = _REPO_ROOT.parent / "censurado-web" / "contracts"
+_SIBLING_CONTRACTS = _REPO_ROOT.parent / "censurado-web-backend" / "contracts"
 
 
 def _load_platform_contract(filename: str) -> dict:

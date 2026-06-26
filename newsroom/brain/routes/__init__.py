@@ -13,6 +13,7 @@ handlers can grow an ``APIRouter(dependencies=[...])`` guard without touching ``
 
 from __future__ import annotations
 
+from newsroom.brain.routes.personas import router as personas_router
 from newsroom.brain.routes.portals import router as portals_router
 
-__all__ = ["portals_router"]
+__all__ = ["personas_router", "portals_router"]
