@@ -38,7 +38,13 @@ from collections.abc import Callable
 from newsroom.bootstrap import bootstrap
 from newsroom.config import Settings, load_settings
 from newsroom.db import open_db
-from newsroom.personas import PersonaStore
+from newsroom.mirror import (
+    AuthorPush,
+    PushResult,
+    backfill_web_authors,
+    push_web_author,
+)
+from newsroom.personas import Persona, PersonaStore
 from newsroom.runner import (
     RUN_MODES,
     RunDeps,
@@ -193,6 +199,66 @@ def _direct_main(argv: list[str], *, build_deps: DepsBuilder | None = None) -> i
     return _EXIT.get(report.status, _EXIT["failed"])
 
 
+def _mirror_authors_main(argv: list[str], *, push: AuthorPush | None = None) -> int:
+    """``censurado-brain mirror-authors [--dry-run]``: the one-time backfill that pushes
+    every local persona's public fields (handle/name/bio/avatar) to the platform author
+    registry, making the platform authoritative. Idempotent (the platform upserts on
+    handle). ``--dry-run`` previews the handles without contacting the platform. Prints a
+    JSON summary; returns 0 when every push succeeded (or dry-run), 1 if any failed or no
+    operator token is configured."""
+    parser = argparse.ArgumentParser(
+        prog="censurado-brain mirror-authors",
+        description="Push local personas' public fields to the platform author registry.",
+    )
+    parser.add_argument(
+        "--dry-run", action="store_true", help="list the handles that would be pushed; push nothing"
+    )
+    args = parser.parse_args(argv)
+
+    settings = load_settings()
+    conn = open_db(settings.persona_db_path, check_same_thread=False)
+    personas = PersonaStore(conn).list(include_inactive=True)
+
+    if args.dry_run:
+        report = backfill_web_authors(personas, _dry_run_push)
+        report.dry_run = True
+        _emit(report.as_dict())
+        return 0
+
+    if push is None:
+        if not settings.operator_token:
+            _emit({"pushed": [], "failed": [], "error": "no operator token configured"})
+            return _EXIT["failed"]
+        push = _env_author_push(settings)
+
+    report = backfill_web_authors(personas, push)
+    _emit(report.as_dict())
+    return 0 if not report.failed else _EXIT["failed"]
+
+
+def _dry_run_push(persona: Persona) -> PushResult:
+    """A no-network push that always reports success, so --dry-run lists what WOULD be
+    pushed (the handles land in the report's ``pushed``) without contacting the platform."""
+    return PushResult(handle=persona.id, ok=True, status=0)
+
+
+def _env_author_push(settings: Settings) -> AuthorPush:
+    """The production push: upsert a persona's public fields to the platform with the
+    operator key. The key must carry the admin:write scope."""
+
+    def push(persona: Persona) -> PushResult:
+        return push_web_author(
+            settings.publish_base_url,
+            settings.operator_token,
+            handle=persona.id,
+            name=persona.display_name,
+            bio=persona.about,
+            avatar=persona.avatar_path,
+        )
+
+    return push
+
+
 def main(argv: list[str] | None = None, *, build_deps: DepsBuilder | None = None) -> int:
     """Parse args, run once, print a JSON summary, return an exit code.
 
@@ -207,6 +273,10 @@ def main(argv: list[str] | None = None, *, build_deps: DepsBuilder | None = None
         # Run mode 3: write one article from a link, bypassing the manager. A subcommand
         # so the bare --mode invocation (the periodic trigger) is unchanged.
         return _direct_main(argv[1:], build_deps=build_deps)
+    if argv and argv[0] == "mirror-authors":
+        # The one-time author backfill: push local personas to the platform registry.
+        # A subcommand so the bare --mode run path stays untouched.
+        return _mirror_authors_main(argv[1:])
     args = _parser().parse_args(argv)
     settings = load_settings()
     deps = (build_deps or build_deps_from_env)(settings)

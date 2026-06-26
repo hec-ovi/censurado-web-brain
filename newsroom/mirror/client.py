@@ -19,7 +19,13 @@ from dataclasses import dataclass
 
 import httpx
 
-__all__ = ["WebAuthor", "fetch_web_authors", "DEFAULT_TIMEOUT"]
+__all__ = [
+    "WebAuthor",
+    "fetch_web_authors",
+    "PushResult",
+    "push_web_author",
+    "DEFAULT_TIMEOUT",
+]
 
 DEFAULT_TIMEOUT = float(os.getenv("NEWSROOM_MIRROR_TIMEOUT", "15"))
 
@@ -71,3 +77,52 @@ def fetch_web_authors(
             )
         )
     return out
+
+
+@dataclass(frozen=True)
+class PushResult:
+    """The typed outcome of one author upsert against the platform. ``ok`` is True on
+    a 200; otherwise ``code``/``detail`` carry the platform's problem (or
+    ``transport_error`` when the POST never reached it)."""
+
+    handle: str
+    ok: bool
+    status: int
+    code: str = ""
+    detail: str = ""
+
+
+def push_web_author(
+    base_url: str,
+    token: str,
+    *,
+    handle: str,
+    name: str = "",
+    bio: str = "",
+    avatar: str = "",
+    timeout: float = DEFAULT_TIMEOUT,
+) -> PushResult:
+    """POST one author's PUBLIC fields to the platform operator registry (POST /authors,
+    keyed on handle), the one-time backfill that makes the platform authoritative. The
+    operator key must carry the ``admin:write`` scope. The upsert is idempotent, so a
+    re-run is a no-op. A transport fault returns a typed failure rather than raising, so
+    the backfill loop reports per-handle and never aborts mid-way."""
+    try:
+        resp = httpx.post(
+            f"{base_url.rstrip('/')}/authors",
+            headers={"Authorization": f"Bearer {token}"},
+            json={"handle": handle, "name": name, "bio": bio, "avatar": avatar},
+            timeout=timeout,
+        )
+    except httpx.HTTPError as exc:
+        return PushResult(handle=handle, ok=False, status=0, code="transport_error", detail=str(exc))
+    if resp.status_code == 200:
+        return PushResult(handle=handle, ok=True, status=200)
+    body: object = {}
+    try:
+        body = resp.json()
+    except ValueError:
+        body = {}
+    code = str(body.get("code", "")) if isinstance(body, dict) else ""
+    detail = str(body.get("detail", "")) if isinstance(body, dict) else ""
+    return PushResult(handle=handle, ok=False, status=resp.status_code, code=code, detail=detail)
