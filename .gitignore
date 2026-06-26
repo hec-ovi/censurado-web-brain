@@ -32,3 +32,6 @@ models/
 .DS_Store
 .idea/
 .vscode/
+
+# Research store (private working notes; may hold proprietary insight)
+.research/
