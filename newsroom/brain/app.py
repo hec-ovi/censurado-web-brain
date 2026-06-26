@@ -25,7 +25,7 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
 from newsroom.brain.problems import _problem
-from newsroom.brain.routes import personas_router, portals_router
+from newsroom.brain.routes import personas_router, portals_router, runs_router
 from newsroom.brain.synthesis import PersonaSeed, synthesize_persona
 from newsroom.config import Settings, load_settings
 from newsroom.contracts.sections import SECTION_ENUM, is_valid_section
@@ -69,14 +69,20 @@ class RunRequest(BaseModel):
     images: bool | None = None
 
 
-class DirectLinkRequest(BaseModel):
-    """The POST /articles/from-link request body (run mode 3). One persona writes one
-    article seeded from ``url``; ``brief`` is the optional angle ("cover the budget
-    angle"), defaulting to a generic "write about this source"."""
+class DirectBriefRequest(BaseModel):
+    """The POST /articles/from-link request body (run mode 3): one persona writes one
+    article from a BRIEF. ``persona_id`` is required; the brief is a free-text instruction
+    (``brief``), 0..N links the operator vouched for (``links``), and an optional ``focus``
+    that narrows the angle. The agent reads the links and researches OUTWARD from the
+    brief; at least one of ``brief`` / ``links`` must be non-empty (there has to be
+    something to write about). ``url`` is a legacy single-link alias folded into ``links``
+    so older callers keep working."""
 
-    url: str
     persona_id: str
-    brief: str | None = None
+    brief: str = ""
+    links: list[str] = []
+    focus: str | None = None
+    url: str | None = None
     images: bool | None = None
 
 
@@ -134,14 +140,16 @@ def _run_in_background(deps: RunDeps, run: Run, scope: RunScope) -> None:
 
 
 def _run_direct_in_background(
-    deps: RunDeps, run: Run, *, url: str, persona_id: str, brief: str | None, images: bool | None
+    deps: RunDeps, run: Run, *, links: list[str], persona_id: str, brief: str | None,
+    focus: str | None, images: bool | None,
 ) -> None:
-    """Background worker for the direct-from-link run, mirroring ``_run_in_background``.
+    """Background worker for the direct-from-brief run, mirroring ``_run_in_background``.
     ``execute_direct`` records the run ``failed`` on any error, so a fault here is
     persisted (pollable over GET /runs/{id}), not lost."""
     try:
         execute_direct(
-            run=run, url=url, persona_id=persona_id, deps=deps, brief=brief, images=images
+            run=run, links=links, persona_id=persona_id, deps=deps, brief=brief, focus=focus,
+            images=images,
         )
     except Exception:
         pass
@@ -288,15 +296,28 @@ def create_app(
 
     @app.post("/articles/from-link")
     async def create_from_link(
-        body: DirectLinkRequest, background_tasks: BackgroundTasks, request: Request
+        body: DirectBriefRequest, background_tasks: BackgroundTasks, request: Request
     ):
-        """Run mode 3: one persona writes one article seeded from a URL, bypassing the
-        manager. Validates the persona up front (404 if unknown), creates a ``direct``
-        run, executes OFF the request, and returns 202 + a poll Location, exactly like
-        POST /runs."""
+        """Run mode 3: one persona writes one article from a BRIEF (a free-text
+        instruction, 0..N vouched-for links, an optional focus), bypassing the manager.
+        The agent reads the links and researches OUTWARD from the brief; the cross-source
+        corroboration gate is OFF for this path (the operator vouched for the source).
+        Validates the persona up front (404 if unknown) and requires something to write
+        about (422 if both brief and links are empty), creates a ``direct`` run, executes
+        OFF the request, and returns 202 + a poll Location, exactly like POST /runs."""
         deps: RunDeps = request.app.state.run_deps
-        if not body.url.strip():
-            return _problem(422, "validation_failed", detail="url is required")
+        # Fold the legacy single ``url`` into the links list, drop blanks, de-dup.
+        raw_links = [*body.links, body.url] if body.url else list(body.links)
+        links: list[str] = []
+        for raw in raw_links:
+            cleaned = (raw or "").strip()
+            if cleaned and cleaned not in links:
+                links.append(cleaned)
+        brief = (body.brief or "").strip()
+        if not brief and not links:
+            return _problem(
+                422, "validation_failed", detail="provide a brief and/or at least one link"
+            )
         with request.app.state.lock:
             persona = deps.persona_store.get(body.persona_id)
         if persona is None:
@@ -304,7 +325,8 @@ def create_app(
         run = start_direct(deps=deps)
         background_tasks.add_task(
             _run_direct_in_background, deps, run,
-            url=body.url, persona_id=body.persona_id, brief=body.brief, images=body.images,
+            links=links, persona_id=body.persona_id, brief=brief, focus=body.focus,
+            images=body.images,
         )
         return JSONResponse(
             status_code=202,
@@ -345,6 +367,12 @@ def create_app(
     # seven tested-thin inline routes above stay untouched. A future chunk migrates
     # those onto routers too.
     app.include_router(portals_router)
+
+    # The run LISTING API (GET /runs): a read-only collection view over the run records,
+    # added as its own router beside the inline run lifecycle routes (POST /runs,
+    # GET /runs/{id}, POST /articles/from-link), which stay untouched. FastAPI matches
+    # GET /runs (router) and GET /runs/{id} (inline) by path, so the two coexist.
+    app.include_router(runs_router)
 
     # The author (persona) MANAGEMENT API: the non-synthesis direct-create, update, and
     # delete routes. Added as its own router beside the inline synthesis/list/get routes,

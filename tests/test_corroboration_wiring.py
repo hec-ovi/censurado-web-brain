@@ -14,7 +14,9 @@ PRODUCTION assembly (``build_run_deps`` over an ``open_db`` connection) through
   * an armed managed run DROPS an under-corroborated assignment ``uncorroborated`` and
     spends ZERO draft tokens (the only model call is the manager's triage), while a
     corroborated story is NOT false-dropped and goes on to draft + publish;
-  * the direct-from-link path honors the same hard requirement.
+  * the direct-from-brief path does NOT honor the corroboration floor: the operator
+    vouched for the source, so a single-source brief drafts and publishes even with the
+    same gate armed (the gate is forced off for the direct path, never for managed).
 
 Only the two network seams (web search + the research/seed ledger) are doubled; the
 store, the style store, the portal registry, the resolver, and the resolved roles are
@@ -209,16 +211,17 @@ def test_execute_run_does_not_drop_a_corroborated_assignment(fake, tmp_path):
     assert len(fake.state.chat_requests) > 1  # more than just the manager's one call
 
 
-# ----- 3) the direct-from-link path honors the same hard requirement -----
+# ----- 3) the direct-from-brief path does NOT honor the corroboration floor -----
 
 
-def test_direct_link_without_corroboration_is_dropped(fake, tmp_path):
-    # Documents the current policy: a direct-from-link article is held to the SAME
-    # corroboration requirement as a managed one. The link seeds ONE source (clarin ->
-    # grupo-clarin) and the author's corroboration research finds nothing more, so the
-    # ledger rests on a single independent group. With min_sources=2 armed through the
-    # real seam, the direct assignment is DROPPED "uncorroborated" before any draft, and
-    # because the direct path also bypasses the manager, ZERO model calls are made.
+def test_direct_link_single_source_is_not_dropped(fake, tmp_path):
+    # The operator vouched for the source: a direct-from-brief article is NOT held to the
+    # managed corroboration floor. SAME armed setup as the managed drop test (min_sources=2
+    # from the active style guide + the registry resolver), but the link seeds just ONE
+    # source (clarin -> grupo-clarin) and the outward research finds nothing more, so the
+    # ledger rests on a single independent group. A managed run would DROP this; the direct
+    # path forces the gate OFF, so the article instead DRAFTS and PUBLISHES.
+    url = "https://clarin.com/nota"
     conn = open_db(":memory:", check_same_thread=False)
     _seed_portals(conn)
     _seed_min_sources(conn, 2)
@@ -226,10 +229,16 @@ def test_direct_link_without_corroboration_is_dropped(fake, tmp_path):
         fake, _settings(fake, tmp_path), conn,
         make_ledger=_empty_ledger, fetch=lambda _u: "Cuerpo de la nota.",
     )
+    # The pipeline runs in full: outline, a draft that CITES the seed url (so the rules
+    # evaluator passes), an enriched body, then a valid finalize.
+    fake.state.script_chat("an outline")
+    fake.state.script_chat(f"Grounded prose citing {url}.")
+    fake.state.script_chat("an enriched body")
+    fake.state.script_chat(_finalize_ok("Una Fuente", "El cuerpo de la nota."))
 
-    report = run_direct(deps=deps, url="https://clarin.com/nota", persona_id="ada", brief="cubrilo")
+    report = run_direct(deps=deps, links=[url], persona_id="ada", brief="cubrilo")
 
-    assert [o.status for o in report.outcomes] == ["dropped"]
-    assert report.outcomes[0].stop_reason == "uncorroborated"
-    assert report.published == []
-    assert fake.state.chat_requests == []  # no manager, dropped before drafting -> zero calls
+    assert [o.status for o in report.outcomes] == ["ready"]  # NOT dropped: the gate is off
+    assert report.outcomes[0].stop_reason != "uncorroborated"
+    assert report.outcomes[0].drafts >= 1  # the drafter WAS reached
+    assert [p.ok for p in report.published] == [True]

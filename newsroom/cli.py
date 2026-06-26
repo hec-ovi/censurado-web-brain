@@ -57,6 +57,7 @@ from newsroom.runner import (
     run_direct,
     start_run,
 )
+from newsroom.runs import RunStore
 
 __all__ = ["main", "build_deps_from_env"]
 
@@ -165,24 +166,45 @@ def _bootstrap_main(argv: list[str]) -> int:
 
 
 def _direct_main(argv: list[str], *, build_deps: DepsBuilder | None = None) -> int:
-    """``censurado-brain direct --url URL --persona ID [--brief TEXT]``: run mode 3,
-    one persona writes one article seeded from a link, BYPASSING the manager. Prints a
-    JSON summary and returns the run's exit code (the same code map as a batch run)."""
+    """``censurado-brain direct --persona ID [--brief TEXT] [--link URL ...] [--focus TEXT]``:
+    run mode 3, one persona writes one article from a BRIEF, BYPASSING the manager. The
+    brief is a free-text instruction; ``--link`` may be repeated for 0..N sources the
+    operator vouched for; ``--focus`` narrows the angle. The agent reads the links and
+    researches OUTWARD from the brief, and the corroboration gate is OFF for this path.
+    At least one of ``--brief`` / ``--link`` is required (there has to be something to
+    write about). Prints a JSON summary and returns the run's exit code (the same code map
+    as a batch run)."""
     parser = argparse.ArgumentParser(
         prog="censurado-brain direct",
-        description="Write one article from a link with one persona (bypasses the manager).",
+        description="Write one article from a brief with one persona (bypasses the manager).",
     )
-    parser.add_argument("--url", required=True, help="the source URL to write about")
     parser.add_argument("--persona", required=True, help="the persona id that writes it")
     parser.add_argument(
-        "--brief", default=None,
-        help="the angle/brief for the article (default: a generic 'write about this source')",
+        "--brief", default="", help="the free-text instruction for the article"
+    )
+    parser.add_argument(
+        "--link", action="append", default=None, metavar="URL",
+        help="a source URL to read (repeatable for 0..N links)",
+    )
+    parser.add_argument(
+        "--focus", default=None, help="an optional focus that narrows the angle"
     )
     parser.add_argument(
         "--images", action=argparse.BooleanOptionalAction, default=None,
         help="generate a hero image for this article (default: the server setting)",
     )
     args = parser.parse_args(argv)
+
+    links: list[str] = []
+    for raw in args.link or []:
+        cleaned = (raw or "").strip()
+        if cleaned and cleaned not in links:
+            links.append(cleaned)
+    brief = (args.brief or "").strip()
+    if not brief and not links:
+        _emit({"run_id": None, "mode": "direct", "status": "failed",
+               "error": "provide a --brief and/or at least one --link"})
+        return _EXIT["failed"]
 
     settings = load_settings()
     deps = (build_deps or build_deps_from_env)(settings)
@@ -192,7 +214,8 @@ def _direct_main(argv: list[str], *, build_deps: DepsBuilder | None = None) -> i
                    "error": f"unknown persona {args.persona!r}"})
             return _EXIT["failed"]
         report = run_direct(
-            deps=deps, url=args.url, persona_id=args.persona, brief=args.brief, images=args.images
+            deps=deps, links=links, persona_id=args.persona, brief=brief, focus=args.focus,
+            images=args.images,
         )
     except Exception as exc:
         _emit({"run_id": None, "mode": "direct", "status": "failed", "error": str(exc)})
@@ -395,6 +418,95 @@ def _sources_main(argv: list[str], *, store: PortalStore | None = None) -> int:
     removed = store.delete(args.portal_id)
     _emit({"id": args.portal_id, "removed": removed})
     return 0 if removed else _EXIT["failed"]
+
+
+def _open_runs_store() -> RunStore:
+    """Open the brain DB the API uses and wrap it in a ``RunStore``. The CLI run verbs are
+    their own process (a separate connection from a live brain); WAL + the busy timeout
+    (see ``open_db``) let that connection share the file safely."""
+    settings = load_settings()
+    conn = open_db(settings.persona_db_path, check_same_thread=False)
+    return RunStore(conn)
+
+
+def _run_detail_payload(store: RunStore, run) -> dict:
+    """One run plus its assignments, mirroring the HTTP ``GET /runs/{id}`` body: the
+    run-level record and the per-assignment statuses (so a dropped/published article is
+    visible from the CLI exactly as over HTTP)."""
+    assignments = store.list_assignments(run_id=run.id)
+    return {
+        "run_id": run.id,
+        "mode": run.mode,
+        "status": run.status,
+        "n_requested": run.n_requested,
+        "created_at": run.created_at,
+        "finished_at": run.finished_at,
+        "assignments": [
+            {
+                "id": a.id,
+                "persona_id": a.persona_id,
+                "section": a.section,
+                "status": a.status,
+                "published_id": a.published_id,
+                "drop_reason": a.drop_reason,
+                "image_url": a.image_url,
+            }
+            for a in assignments
+        ],
+    }
+
+
+def _runs_main(argv: list[str], *, store: RunStore | None = None) -> int:
+    """``censurado-brain runs list|get``: read-only inspection of the run records,
+    mirroring the HTTP run surface. ``list`` prints every run newest-first (optionally
+    filtered to a ``--status``), ``get <run_id>`` prints one run with its assignments.
+    Operates on a local ``RunStore`` over the brain DB. Prints a JSON result via ``_emit``
+    and returns 0 on success, 1 on an unknown run/sub-verb. ``store`` is injectable for
+    tests."""
+    if not argv:
+        _emit({"error": "usage: runs list|get"})
+        return _EXIT["failed"]
+    verb, rest = argv[0], argv[1:]
+    if verb not in ("list", "get"):
+        _emit({"error": f"unknown runs verb {verb!r}"})
+        return _EXIT["failed"]
+
+    store = store or _open_runs_store()
+
+    if verb == "list":
+        parser = argparse.ArgumentParser(prog="censurado-brain runs list")
+        parser.add_argument(
+            "--status", default=None,
+            help="filter to one status (running|done|done_with_errors|failed)",
+        )
+        args = parser.parse_args(rest)
+        runs = store.list_runs(status=args.status)
+        _emit({
+            "runs": [
+                {
+                    "run_id": r.id,
+                    "mode": r.mode,
+                    "status": r.status,
+                    "n_requested": r.n_requested,
+                    "created_at": r.created_at,
+                    "finished_at": r.finished_at,
+                }
+                for r in runs
+            ],
+            "total": len(runs),
+        })
+        return 0
+
+    # verb == "get"
+    parser = argparse.ArgumentParser(prog="censurado-brain runs get")
+    parser.add_argument("run_id", help="the run id to inspect")
+    args = parser.parse_args(rest)
+    run = store.get_run(args.run_id)
+    if run is None:
+        _emit({"error": f"unknown run {args.run_id!r}"})
+        return _EXIT["failed"]
+    _emit(_run_detail_payload(store, run))
+    return 0
 
 
 def _open_persona_store() -> PersonaStore:
@@ -657,6 +769,7 @@ def main(
     build_deps: DepsBuilder | None = None,
     portal_store: PortalStore | None = None,
     persona_store: PersonaStore | None = None,
+    run_store: RunStore | None = None,
 ) -> int:
     """Parse args, run once, print a JSON summary, return an exit code.
 
@@ -684,6 +797,10 @@ def main(
         # HTTP management API. A subcommand so the bare --mode run path is unchanged. The
         # portal store rides along so `authors sources` can validate source ids.
         return _authors_main(argv[1:], store=persona_store, portal_store=portal_store)
+    if argv and argv[0] == "runs":
+        # Inspect the run records (list / get), mirroring the HTTP run surface. A
+        # subcommand so the bare --mode run path (the periodic trigger) is unchanged.
+        return _runs_main(argv[1:], store=run_store)
     args = _parser().parse_args(argv)
     settings = load_settings()
     deps = (build_deps or build_deps_from_env)(settings)

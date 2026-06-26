@@ -106,6 +106,22 @@ class RunStore:
         row = self._conn.execute("SELECT * FROM runs WHERE id = ?", (run_id,)).fetchone()
         return _row_to_run(row) if row is not None else None
 
+    def list_runs(self, *, status: str | None = None) -> list[Run]:
+        """Every run, NEWEST first (an operator scanning a runs list wants the most
+        recent invocations on top), optionally filtered to a single ``status``
+        (``running`` | ``done`` | ``done_with_errors`` | ``failed``). Returns the full
+        set; the HTTP/CLI surface applies any ``limit``/``offset`` window over it, exactly
+        like the source/author listings."""
+        if status is None:
+            rows = self._conn.execute(
+                "SELECT * FROM runs ORDER BY created_at DESC, id"
+            ).fetchall()
+        else:
+            rows = self._conn.execute(
+                "SELECT * FROM runs WHERE status = ? ORDER BY created_at DESC, id", (status,)
+            ).fetchall()
+        return [_row_to_run(r) for r in rows]
+
     def finish_run(self, run_id: str, *, status: str = "done") -> None:
         self._conn.execute(
             "UPDATE runs SET status = ?, finished_at = ? WHERE id = ?",

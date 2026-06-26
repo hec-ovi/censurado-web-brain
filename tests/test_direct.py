@@ -1,17 +1,19 @@
-"""Run mode 3: the direct-from-link path (hand one persona a URL, get an article),
-driven end to end against the shared fake.
+"""Run mode 3: the direct-from-brief path (hand one persona a free-text instruction,
+0..N vouched-for links, and an optional focus; get an article), driven end to end against
+the shared fake.
 
 The contracts pinned here:
 
-  * the URL is FETCHED and seeds the grounding ledger, then the single assignment is
-    drafted, finalized, and published, all WITHOUT the manager (no triage, no
-    fan-out): ``run_manager`` is never called;
-  * the fetch DEBITS the same per-article budget, so a huge page bounds the article
+  * each link is FETCHED and seeds the grounding ledger, the brief + focus become the
+    assignment angle, then the single assignment is drafted, finalized, and published,
+    all WITHOUT the manager (no triage, no fan-out): ``run_manager`` is never called;
+  * each fetch DEBITS the same per-article budget, so a huge page bounds the article
     (it drops on budget exhaustion) exactly like research spend does;
-  * a bad/empty fetch degrades safely: the article grounds on corroboration instead,
-    never crashing;
-  * the HTTP route (``POST /articles/from-link``) returns 202 + a poll Location and
-    validates the persona; the CLI ``direct`` verb runs the same path end to end.
+  * a bad/empty fetch degrades safely: the article grounds on the outward research
+    instead, never crashing;
+  * the HTTP route (``POST /articles/from-link``) returns 202 + a poll Location, takes
+    the brief shape (and a legacy ``url`` alias), and validates the persona + that there
+    is something to write about; the CLI ``direct`` verb runs the same path end to end.
 """
 
 from __future__ import annotations
@@ -142,7 +144,7 @@ def test_direct_run_seeds_from_the_url_publishes_and_bypasses_the_manager(fake, 
 
     _script_pipeline(fake, cite=url)
 
-    report = run_direct(deps=deps, url=url, persona_id="ada", brief="cubri la protesta")
+    report = run_direct(deps=deps, links=[url], persona_id="ada", brief="cubri la protesta")
 
     assert report.mode == "direct"
     assert report.status == "done"
@@ -163,10 +165,42 @@ def test_direct_run_uses_the_brief_as_the_angle(fake, tmp_path):
     deps = _direct_deps(fake, settings, personas=[_ada()], fetch=lambda _u: "fuente", make_ledger=_empty_ledger)
     _script_pipeline(fake, cite=url)
 
-    report = run_direct(deps=deps, url=url, persona_id="ada", brief="el angulo economico")
+    report = run_direct(deps=deps, links=[url], persona_id="ada", brief="el angulo economico")
 
     assert report.status == "done"
     assert report.manifest.assignments[0].angle == "el angulo economico"
+
+
+def test_direct_run_reads_many_links_and_a_focus(fake, tmp_path):
+    # The brief shape: a free-text instruction + 0..N links + a focus. Every link is
+    # FETCHED and seeds the grounding, and the focus rides into the assignment angle
+    # alongside the brief. Corroboration is off for the direct path, so a multi-source
+    # brief drafts and publishes.
+    links = ["https://clarin.com/a", "https://lanacion.com.ar/b"]
+    fetched: list[str] = []
+
+    def fetch(u: str) -> str:
+        fetched.append(u)
+        return f"cuerpo de {u}"
+
+    settings = _settings(fake, tmp_path)
+    deps = _direct_deps(fake, settings, personas=[_ada()], fetch=fetch, make_ledger=_empty_ledger)
+    # The draft cites the FIRST seeded link so the rules evaluator passes.
+    _script_pipeline(fake, cite=links[0])
+
+    report = run_direct(
+        deps=deps, links=links, persona_id="ada",
+        brief="escribi sobre esto", focus="el impacto en jubilaciones",
+    )
+
+    assert report.status == "done"
+    assert fetched == links  # both links were fetched and seeded
+    angle = report.manifest.assignments[0].angle
+    assert "escribi sobre esto" in angle and "el impacto en jubilaciones" in angle
+    assert [p.ok for p in report.published] == [True]
+    # Both seeded sources reached the drafter's grounding (the ledger carries both urls).
+    prompts = " ".join(json.dumps(r["body"]) for r in fake.state.chat_requests)
+    assert links[0] in prompts and links[1] in prompts
 
 
 # ----- the fetch is budget-bounded -----
@@ -181,7 +215,7 @@ def test_a_large_fetch_debits_the_budget_and_drops_the_article(fake, tmp_path):
         fake, settings, personas=[_ada()], fetch=lambda _u: "x" * 4000, make_ledger=_ready_ledger
     )
 
-    report = run_direct(deps=deps, url="https://clarin.com/huge", persona_id="ada")
+    report = run_direct(deps=deps, links=["https://clarin.com/huge"], persona_id="ada")
 
     assert [o.status for o in report.outcomes] == ["dropped"]
     assert report.outcomes[0].stop_reason == "budget_exhausted"
@@ -201,7 +235,7 @@ def test_a_failed_fetch_grounds_on_corroboration_instead_of_crashing(fake, tmp_p
     )
     _script_pipeline(fake, cite="https://src.test/a")  # cite the corroboration source
 
-    report = run_direct(deps=deps, url="https://blocked.test/x", persona_id="ada")
+    report = run_direct(deps=deps, links=["https://blocked.test/x"], persona_id="ada")
 
     assert report.status == "done"
     assert [p.ok for p in report.published] == [True]
@@ -211,7 +245,7 @@ def test_an_unknown_persona_finishes_clean_without_crashing(fake, tmp_path):
     settings = _settings(fake, tmp_path)
     deps = _direct_deps(fake, settings, personas=[_ada()], fetch=lambda _u: "x", make_ledger=_empty_ledger)
 
-    report = run_direct(deps=deps, url="https://x.test/a", persona_id="ghost")
+    report = run_direct(deps=deps, links=["https://x.test/a"], persona_id="ghost")
 
     assert report.status == "done"
     assert report.manifest.assignments == []
@@ -229,7 +263,10 @@ def test_post_articles_from_link_returns_202_then_polls_to_published(fake, tmp_p
     client = httpx.Client(base_url=base_url, timeout=10)
     _script_pipeline(fake, cite=url)
 
-    accepted = client.post("/articles/from-link", json={"url": url, "persona_id": "ada", "brief": "cubrilo"})
+    accepted = client.post(
+        "/articles/from-link",
+        json={"links": [url], "persona_id": "ada", "brief": "cubrilo", "focus": "el barrio"},
+    )
     assert accepted.status_code == 202
     handle = accepted.json()
     assert handle["mode"] == "direct"
@@ -243,13 +280,31 @@ def test_post_articles_from_link_returns_202_then_polls_to_published(fake, tmp_p
     client.close()
 
 
+def test_from_link_accepts_the_legacy_url_alias(fake, tmp_path, serve_app):
+    # Backward compatibility: an older caller posting a single ``url`` still works; it is
+    # folded into the links list and the article publishes.
+    url = "https://infobae.com/legacy"
+    settings = _settings(fake, tmp_path)
+    deps = _direct_deps(fake, settings, personas=[_ada()], fetch=lambda _u: "fuente", make_ledger=_empty_ledger)
+    base_url = serve_app(create_app(settings=settings, store=deps.persona_store, run_deps=deps))
+    client = httpx.Client(base_url=base_url, timeout=10)
+    _script_pipeline(fake, cite=url)
+
+    accepted = client.post("/articles/from-link", json={"url": url, "persona_id": "ada", "brief": "cubrilo"})
+    assert accepted.status_code == 202
+    final = _poll_until_done(client, accepted.json()["run_id"])
+    assert final["status"] == "done"
+    assert final["assignments"][0]["status"] == "published"
+    client.close()
+
+
 def test_from_link_rejects_an_unknown_persona(fake, tmp_path, serve_app):
     settings = _settings(fake, tmp_path)
     deps = _direct_deps(fake, settings, personas=[_ada()], fetch=lambda _u: "x", make_ledger=_empty_ledger)
     base_url = serve_app(create_app(settings=settings, store=deps.persona_store, run_deps=deps))
     client = httpx.Client(base_url=base_url, timeout=10)
 
-    resp = client.post("/articles/from-link", json={"url": "https://x.test/a", "persona_id": "ghost"})
+    resp = client.post("/articles/from-link", json={"links": ["https://x.test/a"], "persona_id": "ghost"})
 
     assert resp.status_code == 404
     assert resp.json()["code"] == "persona_not_found"
@@ -258,16 +313,19 @@ def test_from_link_rejects_an_unknown_persona(fake, tmp_path, serve_app):
     client.close()
 
 
-def test_from_link_rejects_an_empty_url(fake, tmp_path, serve_app):
+def test_from_link_rejects_an_empty_brief_and_links(fake, tmp_path, serve_app):
+    # Nothing to write about: no brief and no links (blanks are stripped) -> 422, and no
+    # run is ever created.
     settings = _settings(fake, tmp_path)
     deps = _direct_deps(fake, settings, personas=[_ada()], fetch=lambda _u: "x", make_ledger=_empty_ledger)
     base_url = serve_app(create_app(settings=settings, store=deps.persona_store, run_deps=deps))
     client = httpx.Client(base_url=base_url, timeout=10)
 
-    resp = client.post("/articles/from-link", json={"url": "  ", "persona_id": "ada"})
+    resp = client.post("/articles/from-link", json={"persona_id": "ada", "links": ["  "], "brief": "  "})
 
     assert resp.status_code == 422
     assert resp.json()["code"] == "validation_failed"
+    assert deps.store._conn.execute("SELECT COUNT(*) FROM runs").fetchone()[0] == 0
     client.close()
 
 
@@ -291,7 +349,8 @@ def test_cli_direct_writes_an_article_from_a_link(fake, tmp_path, capsys):
     _script_pipeline(fake, cite=url)
 
     code = main(
-        ["direct", "--url", url, "--persona", "ada", "--brief", "una nota directa"],
+        ["direct", "--link", url, "--persona", "ada", "--brief", "una nota directa",
+         "--focus", "el detalle"],
         build_deps=build_deps,
     )
 
@@ -312,12 +371,29 @@ def test_cli_direct_unknown_persona_is_a_clean_failure(fake, tmp_path, capsys):
             search_news=_no_search, make_ledger=_empty_ledger, fetch=lambda _u: "x",
         )
 
-    code = main(["direct", "--url", "https://x.test/a", "--persona", "ghost"], build_deps=build_deps)
+    code = main(["direct", "--link", "https://x.test/a", "--persona", "ghost"], build_deps=build_deps)
 
     assert code == 1  # _EXIT["failed"]
     summary = json.loads(capsys.readouterr().out.strip().splitlines()[-1])
     assert summary["status"] == "failed" and "ghost" in summary["error"]
     assert fake.state.chat_requests == []  # never ran a pipeline
+
+
+def test_cli_direct_requires_a_brief_or_a_link(fake, tmp_path, capsys):
+    # Nothing to write about: no --brief and no --link -> a clean failure BEFORE any deps
+    # are built or a run is created.
+    built: list[bool] = []
+
+    def build_deps(_s: Settings) -> RunDeps:
+        built.append(True)  # must never be reached
+        raise AssertionError("deps should not be built")
+
+    code = main(["direct", "--persona", "ada"], build_deps=build_deps)
+
+    assert code == 1
+    summary = json.loads(capsys.readouterr().out.strip().splitlines()[-1])
+    assert summary["status"] == "failed" and "brief" in summary["error"]
+    assert built == []
 
 
 def _poll_until_done(client: httpx.Client, run_id: str, *, timeout_s: float = 15.0) -> dict:

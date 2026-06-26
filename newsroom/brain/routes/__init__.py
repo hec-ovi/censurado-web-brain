@@ -15,5 +15,6 @@ from __future__ import annotations
 
 from newsroom.brain.routes.personas import router as personas_router
 from newsroom.brain.routes.portals import router as portals_router
+from newsroom.brain.routes.runs import router as runs_router
 
-__all__ = ["personas_router", "portals_router"]
+__all__ = ["personas_router", "portals_router", "runs_router"]

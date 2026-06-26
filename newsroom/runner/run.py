@@ -453,29 +453,49 @@ def run_managed(*, deps: RunDeps, n: int | None = None, persona_ids: list[str] |
 # ----- mode 3: direct-from-link (bypasses the manager) -----
 
 
-def _direct_ledger_builder(deps: RunDeps, url: str, brief: str | None):
-    """A ``make_ledger`` for the ONE direct assignment: seed the ledger from the given
-    URL (fetch + add it as the primary grounded source), then BEST-EFFORT corroborate
-    with the author's normal scoped research loop (the persona's own portals), merging
-    its rows in. Both the fetch and the corroboration DEBIT the same per-article budget
-    so the direct path is bounded exactly like every other article.
+def _direct_instruction(brief: str | None, focus: str | None) -> str:
+    """Fold the operator's free-text brief and optional focus into ONE instruction the
+    journalist writes from. The brief is the open command ("cover the budget vote"); the
+    focus narrows it ("the impact on pensions"). Either may be empty; the result is the
+    non-empty parts joined, so a brief-only request reads exactly as the brief and a
+    focus-only request still carries the angle."""
+    parts: list[str] = []
+    if brief and brief.strip():
+        parts.append(brief.strip())
+    if focus and focus.strip():
+        parts.append(f"Focus on: {focus.strip()}")
+    return "\n".join(parts)
 
-    A failed/empty fetch is not fatal: the article then grounds on corroboration alone,
-    or (if both are empty) the ledger is empty and the evaluator's grounding gate drops
-    it. Nothing here raises into the pipeline."""
+
+def _direct_ledger_builder(deps: RunDeps, links: list[str], instruction: str):
+    """A ``make_ledger`` for the ONE direct assignment: seed the ledger from EACH operator
+    link (fetch + add it as a primary grounded source), then research OUTWARD from the
+    brief with the author's normal scoped research loop (the persona's own portals),
+    merging its rows in. Every fetch and the outward research DEBIT the same per-article
+    budget so the direct path is bounded exactly like every other article.
+
+    The operator vouched for these links, so the brief is the starting point, not a single
+    fixed source: the agent reads the 0..N links the operator handed it and then keeps
+    digging on the instruction. A failed/empty fetch on any link is not fatal (that link
+    contributes nothing); with no links at all the article grounds purely on the outward
+    research. If everything comes back empty the ledger is empty and the evaluator's
+    grounding gate drops it. Nothing here raises into the pipeline."""
 
     def make_ledger(assignment, spec, persona, budget) -> Ledger:
         ledger = Ledger()
-        text = deps.fetch(url) if deps.fetch is not None else ""
-        if text:
-            # The fetch counts toward the per-article bound: charge a rough token cost
-            # for the page so a huge document cannot ground for free (a real debit, no
-            # output cap, it only bounds the INPUT we paid to read).
-            budget.debit_tokens(len(text) // 4)
-            ledger.add(claim=(brief or spec.angle or "primary source"), url=url, snippet=text)
-        # Corroboration: the author's normal research loop on the brief/angle, scoped to
+        for url in links:
+            if budget.exhausted():
+                break
+            text = deps.fetch(url) if deps.fetch is not None else ""
+            if text:
+                # The fetch counts toward the per-article bound: charge a rough token cost
+                # for the page so a huge document cannot ground for free (a real debit, no
+                # output cap, it only bounds the INPUT we paid to read).
+                budget.debit_tokens(len(text) // 4)
+                ledger.add(claim=(instruction or spec.angle or "primary source"), url=url, snippet=text)
+        # Outward research: the author's normal research loop on the brief/angle, scoped to
         # its own source pool, charging the SAME budget. Skipped once the budget is spent
-        # (the fetch may have exhausted it), and isolated so a research fault never sinks
+        # (the fetches may have exhausted it), and isolated so a research fault never sinks
         # the directly-requested article.
         if not budget.exhausted():
             try:
@@ -499,19 +519,26 @@ def start_direct(*, deps: RunDeps) -> Run:
 
 
 def execute_direct(
-    *, run: Run, url: str, persona_id: str, deps: RunDeps, brief: str | None = None,
-    images: bool | None = None,
+    *, run: Run, links: list[str], persona_id: str, deps: RunDeps, brief: str | None = None,
+    focus: str | None = None, images: bool | None = None,
 ) -> RunReport:
-    """Run mode 3: hand ONE persona a link and get an article, BYPASSING the manager.
+    """Run mode 3: hand ONE persona a BRIEF (a free-text instruction, 0..N links the
+    operator vouched for, and an optional focus) and get an article, BYPASSING the manager.
 
     There is no triage and no manager call. The single assignment is funneled through
     the EXACT same per-article pipeline + publish tail as a managed run by reusing
     ``dispatch_run`` with a one-item manifest, so ``dispatch_run`` remains the sole
-    fan-out point (a single direct article simply has nothing to fan out). The ledger
-    is seeded from the URL instead of from a manager-driven research topic.
+    fan-out point (a single direct article simply has nothing to fan out). The ledger is
+    seeded from each link and then enriched by researching OUTWARD from the brief, instead
+    of from a manager-driven research topic.
 
-    The article still passes every normal gate (evaluate, fact-check, finalize) and a
-    grounding-empty result is dropped, never published unbacked."""
+    The cross-source corroboration GATE is FORCED OFF here (``min_independent_sources=0``)
+    regardless of the house style's ``sourcing.min_sources``: the operator vouched for the
+    source and asked for this specific piece, so a single-source brief is a deliberate,
+    legitimate request, not a quality-floor violation. That is the deliberate divergence
+    from a managed run, where the gate stays armed as the autonomous quality floor. The
+    article still passes every OTHER normal gate (evaluate, fact-check, finalize) and a
+    grounding-empty result is still dropped, never published unbacked."""
     store = deps.store
     settings = deps.settings
     guard = deps.lock if deps.lock is not None else nullcontext()
@@ -530,10 +557,11 @@ def execute_direct(
                 run_id=run.id, mode=run.mode, status="done", manifest=Manifest(assignments=[])
             )
 
+        instruction = _direct_instruction(brief, focus)
         spec = AssignmentSpec(
             persona_id=persona.id,
             section=persona.beat,  # authoritative: a persona writes their own beat
-            angle=(brief or "Write an article about this source."),
+            angle=(instruction or "Write an article about these sources."),
             headline=(brief or ""),
         )
         manifest = Manifest(assignments=[spec])
@@ -546,7 +574,11 @@ def execute_direct(
             house_style_eval=style_for_eval(style_guide),
             style_lexicon=(style_guide.lexicon if style_guide is not None else {}),
             recent_coverage=recent_coverage_text(coverage),
-            min_independent_sources=(style_guide.sourcing.get("min_sources", 0) if style_guide is not None else 0),
+            # The operator vouched for the source: corroboration is OFF for the direct
+            # path, never read from the style guide. Managed runs keep it armed (see
+            # execute_run). The agent still researches outward, it just is not DROPPED for
+            # resting on a single independent source.
+            min_independent_sources=0,
             ownership_of=deps.ownership_of,
         )
 
@@ -555,7 +587,7 @@ def execute_direct(
             manifest=manifest,
             persona_index={persona.id: persona},
             store=store,
-            make_ledger=_direct_ledger_builder(deps, url, brief),
+            make_ledger=_direct_ledger_builder(deps, links, instruction),
             drafter_cfg=deps.roles.drafter,
             evaluator_cfg=deps.roles.evaluator,
             finalize_cfg=deps.roles.finalize,
@@ -590,13 +622,15 @@ def execute_direct(
 
 
 def run_direct(
-    *, deps: RunDeps, url: str, persona_id: str, brief: str | None = None,
-    images: bool | None = None,
+    *, deps: RunDeps, links: list[str], persona_id: str, brief: str | None = None,
+    focus: str | None = None, images: bool | None = None,
 ) -> RunReport:
-    """Synchronous direct-from-link run: create the record and execute it on this
+    """Synchronous direct-from-brief run: create the record and execute it on this
     thread (the CLI path; the HTTP surface uses ``start_direct`` + a background
-    ``execute_direct`` instead)."""
+    ``execute_direct`` instead). ``links`` is the 0..N sources the operator vouched for,
+    ``brief``/``focus`` the free-text instruction the agent researches outward from."""
     run = start_direct(deps=deps)
     return execute_direct(
-        run=run, url=url, persona_id=persona_id, deps=deps, brief=brief, images=images
+        run=run, links=links, persona_id=persona_id, deps=deps, brief=brief, focus=focus,
+        images=images,
     )

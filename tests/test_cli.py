@@ -27,6 +27,7 @@ from newsroom.editorial import Portal, PortalStore
 from newsroom.personas import Persona, PersonaStore
 from newsroom.research.ledger import Ledger
 from newsroom.runner import build_run_deps
+from newsroom.runs import RunStore
 
 
 # ----- builders (a thin local copy of the run scripting) -----
@@ -250,6 +251,44 @@ def test_cli_persona_ids_scope_the_run(fake, tmp_path, capsys):
     assert out["mode"] == "manual"
     assert (out["assigned"], out["published"]) == (1, 1)  # bea out of scope, ghost skipped
     assert deps.store.list_assignments(run_id=out["run_id"])[0].persona_id == "ada"
+
+
+def test_cli_runs_list_and_get(tmp_path, capsys):
+    # The `runs` verb group inspects the run records from the command line, mirroring the
+    # HTTP run surface. One injected store backs every call, so list/get see the same rows.
+    store = RunStore(open_db(tmp_path / "brain.db", check_same_thread=False))
+    r_done = store.create_run(mode="managed", n_requested=2)
+    store.finish_run(r_done.id, status="done")
+    r_running = store.create_run(mode="manual", n_requested=1)
+
+    # list: every run, newest first, with its status.
+    assert main(["runs", "list"], run_store=store) == 0
+    listing = json.loads(capsys.readouterr().out)
+    assert listing["total"] == 2
+    assert {r["run_id"] for r in listing["runs"]} == {r_done.id, r_running.id}
+    by_id = {r["run_id"]: r["status"] for r in listing["runs"]}
+    assert by_id[r_done.id] == "done" and by_id[r_running.id] == "running"
+
+    # list --status filters.
+    assert main(["runs", "list", "--status", "done"], run_store=store) == 0
+    only_done = json.loads(capsys.readouterr().out)
+    assert [r["run_id"] for r in only_done["runs"]] == [r_done.id]
+
+    # get: one run with its (empty here) assignments list.
+    assert main(["runs", "get", r_done.id], run_store=store) == 0
+    detail = json.loads(capsys.readouterr().out)
+    assert detail["run_id"] == r_done.id and detail["status"] == "done"
+    assert detail["assignments"] == []
+
+    # get on an unknown id is a clean 1 with a JSON error.
+    assert main(["runs", "get", "nope"], run_store=store) == 1
+    assert "nope" in json.loads(capsys.readouterr().out)["error"]
+
+
+def test_cli_runs_unknown_subverb_exits_1_with_usage(tmp_path, capsys):
+    store = RunStore(open_db(tmp_path / "brain.db", check_same_thread=False))
+    assert main(["runs", "teleport"], run_store=store) == 1
+    assert "teleport" in json.loads(capsys.readouterr().out)["error"]
 
 
 def test_cli_sources_add_list_update_disable_remove(tmp_path, capsys):

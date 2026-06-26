@@ -277,3 +277,52 @@ def test_get_unknown_run_is_404(fake, tmp_path, serve_app):
     assert resp.status_code == 404
     assert resp.json()["code"] == "run_not_found"
     client.close()
+
+
+def test_get_runs_lists_runs_with_status_and_filters(fake, tmp_path, serve_app):
+    # The listing surface (GET /runs): every run, newest first, with its status, plus a
+    # status filter. Runs are seeded directly in the shared store (a listing view needs
+    # no pipeline). GET /runs (router) and GET /runs/{id} (inline) coexist by path.
+    deps = _deps(fake, tmp_path)
+    r_done = deps.store.create_run(mode="managed", n_requested=2)
+    deps.store.finish_run(r_done.id, status="done")
+    r_running = deps.store.create_run(mode="manual", n_requested=1)  # left running
+    base_url = serve_app(create_app(settings=deps.settings, store=deps.persona_store, run_deps=deps))
+    client = httpx.Client(base_url=base_url, timeout=10)
+
+    body = client.get("/runs").json()
+    assert body["total"] == 2
+    by_id = {r["run_id"]: r for r in body["runs"]}
+    assert set(by_id) == {r_done.id, r_running.id}
+    assert by_id[r_done.id]["status"] == "done" and by_id[r_done.id]["mode"] == "managed"
+    assert by_id[r_running.id]["status"] == "running" and by_id[r_running.id]["mode"] == "manual"
+    # Newest first.
+    created = [r["created_at"] for r in body["runs"]]
+    assert created == sorted(created, reverse=True)
+
+    # Filter by status.
+    done = client.get("/runs", params={"status": "done"}).json()
+    assert [r["run_id"] for r in done["runs"]] == [r_done.id]
+    assert done["total"] == 1
+    # A status with no runs is an empty page, not an error.
+    empty = client.get("/runs", params={"status": "failed"}).json()
+    assert empty["runs"] == [] and empty["total"] == 0
+    client.close()
+
+
+def test_get_runs_pagination_windows_the_full_set(fake, tmp_path, serve_app):
+    # ``total`` is the count BEFORE the window; the limit/offset pages partition the full
+    # set with no overlap or gap.
+    deps = _deps(fake, tmp_path)
+    ids = {deps.store.create_run(mode="managed", n_requested=1).id for _ in range(3)}
+    base_url = serve_app(create_app(settings=deps.settings, store=deps.persona_store, run_deps=deps))
+    client = httpx.Client(base_url=base_url, timeout=10)
+
+    first = client.get("/runs", params={"limit": 2, "offset": 0}).json()
+    rest = client.get("/runs", params={"limit": 2, "offset": 2}).json()
+
+    assert first["total"] == 3 and rest["total"] == 3
+    assert len(first["runs"]) == 2 and len(rest["runs"]) == 1
+    seen = {r["run_id"] for r in first["runs"]} | {r["run_id"] for r in rest["runs"]}
+    assert seen == ids  # the window partitions the full set
+    client.close()
