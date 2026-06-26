@@ -44,8 +44,19 @@ _MUTABLE_FIELDS = (
     "few_shots_neg",
     "sources",
     "avatar_path",
+    "active",
 )
 _JSON_FIELDS = ("few_shots_pos", "few_shots_neg", "sources")
+
+
+def _encode_field(col: str, value):
+    """Encode one mutable field for SQLite: JSON columns round-trip as text and the
+    boolean ``active`` stores as 0/1. Everything else passes through unchanged."""
+    if col in _JSON_FIELDS:
+        return json.dumps(value)
+    if col == "active":
+        return int(bool(value))
+    return value
 
 
 @dataclass
@@ -65,6 +76,7 @@ class Persona:
     few_shots_neg: list = field(default_factory=list)
     sources: list = field(default_factory=list)
     avatar_path: str = ""
+    active: bool = True
     created_at: str = ""
     updated_at: str = ""
 
@@ -117,9 +129,9 @@ class PersonaStore:
                 """
                 INSERT INTO personas (
                   id, display_name, beat, who_i_am, about, style, language,
-                  few_shots_pos, few_shots_neg, sources, avatar_path,
+                  few_shots_pos, few_shots_neg, sources, avatar_path, active,
                   created_at, updated_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     persona_id,
@@ -133,6 +145,7 @@ class PersonaStore:
                     json.dumps(persona.few_shots_neg),
                     json.dumps(persona.sources),
                     persona.avatar_path,
+                    int(persona.active),
                     now,
                     now,
                 ),
@@ -157,9 +170,7 @@ class PersonaStore:
             raise ValueError(f"invalid beat {changes['beat']!r}; must be one of {SECTION_ENUM}")
 
         columns = list(changes)
-        values = [
-            json.dumps(changes[col]) if col in _JSON_FIELDS else changes[col] for col in columns
-        ]
+        values = [_encode_field(col, changes[col]) for col in columns]
         columns.append("updated_at")
         values.append(self._clock().isoformat())
         set_clause = ", ".join(f"{col} = ?" for col in columns)
@@ -193,16 +204,22 @@ class PersonaStore:
         ).fetchone()
         return _row_to_persona(row) if row is not None else None
 
-    def list(self, *, beat: str | None = None) -> list[Persona]:
-        """All personas, oldest first, optionally filtered to one beat."""
-        if beat is None:
-            rows = self._conn.execute(
-                "SELECT * FROM personas ORDER BY created_at, id"
-            ).fetchall()
-        else:
-            rows = self._conn.execute(
-                "SELECT * FROM personas WHERE beat = ? ORDER BY created_at, id", (beat,)
-            ).fetchall()
+    def list(self, *, beat: str | None = None, include_inactive: bool = False) -> list[Persona]:
+        """Personas oldest first, optionally filtered to one beat. By default only
+        ACTIVE personas are returned (the manager must not assign a soft-deactivated
+        author); ``include_inactive=True`` returns every persona, which the mirror needs
+        so it can reactivate a handle that reappears on web."""
+        clauses: list[str] = []
+        params: list[object] = []
+        if beat is not None:
+            clauses.append("beat = ?")
+            params.append(beat)
+        if not include_inactive:
+            clauses.append("active = 1")
+        where = f" WHERE {' AND '.join(clauses)}" if clauses else ""
+        rows = self._conn.execute(
+            f"SELECT * FROM personas{where} ORDER BY created_at, id", params
+        ).fetchall()
         return [_row_to_persona(r) for r in rows]
 
 
@@ -219,6 +236,7 @@ def _row_to_persona(row: sqlite3.Row) -> Persona:
         few_shots_neg=json.loads(row["few_shots_neg"]) if row["few_shots_neg"] else [],
         sources=json.loads(row["sources"]) if row["sources"] else [],
         avatar_path=row["avatar_path"] or "",
+        active=bool(row["active"]),
         created_at=row["created_at"],
         updated_at=row["updated_at"],
     )

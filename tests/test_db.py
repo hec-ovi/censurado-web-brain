@@ -154,6 +154,48 @@ def test_open_db_migrates_language_column_onto_an_existing_personas_db(tmp_path)
     again.close()
 
 
+def test_open_db_migrates_active_column_onto_an_existing_personas_db(tmp_path):
+    # The mirror's soft-deactivate flag shipped after the personas table. A live DB
+    # predates it; the column only appears via the explicit ALTER in _migrate. Build a
+    # pre-active personas table with a row, reopen via open_db, and assert the column
+    # was added defaulting to active (1) so an existing newsroom keeps writing.
+    import sqlite3
+
+    path = tmp_path / "old_personas.db"
+    raw = sqlite3.connect(str(path))
+    raw.executescript(
+        """
+        CREATE TABLE personas (
+          id TEXT PRIMARY KEY, display_name TEXT NOT NULL, beat TEXT NOT NULL,
+          who_i_am TEXT NOT NULL, about TEXT, style TEXT NOT NULL,
+          language TEXT NOT NULL DEFAULT 'español neutro',
+          few_shots_pos TEXT, few_shots_neg TEXT, sources TEXT, avatar_path TEXT,
+          created_at TEXT NOT NULL, updated_at TEXT NOT NULL
+        );
+        """
+    )
+    raw.execute(
+        "INSERT INTO personas (id, display_name, beat, who_i_am, style, created_at, updated_at) "
+        "VALUES ('p1','P One','tech','w','s','t','t')"
+    )
+    raw.commit()
+    raw.close()
+
+    conn = open_db(path, check_same_thread=False)
+    try:
+        cols = {row["name"] for row in conn.execute("PRAGMA table_info(personas)")}
+        assert "active" in cols
+        # The existing row defaults to active rather than NULL/0.
+        row = conn.execute("SELECT active FROM personas WHERE id = 'p1'").fetchone()
+        assert row["active"] == 1
+    finally:
+        conn.close()
+
+    # Idempotent: a second open does not error (the column is already present).
+    again = open_db(path, check_same_thread=False)
+    again.close()
+
+
 def test_in_memory_db_is_not_put_into_wal(tmp_path):
     conn = open_db(":memory:")
     try:

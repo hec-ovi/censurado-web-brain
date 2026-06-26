@@ -151,6 +151,45 @@ def test_list_filters_by_beat(store: PersonaStore):
     assert store.list(beat="economics") == []
 
 
+# ----- active flag (the mirror's soft-deactivate) -----
+
+
+def test_persona_is_active_by_default(store: PersonaStore):
+    created = store.create(_full_persona())
+    assert created.active is True
+    assert store.get(created.id).active is True
+
+
+def test_list_hides_inactive_by_default_but_include_inactive_shows_it(store: PersonaStore):
+    store.create(_full_persona(id="live", display_name="Live One"))
+    store.create(_full_persona(id="gone", display_name="Gone One", beat="tech"))
+    store.update("gone", active=False)
+    # The run path (default list) only sees the active persona...
+    assert [p.id for p in store.list()] == ["live"]
+    assert [p.id for p in store.list(beat="tech")] == []
+    # ...while the registry view (include_inactive) still sees both.
+    assert [p.id for p in store.list(include_inactive=True)] == ["live", "gone"]
+    assert [p.id for p in store.list(beat="tech", include_inactive=True)] == ["gone"]
+
+
+def test_active_round_trips_as_bool_and_reactivates(store: PersonaStore):
+    created = store.create(_full_persona())
+    deactivated = store.update(created.id, active=False)
+    assert deactivated.active is False
+    assert store.get(created.id).active is False
+    reactivated = store.update(created.id, active=True)
+    assert reactivated.active is True
+    assert store.list()[0].id == created.id  # back in the run path
+
+
+def test_create_inactive_shell_persona(store: PersonaStore):
+    # A web-created author with no local prompt yet is mirrored as an inactive shell.
+    created = store.create(_full_persona(id="shell", active=False))
+    assert created.active is False
+    assert store.list() == []
+    assert [p.id for p in store.list(include_inactive=True)] == ["shell"]
+
+
 # ----- update -----
 
 

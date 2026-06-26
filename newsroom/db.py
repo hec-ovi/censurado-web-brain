@@ -40,6 +40,10 @@ CREATE TABLE IF NOT EXISTS personas (
   few_shots_neg TEXT,
   sources       TEXT,
   avatar_path   TEXT,
+  active        INTEGER NOT NULL DEFAULT 1,   -- mirror tombstone: 0 = soft-deactivated
+                                              -- (handle left web, or a web-created shell
+                                              -- with no local prompt yet). The row and its
+                                              -- private prompt are kept; it just stops writing.
   created_at    TEXT NOT NULL,
   updated_at    TEXT NOT NULL
 );
@@ -208,6 +212,10 @@ _ADDED_COLUMNS = {
     # default; existing rows inherit it. A fresh DB already has it from SCHEMA.
     "personas": (
         ("language", "TEXT NOT NULL DEFAULT 'español neutro'"),
+        # The mirror's soft-deactivate flag shipped after the initial personas table; a
+        # live personas.db predates it, so it is added explicitly. Old rows default to
+        # active (1): an existing newsroom keeps writing until the mirror says otherwise.
+        ("active", "INTEGER NOT NULL DEFAULT 1"),
     ),
 }
 

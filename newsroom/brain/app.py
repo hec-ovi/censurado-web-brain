@@ -236,7 +236,10 @@ def create_app(
     async def list_personas(request: Request, beat: str | None = None):
         state = request.app.state
         with state.lock:
-            items = state.store.list(beat=beat)
+            # The registry view shows every persona, active or soft-deactivated, so an
+            # operator can see a mirror tombstone and its ``active`` flag. The run path
+            # is the one that filters to active (see runner._select_personas).
+            items = state.store.list(beat=beat, include_inactive=True)
         return {"personas": [asdict(p) for p in items]}
 
     @app.post("/runs")
