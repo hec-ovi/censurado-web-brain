@@ -23,7 +23,13 @@ import pytest
 from newsroom.cli import main
 from newsroom.config import Settings
 from newsroom.db import open_db
-from newsroom.editorial import Portal, PortalStore
+from newsroom.editorial import (
+    LocationStore,
+    Portal,
+    PortalStore,
+    StyleGuide,
+    StyleStore,
+)
 from newsroom.personas import Persona, PersonaStore
 from newsroom.research.ledger import Ledger
 from newsroom.runner import build_run_deps
@@ -592,6 +598,161 @@ def test_cli_authors_sources_unknown_subverb_exits_1(tmp_path, capsys):
         persona_store=persona_store, portal_store=portal_store,
     )
     assert code == 1
+    assert "teleport" in json.loads(capsys.readouterr().out)["error"]
+
+
+# ----- editorial config (house style + location) -----
+
+
+def _editorial_stores(tmp_path):
+    """A StyleStore and a LocationStore over one brain DB connection, for the `editorial`
+    verb tests. Both empty (no seeded production data)."""
+    conn = open_db(tmp_path / "brain.db", check_same_thread=False)
+    return StyleStore(conn), LocationStore(conn)
+
+
+def _full_style_json() -> str:
+    return json.dumps(
+        {
+            "voice": "Sober, attribute every claim.",
+            "rules": [{"id": "attribute", "text": "Atribui.", "scope": "both"}],
+            "lexicon": {"banned_terms": ["demoledor"], "preferred_swaps": {"polemico": "discutido"}},
+            "sourcing": {"min_sources": 2, "require_attribution": True},
+            "structure": {"headline": "breve"},
+        }
+    )
+
+
+def test_cli_editorial_style_set_get_versions_promote(tmp_path, capsys):
+    # The `editorial style` group reads/edits the VERSIONED house style. set publishes a
+    # new active version; versions lists the history; promote is rollback.
+    style_store, location_store = _editorial_stores(tmp_path)
+
+    def _run(args):
+        assert main(args, style_store=style_store, location_store=location_store) == 0
+        return json.loads(capsys.readouterr().out)
+
+    # set v1: publishes and auto-activates.
+    v1 = _run(["editorial", "style", "set", "--json", _full_style_json(), "--created-by", "hector"])
+    assert v1["version"] == 1 and v1["is_active"] is True and v1["created_by"] == "hector"
+
+    # get: the active version round-trips the JSON fields.
+    got = _run(["editorial", "style", "get"])
+    assert got["version"] == 1 and got["lexicon"]["banned_terms"] == ["demoledor"]
+    assert got["sourcing"]["min_sources"] == 2
+
+    # set v2 with a different voice; it becomes active.
+    doc2 = json.loads(_full_style_json())
+    doc2["voice"] = "v2 voice"
+    v2 = _run(["editorial", "style", "set", "--json", json.dumps(doc2)])
+    assert v2["version"] == 2 and v2["is_active"] is True
+    assert _run(["editorial", "style", "get"])["voice"] == "v2 voice"
+
+    # versions: newest-first with exactly one active.
+    versions = _run(["editorial", "style", "versions"])
+    assert versions["total"] == 2
+    assert [v["version"] for v in versions["versions"]] == [2, 1]
+
+    # promote v1 = rollback.
+    assert _run(["editorial", "style", "promote", "1"])["version"] == 1
+    assert _run(["editorial", "style", "get"])["voice"].startswith("Sober")
+
+
+def test_cli_editorial_style_get_on_empty_is_an_error(tmp_path, capsys):
+    style_store, location_store = _editorial_stores(tmp_path)
+    code = main(["editorial", "style", "get"], style_store=style_store, location_store=location_store)
+    assert code == 1
+    assert "no active style guide" in json.loads(capsys.readouterr().out)["error"]
+
+
+def test_cli_editorial_style_promote_unknown_version_is_an_error(tmp_path, capsys):
+    style_store, location_store = _editorial_stores(tmp_path)
+    style_store.add_version(StyleGuide(voice="v1"), activate=True)
+    code = main(
+        ["editorial", "style", "promote", "99"],
+        style_store=style_store, location_store=location_store,
+    )
+    assert code == 1
+    assert "99" in json.loads(capsys.readouterr().out)["error"]
+
+
+def test_cli_editorial_lexicon_get_set(tmp_path, capsys):
+    # lexicon get/set: set derives a new active version with only the lexicon replaced.
+    style_store, location_store = _editorial_stores(tmp_path)
+    main(["editorial", "style", "set", "--json", _full_style_json()],
+         style_store=style_store, location_store=location_store)
+    capsys.readouterr()
+
+    def _run(args):
+        assert main(args, style_store=style_store, location_store=location_store) == 0
+        return json.loads(capsys.readouterr().out)
+
+    assert _run(["editorial", "lexicon", "get"])["banned_terms"] == ["demoledor"]
+
+    # --banned-terms replaces just the banned list on the active lexicon.
+    set_out = _run(["editorial", "lexicon", "set", "--banned-terms", "letal, brutal"])
+    assert set_out["banned_terms"] == ["letal", "brutal"]
+    # The preferred_swaps survived (only banned_terms was replaced), on a new version.
+    assert _run(["editorial", "lexicon", "get"])["preferred_swaps"] == {"polemico": "discutido"}
+    assert _run(["editorial", "style", "get"])["version"] == 2
+
+
+def test_cli_editorial_sourcing_set_min_sources_merges(tmp_path, capsys):
+    # sourcing set --min-sources merges onto the active sourcing, keeping the other flags.
+    style_store, location_store = _editorial_stores(tmp_path)
+    main(["editorial", "style", "set", "--json", _full_style_json()],
+         style_store=style_store, location_store=location_store)
+    capsys.readouterr()
+
+    code = main(
+        ["editorial", "sourcing", "set", "--min-sources", "3"],
+        style_store=style_store, location_store=location_store,
+    )
+    assert code == 0
+    out = json.loads(capsys.readouterr().out)
+    assert out["min_sources"] == 3
+    assert out["require_attribution"] is True  # merged, not clobbered
+
+    assert main(["editorial", "sourcing", "get"],
+                style_store=style_store, location_store=location_store) == 0
+    assert json.loads(capsys.readouterr().out)["min_sources"] == 3
+
+
+def test_cli_editorial_location_get_set(tmp_path, capsys):
+    # location get returns the usable default; set applies only the named fields.
+    style_store, location_store = _editorial_stores(tmp_path)
+
+    assert main(["editorial", "location", "get"],
+                style_store=style_store, location_store=location_store) == 0
+    default = json.loads(capsys.readouterr().out)
+    assert (default["region"], default["language"]) == ("AR", "es")
+    assert default["ceid"] == "AR:es-419"
+
+    assert main(["editorial", "location", "set", "--region", "ES", "--city", "Madrid"],
+                style_store=style_store, location_store=location_store) == 0
+    updated = json.loads(capsys.readouterr().out)
+    assert updated["region"] == "ES" and updated["city"] == "Madrid"
+    assert updated["language"] == "es"  # untouched
+    assert updated["gl"] == "ES"
+
+
+def test_cli_editorial_location_set_blank_required_is_an_error(tmp_path, capsys):
+    style_store, location_store = _editorial_stores(tmp_path)
+    code = main(
+        ["editorial", "location", "set", "--region", "   "],
+        style_store=style_store, location_store=location_store,
+    )
+    assert code == 1
+    assert "region is required" in json.loads(capsys.readouterr().out)["error"]
+
+
+def test_cli_editorial_unknown_group_and_subverb_exit_1(tmp_path, capsys):
+    style_store, location_store = _editorial_stores(tmp_path)
+    assert main(["editorial", "teleport"],
+                style_store=style_store, location_store=location_store) == 1
+    assert "teleport" in json.loads(capsys.readouterr().out)["error"]
+    assert main(["editorial", "style", "teleport"],
+                style_store=style_store, location_store=location_store) == 1
     assert "teleport" in json.loads(capsys.readouterr().out)["error"]
 
 

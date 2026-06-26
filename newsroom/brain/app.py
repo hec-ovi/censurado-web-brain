@@ -25,12 +25,12 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
 from newsroom.brain.problems import _problem
-from newsroom.brain.routes import personas_router, portals_router, runs_router
+from newsroom.brain.routes import editorial_router, personas_router, portals_router, runs_router
 from newsroom.brain.synthesis import PersonaSeed, synthesize_persona
 from newsroom.config import Settings, load_settings
 from newsroom.contracts.sections import SECTION_ENUM, is_valid_section
 from newsroom.db import open_db
-from newsroom.editorial import PortalStore
+from newsroom.editorial import LocationStore, PortalStore, StyleStore
 from newsroom.inference.provider import DEFAULT_MODEL, DEFAULT_PROVIDER, DIALECTS, ProviderConfig
 from newsroom.personas import PersonaStore, slugify
 from newsroom.runner import (
@@ -160,6 +160,8 @@ def create_app(
     store: PersonaStore | None = None,
     run_deps: RunDeps | None = None,
     portal_store: PortalStore | None = None,
+    style_store: StyleStore | None = None,
+    location_store: LocationStore | None = None,
 ) -> FastAPI:
     """Build the brain app. A test passes a ``settings`` pointed at the fake; for runs
     it also injects ``run_deps`` (with in-process search/research doubles) so a run
@@ -200,9 +202,20 @@ def create_app(
     if portal_store is None and conn is not None:
         portal_store = PortalStore(conn)
 
+    # The editorial-config API (house style + location) shares the same one connection,
+    # so a console edit and a running pipeline serialize on the same lock. Built from the
+    # shared conn when not injected; a test that injects a pre-built persona store (conn
+    # is None) injects these alongside it when the editorial routes are exercised.
+    if style_store is None and conn is not None:
+        style_store = StyleStore(conn)
+    if location_store is None and conn is not None:
+        location_store = LocationStore(conn)
+
     caps = DIALECTS[DEFAULT_PROVIDER]
     app.state.store = store
     app.state.portal_store = portal_store
+    app.state.style_store = style_store
+    app.state.location_store = location_store
     app.state.run_deps = run_deps
     app.state.jobs = {}
     app.state.lock = lock
@@ -379,5 +392,10 @@ def create_app(
     # which stay untouched; direct-create sits at POST /personas/direct so it never
     # collides with the synthesis POST /personas.
     app.include_router(personas_router)
+
+    # The editorial-config MANAGEMENT API: the house style guide (versioned, with its
+    # lexicon + sourcing sub-resources) and the publication location, under /editorial.
+    # Added as its own router; it reads the StyleStore / LocationStore off app.state.
+    app.include_router(editorial_router)
 
     return app

@@ -34,13 +34,20 @@ import json
 import sys
 import threading
 from collections.abc import Callable
-from dataclasses import asdict
+from dataclasses import asdict, replace
 
 from newsroom.bootstrap import bootstrap
 from newsroom.config import Settings, load_settings
 from newsroom.contracts.sections import SECTION_ENUM
 from newsroom.db import open_db
-from newsroom.editorial import Portal, PortalStore
+from newsroom.editorial import (
+    Location,
+    LocationStore,
+    Portal,
+    PortalStore,
+    StyleGuide,
+    StyleStore,
+)
 from newsroom.mirror import (
     AuthorPush,
     PushResult,
@@ -763,6 +770,314 @@ def _authors_main(
     return 0 if removed else _EXIT["failed"]
 
 
+# ----- editorial config (house style + location) -----
+
+# The full-guide content fields an operator may set over the CLI. Read-only metadata the
+# store assigns (version / created_at / is_active) is ignored on `style set`, so the JSON
+# `style get` prints can be edited and fed straight back in.
+_STYLE_CONTENT_FIELDS = ("voice", "exemplars", "rules", "lexicon", "sourcing", "structure")
+
+
+def _open_style_store() -> StyleStore:
+    """Open the brain DB the API uses and wrap it in a ``StyleStore``. The CLI editorial
+    verbs are their own process (a separate connection from a live brain); WAL + the busy
+    timeout (see ``open_db``) let that connection share the file safely."""
+    settings = load_settings()
+    conn = open_db(settings.persona_db_path, check_same_thread=False)
+    return StyleStore(conn)
+
+
+def _open_location_store() -> LocationStore:
+    """Open the brain DB the API uses and wrap it in a ``LocationStore`` (same sharing
+    story as ``_open_style_store``)."""
+    settings = load_settings()
+    conn = open_db(settings.persona_db_path, check_same_thread=False)
+    return LocationStore(conn)
+
+
+def _location_payload(location: Location) -> dict:
+    """A ``Location`` as a JSON-able dict, including the derived Google-News views
+    (``gl`` / ``hl`` / ``ceid``), mirroring the HTTP ``LocationOut``."""
+    return {
+        "region": location.region,
+        "ui_lang": location.ui_lang,
+        "language": location.language,
+        "gdelt_country": location.gdelt_country,
+        "city": location.city,
+        "latlong": location.latlong,
+        "updated_at": location.updated_at,
+        "gl": location.gl,
+        "hl": location.hl,
+        "ceid": location.ceid,
+    }
+
+
+def _parse_json_obj(raw: str) -> dict | None:
+    """Parse ``raw`` as a JSON object; return None (the caller emits the error) when it is
+    not valid JSON or not an object."""
+    try:
+        value = json.loads(raw)
+    except json.JSONDecodeError:
+        return None
+    return value if isinstance(value, dict) else None
+
+
+def _editorial_style_main(argv: list[str], *, style_store: StyleStore) -> int:
+    """``censurado-brain editorial style get|set|versions|promote``: read and edit the
+    VERSIONED house style. ``get`` prints the active version; ``set --json`` publishes a
+    NEW version (activated) from a full-guide JSON document; ``versions`` lists the audit
+    trail newest-first; ``promote <version>`` makes a version active (also how a rollback
+    works). Prints JSON via ``_emit``; returns 0 on success, 1 on a bad document / no
+    active version / unknown version / unknown sub-verb."""
+    if not argv:
+        _emit({"error": "usage: editorial style get|set|versions|promote"})
+        return _EXIT["failed"]
+    verb, rest = argv[0], argv[1:]
+    if verb not in ("get", "set", "versions", "promote"):
+        _emit({"error": f"unknown editorial style verb {verb!r}"})
+        return _EXIT["failed"]
+
+    if verb == "get":
+        guide = style_store.active()
+        if guide is None:
+            _emit({"error": "no active style guide"})
+            return _EXIT["failed"]
+        _emit(asdict(guide))
+        return 0
+
+    if verb == "versions":
+        versions = style_store.list_versions()
+        _emit({"versions": [asdict(g) for g in versions], "total": len(versions)})
+        return 0
+
+    if verb == "set":
+        parser = argparse.ArgumentParser(prog="censurado-brain editorial style set")
+        parser.add_argument("--json", required=True, help="the full style guide as a JSON object")
+        parser.add_argument("--created-by", default="", help="author note recorded on the version")
+        parser.add_argument(
+            "--no-activate", action="store_true",
+            help="stage the version without making it active (default: activate)",
+        )
+        args = parser.parse_args(rest)
+        doc = _parse_json_obj(args.json)
+        if doc is None:
+            _emit({"error": "--json must be a JSON object"})
+            return _EXIT["failed"]
+        fields = {k: doc[k] for k in _STYLE_CONTENT_FIELDS if k in doc}
+        stored = style_store.add_version(
+            StyleGuide(**fields),
+            created_by=args.created_by or str(doc.get("created_by", "")),
+            activate=not args.no_activate,
+        )
+        _emit(asdict(stored))
+        return 0
+
+    # verb == "promote"
+    parser = argparse.ArgumentParser(prog="censurado-brain editorial style promote")
+    parser.add_argument("version", type=int, help="the style version to make active")
+    args = parser.parse_args(rest)
+    try:
+        promoted = style_store.promote(args.version)
+    except KeyError:
+        _emit({"error": f"no style version {args.version}"})
+        return _EXIT["failed"]
+    _emit(asdict(promoted))
+    return 0
+
+
+def _editorial_lexicon_main(argv: list[str], *, style_store: StyleStore) -> int:
+    """``censurado-brain editorial lexicon get|set``: read/replace the banned-term lexicon
+    of the active style. ``set`` derives a NEW active version (the rest of the guide is
+    carried over): ``--json`` replaces the whole lexicon object, ``--banned-terms`` (csv)
+    replaces just the banned list on the active lexicon. Returns 0 on success, 1 on no
+    active guide / bad input / unknown sub-verb."""
+    if not argv:
+        _emit({"error": "usage: editorial lexicon get|set"})
+        return _EXIT["failed"]
+    verb, rest = argv[0], argv[1:]
+    if verb not in ("get", "set"):
+        _emit({"error": f"unknown editorial lexicon verb {verb!r}"})
+        return _EXIT["failed"]
+
+    active = style_store.active()
+    if active is None:
+        _emit({"error": "no active style guide"})
+        return _EXIT["failed"]
+
+    if verb == "get":
+        _emit(active.lexicon or {})
+        return 0
+
+    # verb == "set"
+    parser = argparse.ArgumentParser(prog="censurado-brain editorial lexicon set")
+    parser.add_argument("--json", default=None, help="the full lexicon as a JSON object")
+    parser.add_argument(
+        "--banned-terms", default=None,
+        help="comma-separated banned terms; replaces banned_terms on the active lexicon",
+    )
+    args = parser.parse_args(rest)
+    if args.json is None and args.banned_terms is None:
+        _emit({"error": "provide --json or --banned-terms"})
+        return _EXIT["failed"]
+    if args.json is not None:
+        lexicon = _parse_json_obj(args.json)
+        if lexicon is None:
+            _emit({"error": "--json must be a JSON object"})
+            return _EXIT["failed"]
+    else:
+        lexicon = dict(active.lexicon or {})
+    if args.banned_terms is not None:
+        lexicon["banned_terms"] = _split_csv(args.banned_terms)
+    stored = style_store.add_version(
+        replace(active, lexicon=lexicon), created_by=active.created_by, activate=True
+    )
+    _emit(stored.lexicon or {})
+    return 0
+
+
+def _editorial_sourcing_main(argv: list[str], *, style_store: StyleStore) -> int:
+    """``censurado-brain editorial sourcing get|set``: read/edit the sourcing block of the
+    active style (the ``min_sources`` corroboration floor plus the attribution flags).
+    ``set`` derives a NEW active version with the named knobs MERGED onto the active
+    sourcing, so ``--min-sources 3`` keeps the other flags. ``--json`` replaces the whole
+    block first, then the flags override. Returns 0 on success, 1 on no active guide / bad
+    input / unknown sub-verb."""
+    if not argv:
+        _emit({"error": "usage: editorial sourcing get|set"})
+        return _EXIT["failed"]
+    verb, rest = argv[0], argv[1:]
+    if verb not in ("get", "set"):
+        _emit({"error": f"unknown editorial sourcing verb {verb!r}"})
+        return _EXIT["failed"]
+
+    active = style_store.active()
+    if active is None:
+        _emit({"error": "no active style guide"})
+        return _EXIT["failed"]
+
+    if verb == "get":
+        _emit(active.sourcing or {})
+        return 0
+
+    # verb == "set"
+    parser = argparse.ArgumentParser(prog="censurado-brain editorial sourcing set")
+    parser.add_argument("--json", default=None, help="the full sourcing block as a JSON object")
+    parser.add_argument("--min-sources", type=int, default=None, help="the corroboration floor")
+    parser.add_argument(
+        "--require-attribution", action=argparse.BooleanOptionalAction, default=None,
+        help="require every claim attributed to a named source",
+    )
+    parser.add_argument(
+        "--no-fabricated-quotes", action=argparse.BooleanOptionalAction, default=None,
+        dest="no_fabricated_quotes", help="forbid fabricated quotes",
+    )
+    args = parser.parse_args(rest)
+    if args.json is not None:
+        sourcing = _parse_json_obj(args.json)
+        if sourcing is None:
+            _emit({"error": "--json must be a JSON object"})
+            return _EXIT["failed"]
+    else:
+        sourcing = dict(active.sourcing or {})
+    if args.min_sources is not None:
+        sourcing["min_sources"] = args.min_sources
+    if args.require_attribution is not None:
+        sourcing["require_attribution"] = args.require_attribution
+    if args.no_fabricated_quotes is not None:
+        sourcing["no_fabricated_quotes"] = args.no_fabricated_quotes
+    if args.json is None and args.min_sources is None and args.require_attribution is None \
+            and args.no_fabricated_quotes is None:
+        _emit({"error": "provide --json or at least one sourcing flag"})
+        return _EXIT["failed"]
+    stored = style_store.add_version(
+        replace(active, sourcing=sourcing), created_by=active.created_by, activate=True
+    )
+    _emit(stored.sourcing or {})
+    return 0
+
+
+def _editorial_location_main(argv: list[str], *, location_store: LocationStore) -> int:
+    """``censurado-brain editorial location get|set``: read/upsert the single publication
+    location row. ``get`` always returns a usable value (the default until one is stored);
+    ``set`` applies only the named flags over the current value. Returns 0 on success, 1 on
+    a store rejection (unknown field / blank required field) / nothing to set / unknown
+    sub-verb."""
+    if not argv:
+        _emit({"error": "usage: editorial location get|set"})
+        return _EXIT["failed"]
+    verb, rest = argv[0], argv[1:]
+    if verb not in ("get", "set"):
+        _emit({"error": f"unknown editorial location verb {verb!r}"})
+        return _EXIT["failed"]
+
+    if verb == "get":
+        _emit(_location_payload(location_store.get()))
+        return 0
+
+    # verb == "set"
+    parser = argparse.ArgumentParser(prog="censurado-brain editorial location set")
+    parser.add_argument("--region", default=None, help="ISO-3166-1 alpha-2 (e.g. AR)")
+    parser.add_argument("--ui-lang", default=None, help="BCP47 UI language (e.g. es-419)")
+    parser.add_argument("--language", default=None, help="ISO-639-1 search language (e.g. es)")
+    parser.add_argument("--gdelt-country", default=None, help="FIPS-10-4 country (e.g. AR)")
+    parser.add_argument("--city", default=None)
+    parser.add_argument("--latlong", default=None)
+    args = parser.parse_args(rest)
+    changes: dict = {}
+    if args.region is not None:
+        changes["region"] = args.region
+    if args.ui_lang is not None:
+        changes["ui_lang"] = args.ui_lang
+    if args.language is not None:
+        changes["language"] = args.language
+    if args.gdelt_country is not None:
+        changes["gdelt_country"] = args.gdelt_country
+    if args.city is not None:
+        changes["city"] = args.city
+    if args.latlong is not None:
+        changes["latlong"] = args.latlong
+    if not changes:
+        _emit({"error": "provide at least one field to set"})
+        return _EXIT["failed"]
+    try:
+        stored = location_store.set(**changes)
+    except ValueError as exc:
+        _emit({"error": str(exc)})
+        return _EXIT["failed"]
+    _emit(_location_payload(stored))
+    return 0
+
+
+def _editorial_main(
+    argv: list[str],
+    *,
+    style_store: StyleStore | None = None,
+    location_store: LocationStore | None = None,
+) -> int:
+    """``censurado-brain editorial style|lexicon|sourcing|location ...``: read and edit the
+    operator-owned editorial config from the command line, mirroring the HTTP editorial
+    API. ``style`` / ``lexicon`` / ``sourcing`` operate on a ``StyleStore`` (the versioned
+    house style); ``location`` on a ``LocationStore``. Both stores are injectable for
+    tests; they default to fresh connections over the brain DB."""
+    if not argv:
+        _emit({"error": "usage: editorial style|lexicon|sourcing|location"})
+        return _EXIT["failed"]
+    group, rest = argv[0], argv[1:]
+    if group not in ("style", "lexicon", "sourcing", "location"):
+        _emit({"error": f"unknown editorial group {group!r}"})
+        return _EXIT["failed"]
+
+    if group == "location":
+        return _editorial_location_main(rest, location_store=location_store or _open_location_store())
+
+    style_store = style_store or _open_style_store()
+    if group == "style":
+        return _editorial_style_main(rest, style_store=style_store)
+    if group == "lexicon":
+        return _editorial_lexicon_main(rest, style_store=style_store)
+    return _editorial_sourcing_main(rest, style_store=style_store)
+
+
 def main(
     argv: list[str] | None = None,
     *,
@@ -770,6 +1085,8 @@ def main(
     portal_store: PortalStore | None = None,
     persona_store: PersonaStore | None = None,
     run_store: RunStore | None = None,
+    style_store: StyleStore | None = None,
+    location_store: LocationStore | None = None,
 ) -> int:
     """Parse args, run once, print a JSON summary, return an exit code.
 
@@ -801,6 +1118,13 @@ def main(
         # Inspect the run records (list / get), mirroring the HTTP run surface. A
         # subcommand so the bare --mode run path (the periodic trigger) is unchanged.
         return _runs_main(argv[1:], store=run_store)
+    if argv and argv[0] == "editorial":
+        # Read and edit the operator-owned editorial config (house style + location),
+        # mirroring the HTTP editorial API. A subcommand so the bare --mode run path is
+        # unchanged. The style/location stores ride along so a test can inject them.
+        return _editorial_main(
+            argv[1:], style_store=style_store, location_store=location_store
+        )
     args = _parser().parse_args(argv)
     settings = load_settings()
     deps = (build_deps or build_deps_from_env)(settings)
