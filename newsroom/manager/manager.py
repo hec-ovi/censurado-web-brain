@@ -84,9 +84,19 @@ def _normalize_query(query: str) -> str:
 
 
 def _personas_block(personas: list[Persona]) -> str:
+    """Each journalist's id, beat, language, identity, and a short voice cue, so the
+    manager assigns by FIT (a story to the persona whose beat and voice match), not by
+    beat alone. The section a persona writes is still authoritative from its beat; this
+    only enriches the model's choice of who covers what."""
     if not personas:
         return "(no personas available)"
-    return "\n".join(f"- {p.id} (beat: {p.beat}): {p.who_i_am}" for p in personas)
+    lines = []
+    for p in personas:
+        line = f"- {p.id} (beat: {p.beat}, writes in {p.language}): {p.who_i_am}"
+        if p.style:
+            line += f" Voice: {p.style}"
+        lines.append(line)
+    return "\n".join(lines)
 
 
 def _coverage_block(coverage: list[CoverageItem]) -> str:

@@ -104,3 +104,45 @@ def test_rules_revise_on_fabricated_citation(fake):
                         drafter_cfg=_drafter(fake), evaluator_cfg=_drafter(fake),
                         prompts_dir=_prompts_dir())
     assert ev.verdict == "REVISE" and "citations" in ev.failing_sections
+
+
+# ----- house style in the prompt + the deterministic banned-lexicon gate -----
+
+
+def test_house_style_reaches_the_evaluator_prompt(fake):
+    fake.state.script_chat('{"verdict": "PASS"}')
+    evaluate_draft("d", outline="o", ledger=_ledger("https://s.test/a"), drafter_cfg=_drafter(fake),
+                   evaluator_cfg=_cfg(fake, "evaluator-model"), prompts_dir=_prompts_dir(),
+                   house_style="HOUSE STYLE RULES HERE")
+    sent = fake.state.chat_requests[-1]["body"]["messages"][0]["content"]
+    assert "HOUSE STYLE RULES HERE" in sent
+
+
+def test_lexicon_gate_forces_revise_in_model_path(fake):
+    # The model says PASS, but the draft uses a banned term: the deterministic gate
+    # overrides to REVISE, adds a "lexicon" section, and names the offender.
+    fake.state.script_chat('{"verdict": "PASS"}')
+    ev = evaluate_draft("En un giro demoledor, todo cambio.", outline="o",
+                        ledger=_ledger("https://s.test/a"), drafter_cfg=_drafter(fake),
+                        evaluator_cfg=_cfg(fake, "evaluator-model"), prompts_dir=_prompts_dir(),
+                        lexicon={"banned_terms": ["demoledor"]})
+    assert ev.verdict == "REVISE"
+    assert "lexicon" in ev.failing_sections
+    assert "demoledor" in ev.feedback
+
+
+def test_lexicon_gate_applies_in_the_rules_path(fake):
+    # Shared endpoint (rules-degraded), grounded and clean, but a banned term still REVISEs.
+    led = _ledger("https://s.test/a")
+    ev = evaluate_draft("Texto escandaloso citando https://s.test/a.", outline="o", ledger=led,
+                        drafter_cfg=_drafter(fake), evaluator_cfg=_drafter(fake),
+                        prompts_dir=_prompts_dir(), lexicon={"banned_terms": ["escandaloso"]})
+    assert ev.verdict == "REVISE" and "lexicon" in ev.failing_sections
+
+
+def test_clean_draft_passes_the_lexicon_gate(fake):
+    led = _ledger("https://s.test/a")
+    ev = evaluate_draft("Texto sobrio citando https://s.test/a.", outline="o", ledger=led,
+                        drafter_cfg=_drafter(fake), evaluator_cfg=_drafter(fake),
+                        prompts_dir=_prompts_dir(), lexicon={"banned_terms": ["demoledor"]})
+    assert ev.passed  # no banned term -> the gate does not intervene

@@ -18,6 +18,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
+from newsroom.editorial.lexicon import banned_terms_found
 from newsroom.inference import ChatRequest, chat
 from newsroom.inference.provider import ProviderConfig
 from newsroom.jsonio import extract_json
@@ -75,6 +76,21 @@ def _rules_evaluate(body: str, ledger: Ledger) -> Evaluation:
     return Evaluation(verdict="PASS", feedback="rules check passed", failing_sections=[], mode="rules")
 
 
+def _apply_lexicon_gate(ev: Evaluation, draft: str, lexicon: dict | None) -> Evaluation:
+    """A banned term in the draft forces a REVISE regardless of the model's verdict: the
+    lexicon is enforced in code, not left to the model to honor (negation is unreliable
+    on a local model). Adds a ``lexicon`` failing section and names the offenders."""
+    hits = banned_terms_found(draft, lexicon)
+    if not hits:
+        return ev
+    sections = list(ev.failing_sections)
+    if "lexicon" not in sections:
+        sections.append("lexicon")
+    note = "Banned terms present: " + ", ".join(hits) + "."
+    feedback = f"{ev.feedback} {note}".strip() if ev.feedback else note
+    return Evaluation(verdict="REVISE", feedback=feedback, failing_sections=sections, mode=ev.mode)
+
+
 def evaluate_draft(
     draft: str,
     *,
@@ -84,21 +100,28 @@ def evaluate_draft(
     evaluator_cfg: ProviderConfig,
     prompts_dir,
     budget=None,
+    house_style: str = "",
+    lexicon: dict | None = None,
 ) -> Evaluation:
-    """Evaluate a draft. Model-driven on a distinct endpoint, else rules-grounded."""
+    """Evaluate a draft. Model-driven on a distinct endpoint, else rules-grounded. The
+    house-style rules ride into the model prompt; the banned lexicon is a deterministic
+    gate applied to either path."""
     if evaluator_cfg.endpoint_id == drafter_cfg.endpoint_id:
-        return _rules_evaluate(draft, ledger)
+        return _apply_lexicon_gate(_rules_evaluate(draft, ledger), draft, lexicon)
 
     template = load_prompt(prompts_dir, "journalist", "evaluate.md")
-    prompt = render(template, draft=draft, outline=outline, ledger=ledger_text(ledger))
+    prompt = render(
+        template, draft=draft, outline=outline, ledger=ledger_text(ledger), style_guide=house_style
+    )
     # A low temperature for grading: we want a stable verdict, not a creative one.
     response = chat(ChatRequest(messages=[{"role": "user", "content": prompt}], temperature=0.2),
                     cfg=evaluator_cfg)
     if budget is not None:
         budget.debit_response(response)
     try:
-        return _normalize(extract_json(response.content))
+        ev = _normalize(extract_json(response.content))
     except (ValueError, KeyError):
         # An unparseable evaluation is treated as REVISE (fail safe, never a crash),
         # which the max_sweeps cap and no-progress detector still bound.
-        return Evaluation(verdict="REVISE", feedback="unparseable evaluation", failing_sections=[])
+        ev = Evaluation(verdict="REVISE", feedback="unparseable evaluation", failing_sections=[])
+    return _apply_lexicon_gate(ev, draft, lexicon)

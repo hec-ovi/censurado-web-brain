@@ -25,6 +25,7 @@ import os
 import threading
 
 from newsroom.config import Settings
+from newsroom.editorial import StyleStore
 from newsroom.imagery.comfy_client import ComfyClient
 from newsroom.imagery.illustrator import Illustrator
 from newsroom.inference.provider import DEFAULT_MODEL, DIALECTS, ProviderConfig, resolve
@@ -188,4 +189,5 @@ def build_run_deps(
         settings=settings,
         lock=lock,
         illustrate=illustrate if illustrate is not None else _build_illustrator(settings, roles),
+        style_store=StyleStore(conn),
     )

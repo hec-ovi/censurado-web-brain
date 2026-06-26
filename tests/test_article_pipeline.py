@@ -71,13 +71,19 @@ def _env(fake, *, about: str = "", avatar_path: str = "") -> Env:
     )
 
 
-def _run(env: Env, *, budget: ArticleBudget, max_sweeps: int = 4, evaluator=None, illustrate=None):
+def _run(env: Env, *, budget: ArticleBudget, max_sweeps: int = 4, evaluator=None, illustrate=None,
+         editorial=None):
     return run_article_pipeline(
         assignment=env.assignment, persona=env.persona, ledger=env.ledger, store=env.store,
         budget=budget, drafter_cfg=env.drafter, evaluator_cfg=evaluator or env.evaluator,
         finalize_cfg=env.finalize, prompts_dir=_prompts_dir(), max_sweeps=max_sweeps,
-        illustrate=illustrate,
+        illustrate=illustrate, editorial=editorial,
     )
+
+
+def _content(req) -> str:
+    """The user prompt text the adapter sent for one recorded chat request."""
+    return req["body"]["messages"][0]["content"]
 
 
 def _big_budget() -> ArticleBudget:
@@ -481,3 +487,50 @@ def test_author_identity_coexists_with_image_metadata(fake):
     assert md["image_alt"] == "an illustrated chip"
     expected_hash = content_hash("Final Title", "FINAL BODY", "ada-reporter", "tech")
     assert out.content_hash == expected_hash
+
+
+# ----- editorial context: the house style + recent coverage reach the prompts (R8/R9) -----
+
+
+def test_house_style_and_recent_coverage_reach_the_draft(fake):
+    from newsroom.pipeline.context import EditorialContext
+
+    env = _env(fake)
+    _pass_run_script(fake)
+    ed = EditorialContext(
+        house_style_draft="HOUSE STYLE FOR THE DRAFTER",
+        house_style_eval="HOUSE STYLE FOR THE EVALUATOR",
+        recent_coverage="WHAT WAS ALREADY PUBLISHED",
+    )
+
+    out = _run(env, budget=_big_budget(), editorial=ed)
+
+    assert out.status == "ready"
+    # chat calls: 0=outline, 1=draft, 2=evaluate, 3=enrich, 4=finalize.
+    draft_prompt = _content(fake.state.chat_requests[1])
+    assert "HOUSE STYLE FOR THE DRAFTER" in draft_prompt
+    assert "WHAT WAS ALREADY PUBLISHED" in draft_prompt
+    eval_prompt = _content(fake.state.chat_requests[2])
+    assert "HOUSE STYLE FOR THE EVALUATOR" in eval_prompt
+
+
+def test_lexicon_gate_forces_a_revise_inside_the_pipeline(fake):
+    # The model evaluator PASSes, but the first draft uses a banned term, so the
+    # deterministic gate overrides to REVISE and the pipeline runs a second draft.
+    from newsroom.pipeline.context import EditorialContext
+
+    env = _env(fake)
+    fake.state.script_chat("OUTLINE")
+    fake.state.script_chat("Un giro demoledor en los mercados.")  # banned term present
+    fake.state.script_chat(json.dumps({"verdict": "PASS"}))  # the model would pass it...
+    fake.state.script_chat("Una version sobria del mismo hecho.")  # second draft, clean
+    fake.state.script_chat(json.dumps({"verdict": "PASS"}))
+    fake.state.script_chat("enriched body")
+    fake.state.script_chat(json.dumps({"title": "T", "body": "B"}))
+
+    ed = EditorialContext(style_lexicon={"banned_terms": ["demoledor"]})
+    out = _run(env, budget=_big_budget(), editorial=ed)
+
+    assert out.status == "ready"
+    assert out.drafts == 2  # the gate rejected the first draft despite the model PASS
+    assert "lexicon" in out.evaluations[0].failing_sections

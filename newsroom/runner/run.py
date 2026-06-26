@@ -30,14 +30,16 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from newsroom.config import Settings
+from newsroom.editorial import StyleStore, style_for_draft, style_for_eval
 from newsroom.manager import dispatch_run, run_manager
-from newsroom.manager.coverage import CoverageStore
+from newsroom.manager.coverage import CoverageStore, recent_coverage_text
 from newsroom.manager.dispatch import LedgerBuilder
 from newsroom.manager.manager import NewsSearch
 from newsroom.manager.preflight import ResolvedRoles
 from newsroom.manager.types import Manifest
 from newsroom.personas import Persona, PersonaStore
 from newsroom.pipeline import ArticleBudget, ArticleOutcome
+from newsroom.pipeline.context import EditorialContext
 from newsroom.publish import publish_assignment, publish_batch_assignments
 from newsroom.runs import Run, RunStore
 
@@ -98,6 +100,9 @@ class RunDeps:
     # generation entirely; a test injects an in-process double. Whether it runs for a
     # given run is gated by the run scope + settings.auto_generate_image in execute_run.
     illustrate: Callable[..., object] | None = None
+    # The active house style guide source (operator-editable, over the shared
+    # connection). None disables style injection (an unconfigured newsroom).
+    style_store: "StyleStore | None" = None
 
 
 @dataclass
@@ -279,6 +284,7 @@ def execute_run(*, run: Run, scope: RunScope, deps: RunDeps) -> RunReport:
         with guard:
             personas = _select_personas(deps.persona_store, scope.persona_ids)
             coverage = deps.coverage_store.recent(limit=settings.coverage_lookback)
+            style_guide = deps.style_store.active() if deps.style_store is not None else None
 
         # Nothing to assign (an empty scope or no personas): finish clean WITHOUT
         # running the manager, so a no-op trigger spends zero inference.
@@ -313,6 +319,17 @@ def execute_run(*, run: Run, scope: RunScope, deps: RunDeps) -> RunReport:
         )
         illustrate = deps.illustrate if (images_enabled and deps.illustrate is not None) else None
 
+        # The operator's editorial inputs threaded into every article: the active house
+        # style (rendered for drafter and evaluator) and a digest of recent coverage so
+        # the writer does not repeat published stories. Empty fields render the prompt
+        # tokens away, so an unconfigured newsroom behaves exactly as before.
+        editorial = EditorialContext(
+            house_style_draft=style_for_draft(style_guide),
+            house_style_eval=style_for_eval(style_guide),
+            style_lexicon=(style_guide.lexicon if style_guide is not None else {}),
+            recent_coverage=recent_coverage_text(coverage),
+        )
+
         dispatch = dispatch_run(
             run_id=run.id,
             manifest=manifest,
@@ -328,6 +345,7 @@ def execute_run(*, run: Run, scope: RunScope, deps: RunDeps) -> RunReport:
             concurrency=settings.fanout_concurrency,
             lock=deps.lock,
             illustrate=illustrate,
+            editorial=editorial,
         )
 
         published = _publish_ready(dispatch, deps)

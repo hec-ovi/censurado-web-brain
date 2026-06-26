@@ -18,8 +18,10 @@ in these tables so a console edit takes effect without restarting the brain.
 
 from __future__ import annotations
 
+from newsroom.editorial.lexicon import banned_terms_found
 from newsroom.editorial.location import DEFAULT_LOCATION, Location, LocationStore
 from newsroom.editorial.portals import Portal, PortalStore, normalize_domain, portal_slug
+from newsroom.editorial.render import style_for_draft, style_for_eval
 from newsroom.editorial.style import StyleGuide, StyleStore
 
 __all__ = [
@@ -32,4 +34,7 @@ __all__ = [
     "normalize_domain",
     "StyleGuide",
     "StyleStore",
+    "style_for_draft",
+    "style_for_eval",
+    "banned_terms_found",
 ]

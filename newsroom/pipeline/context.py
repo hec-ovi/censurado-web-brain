@@ -8,10 +8,26 @@ fact-checker all present the ledger identically.
 
 from __future__ import annotations
 
+from dataclasses import dataclass, field
+
 from newsroom.personas import Persona
 from newsroom.research.ledger import Ledger
 
-__all__ = ["ledger_text", "persona_block"]
+__all__ = ["ledger_text", "persona_block", "EditorialContext"]
+
+
+@dataclass
+class EditorialContext:
+    """The operator-owned editorial inputs threaded into the per-article pipeline: the
+    house style (rendered for the drafter and the evaluator), the banned lexicon (a
+    deterministic review gate), and a digest of recent coverage (so the writer does not
+    repeat published stories). All fields default empty, so a run with no style guide or
+    no prior coverage behaves exactly as before (the prompt tokens render to nothing)."""
+
+    house_style_draft: str = ""
+    house_style_eval: str = ""
+    style_lexicon: dict = field(default_factory=dict)
+    recent_coverage: str = ""
 
 
 def ledger_text(ledger: Ledger) -> str:

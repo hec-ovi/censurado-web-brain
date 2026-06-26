@@ -19,6 +19,8 @@ Check: every factual claim traces to a listed source; nothing is fabricated; no
 placeholders or TODO markers remain; the article covers the outline; the lede states
 what is new; the voice is consistent.
 
+{{STYLE_GUIDE}}
+
 Respond with a single JSON object and nothing else:
 
 ```json

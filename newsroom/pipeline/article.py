@@ -37,7 +37,7 @@ from newsroom.inference import ChatRequest, chat
 from newsroom.inference.provider import ProviderConfig
 from newsroom.personas import Persona
 from newsroom.pipeline.budget import ArticleBudget
-from newsroom.pipeline.context import ledger_text, persona_block
+from newsroom.pipeline.context import EditorialContext, ledger_text, persona_block
 from newsroom.pipeline.evaluate import Evaluation, evaluate_draft
 from newsroom.pipeline.factcheck import fact_check
 from newsroom.pipeline.finalize import finalize_article
@@ -80,7 +80,8 @@ def _outline(*, angle: str, section: str, ledger: Ledger, cfg: ProviderConfig,
 
 
 def _draft(*, persona: Persona, outline: str, angle: str, ledger: Ledger, feedback: str,
-           cfg: ProviderConfig, prompts_dir, budget: ArticleBudget) -> str:
+           cfg: ProviderConfig, prompts_dir, budget: ArticleBudget,
+           house_style: str = "", recent_coverage: str = "") -> str:
     template = load_prompt(prompts_dir, "journalist", "draft.md")
     prompt = render(
         template,
@@ -89,6 +90,8 @@ def _draft(*, persona: Persona, outline: str, angle: str, ledger: Ledger, feedba
         angle=angle,
         ledger=ledger_text(ledger),
         feedback=feedback,
+        style_guide=house_style,  # the house style; "" renders the token away
+        recent_coverage=recent_coverage,  # recent published stories, so the writer does not repeat
     )
     response = chat(ChatRequest(messages=[{"role": "user", "content": prompt}], temperature=_DRAFT_TEMP), cfg=cfg)
     budget.debit_response(response)
@@ -119,6 +122,7 @@ def run_article_pipeline(
     max_sweeps: int = 4,
     lock: threading.Lock | None = None,
     illustrate: Callable[..., object] | None = None,
+    editorial: EditorialContext | None = None,
 ) -> ArticleOutcome:
     """Drive one assignment through the pipeline. Returns ``ready`` with a finalized
     ``PublishArticleInput`` (persisted on the assignment, awaiting publish) or
@@ -130,6 +134,7 @@ def run_article_pipeline(
     pipelines overlap on inference but never race on the connection."""
     digest = ledger.digest()
     guard = lock if lock is not None else nullcontext()
+    ed = editorial or EditorialContext()  # the operator's house style + recent coverage
 
     with guard:
         store.mark_drafting(assignment.id)
@@ -158,7 +163,8 @@ def run_article_pipeline(
         if budget.exhausted():
             return drop("budget_exhausted")
         body = _draft(persona=persona, outline=outline, angle=assignment.angle, ledger=ledger,
-                     feedback=feedback, cfg=drafter_cfg, prompts_dir=prompts_dir, budget=budget)
+                     feedback=feedback, cfg=drafter_cfg, prompts_dir=prompts_dir, budget=budget,
+                     house_style=ed.house_style_draft, recent_coverage=ed.recent_coverage)
         drafts += 1
         # Exhaustion AFTER a draft: the body is complete (never truncated), but the
         # budget is spent, so we DROP rather than continue or publish.
@@ -166,7 +172,8 @@ def run_article_pipeline(
             return drop("budget_exhausted")
 
         evaluation = evaluate_draft(body, outline=outline, ledger=ledger, drafter_cfg=drafter_cfg,
-                                    evaluator_cfg=evaluator_cfg, prompts_dir=prompts_dir, budget=budget)
+                                    evaluator_cfg=evaluator_cfg, prompts_dir=prompts_dir, budget=budget,
+                                    house_style=ed.house_style_eval, lexicon=ed.style_lexicon)
         evaluations.append(evaluation)
         if evaluation.passed:
             stop_reason = "pass"
