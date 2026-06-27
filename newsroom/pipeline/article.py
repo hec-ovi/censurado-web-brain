@@ -72,8 +72,8 @@ class ArticleOutcome:
 
 
 def _outline(*, angle: str, section: str, ledger: Ledger, cfg: ProviderConfig,
-             prompts_dir, budget: ArticleBudget) -> str:
-    template = load_prompt(prompts_dir, "journalist", "outline.md")
+             prompts_dir, budget: ArticleBudget, overrides: dict[str, str] | None = None) -> str:
+    template = load_prompt(prompts_dir, "journalist", "outline.md", overrides=overrides)
     prompt = render(template, angle=angle, section=section, ledger=ledger_text(ledger))
     response = chat(ChatRequest(messages=[{"role": "user", "content": prompt}], temperature=_OUTLINE_TEMP), cfg=cfg)
     budget.debit_response(response)
@@ -82,8 +82,9 @@ def _outline(*, angle: str, section: str, ledger: Ledger, cfg: ProviderConfig,
 
 def _draft(*, persona: Persona, outline: str, angle: str, ledger: Ledger, feedback: str,
            cfg: ProviderConfig, prompts_dir, budget: ArticleBudget,
-           house_style: str = "", recent_coverage: str = "") -> str:
-    template = load_prompt(prompts_dir, "journalist", "draft.md")
+           house_style: str = "", recent_coverage: str = "",
+           overrides: dict[str, str] | None = None) -> str:
+    template = load_prompt(prompts_dir, "journalist", "draft.md", overrides=overrides)
     prompt = render(
         template,
         persona=persona_block(persona),  # re-injected fresh every call
@@ -100,9 +101,9 @@ def _draft(*, persona: Persona, outline: str, angle: str, ledger: Ledger, feedba
 
 
 def _enrich(*, body: str, ledger: Ledger, cfg: ProviderConfig, prompts_dir,
-            budget: ArticleBudget) -> str:
+            budget: ArticleBudget, overrides: dict[str, str] | None = None) -> str:
     # Persona-blind: no persona in the prompt (persona framing degrades accuracy).
-    template = load_prompt(prompts_dir, "journalist", "enrich.md")
+    template = load_prompt(prompts_dir, "journalist", "enrich.md", overrides=overrides)
     prompt = render(template, article=body, ledger=ledger_text(ledger))
     response = chat(ChatRequest(messages=[{"role": "user", "content": prompt}], temperature=_ENRICH_TEMP), cfg=cfg)
     budget.debit_response(response)
@@ -120,6 +121,7 @@ def run_article_pipeline(
     evaluator_cfg: ProviderConfig,
     finalize_cfg: ProviderConfig,
     prompts_dir: Path | str,
+    overrides: dict[str, str] | None = None,
     max_sweeps: int = 4,
     lock: threading.Lock | None = None,
     illustrate: Callable[..., object] | None = None,
@@ -164,7 +166,7 @@ def run_article_pipeline(
         if not corr.ok:
             return drop("uncorroborated")
     outline = _outline(angle=assignment.angle, section=assignment.section, ledger=ledger,
-                       cfg=drafter_cfg, prompts_dir=prompts_dir, budget=budget)
+                       cfg=drafter_cfg, prompts_dir=prompts_dir, budget=budget, overrides=overrides)
 
     body = ""
     feedback = ""
@@ -175,7 +177,8 @@ def run_article_pipeline(
             return drop("budget_exhausted")
         body = _draft(persona=persona, outline=outline, angle=assignment.angle, ledger=ledger,
                      feedback=feedback, cfg=drafter_cfg, prompts_dir=prompts_dir, budget=budget,
-                     house_style=ed.house_style_draft, recent_coverage=ed.recent_coverage)
+                     house_style=ed.house_style_draft, recent_coverage=ed.recent_coverage,
+                     overrides=overrides)
         drafts += 1
         # Exhaustion AFTER a draft: the body is complete (never truncated), but the
         # budget is spent, so we DROP rather than continue or publish.
@@ -184,7 +187,8 @@ def run_article_pipeline(
 
         evaluation = evaluate_draft(body, outline=outline, ledger=ledger, drafter_cfg=drafter_cfg,
                                     evaluator_cfg=evaluator_cfg, prompts_dir=prompts_dir, budget=budget,
-                                    house_style=ed.house_style_eval, lexicon=ed.style_lexicon)
+                                    house_style=ed.house_style_eval, lexicon=ed.style_lexicon,
+                                    overrides=overrides)
         evaluations.append(evaluation)
         if evaluation.passed:
             stop_reason = "pass"
@@ -207,12 +211,13 @@ def run_article_pipeline(
     # bounded revise. Both debit the same budget.
     if budget.exhausted():
         return drop("budget_exhausted")
-    body = _enrich(body=body, ledger=ledger, cfg=drafter_cfg, prompts_dir=prompts_dir, budget=budget)
+    body = _enrich(body=body, ledger=ledger, cfg=drafter_cfg, prompts_dir=prompts_dir, budget=budget,
+                   overrides=overrides)
 
     if budget.exhausted():
         return drop("budget_exhausted")
     body, _verify = fact_check(body, ledger=ledger, entities=assignment.entities, cfg=drafter_cfg,
-                               prompts_dir=prompts_dir, budget=budget)
+                               prompts_dir=prompts_dir, budget=budget, overrides=overrides)
 
     if budget.exhausted():
         return drop("budget_exhausted")
@@ -220,6 +225,7 @@ def run_article_pipeline(
         article = finalize_article(
             body, section=assignment.section, author=persona.id, cfg=finalize_cfg,
             prompts_dir=prompts_dir, ledger=ledger, run_id=assignment.run_id, sweeps=drafts, budget=budget,
+            overrides=overrides,
         )
     except Exception:
         # A model that cannot produce a valid payload even after the one retry, or a

@@ -216,8 +216,16 @@ def _run_synthesis(state, job_id: str, seed: PersonaSeed) -> None:
     the event loop."""
     derived = slugify(seed.display_name)
     try:
+        # Resolve the operator's active prompt edits under the shared lock (the store holds
+        # none), so an edited persona/synthesize.md is what this synthesis uses.
+        overrides = None
+        prompt_store = getattr(state, "prompt_store", None)
+        if prompt_store is not None:
+            with state.lock:
+                overrides = prompt_store.active_overrides()
         persona_id = synthesize_persona(
-            seed, cfg=state.cfg, store=state.store, prompts_dir=state.prompts_dir, lock=state.lock
+            seed, cfg=state.cfg, store=state.store, prompts_dir=state.prompts_dir,
+            lock=state.lock, overrides=overrides,
         )
         result = Job(status="done", persona_id=persona_id)
     except Exception as exc:  # synthesis failures become a failed job, never a crash

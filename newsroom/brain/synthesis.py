@@ -67,11 +67,14 @@ def synthesize_persona(
     store: PersonaStore,
     prompts_dir: Path | str,
     lock: threading.Lock | None = None,
+    overrides: dict[str, str] | None = None,
 ) -> str:
     """Run one synthesis: prompt the model, parse it, persist the persona, return
     the new persona id. Raises ``SynthesisError`` on bad output or a store
-    conflict. ``lock`` (when given) serializes the single shared DB connection."""
-    template = load_prompt(prompts_dir, "persona", "synthesize.md")
+    conflict. ``lock`` (when given) serializes the single shared DB connection.
+    ``overrides`` is the active-prompt map so an edited ``persona/synthesize.md`` is what
+    synthesis uses (resolved by the caller under the lock from the prompt store)."""
+    template = load_prompt(prompts_dir, "persona", "synthesize.md", overrides=overrides)
     prompt = render(template, display_name=seed.display_name, beat=seed.beat, seed=seed.seed)
     response = chat(ChatRequest(messages=[{"role": "user", "content": prompt}]), cfg=cfg)
 

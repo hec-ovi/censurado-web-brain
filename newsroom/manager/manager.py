@@ -260,6 +260,7 @@ def run_manager(
     search_news: NewsSearch,
     cfg: ProviderConfig,
     prompts_dir: Path | str,
+    overrides: dict[str, str] | None = None,
     n_max: int = 4,
     max_steps: int = 8,
     tool_call_budget: int | None = None,
@@ -273,7 +274,7 @@ def run_manager(
     terminal that degrades to whatever the manager has ranked."""
     tool_call_budget = max_steps if tool_call_budget is None else tool_call_budget
     persona_index = {p.id: p for p in personas}
-    template = load_prompt(prompts_dir, "manager", "triage.md")
+    template = load_prompt(prompts_dir, "manager", "triage.md", overrides=overrides)
 
     candidates: list[Candidate] = []
     seen: set[str] = set()

@@ -30,7 +30,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from newsroom.config import Settings
-from newsroom.editorial import StyleStore, style_for_draft, style_for_eval
+from newsroom.editorial import PromptStore, StyleStore, style_for_draft, style_for_eval
 from newsroom.manager import dispatch_run, run_manager
 from newsroom.manager.coverage import CoverageStore, recent_coverage_text
 from newsroom.manager.dispatch import LedgerBuilder
@@ -107,6 +107,11 @@ class RunDeps:
     # The active house style guide source (operator-editable, over the shared
     # connection). None disables style injection (an unconfigured newsroom).
     style_store: "StyleStore | None" = None
+    # The versioned prompt library (operator-editable, over the shared connection): the
+    # source of the active prompt bodies a run threads as ``overrides`` into every
+    # load_prompt so an edited stage template takes effect. None means no DB overrides,
+    # so every stage reads its on-disk ``.md`` file (the B1 fallback).
+    prompt_store: "PromptStore | None" = None
     # The seed-from-URL fetch seam (url -> extracted text) for the direct-from-link
     # mode (``execute_direct``). None means direct mode has no primary source to seed
     # from (it falls back to corroboration only); a test injects an in-process double.
@@ -172,6 +177,20 @@ def plan_run(
     resolved_n = max(0, min(resolved_n, n_max))
     ids = tuple(persona_ids) if persona_ids else None
     return RunScope(n=resolved_n, persona_ids=ids, generate_images=images)
+
+
+def _resolve_prompt_overrides(deps: RunDeps) -> dict[str, str]:
+    """The active prompt bodies as a ``{key: body}`` override map, resolved ONCE at run
+    start (under the shared connection lock, since the store holds none). Threaded as an
+    explicit argument through the manager, dispatch, and the per-article pipeline so the
+    journalists running in the ThreadPoolExecutor workers see the operator's edits -- a
+    ContextVar would NOT cross the pool boundary. An absent store, or a key with no active
+    version, simply yields no override, so ``load_prompt`` reads the on-disk file."""
+    if deps.prompt_store is None:
+        return {}
+    guard = deps.lock if deps.lock is not None else nullcontext()
+    with guard:
+        return deps.prompt_store.active_overrides()
 
 
 def _select_personas(store: PersonaStore, persona_ids: tuple[str, ...] | None) -> list[Persona]:
@@ -309,12 +328,16 @@ def execute_run(*, run: Run, scope: RunScope, deps: RunDeps) -> RunReport:
                 run_id=run.id, mode=run.mode, status="done", manifest=Manifest(assignments=[])
             )
 
+        # Resolve the operator's active prompt edits ONCE, then thread them to every stage.
+        prompt_overrides = _resolve_prompt_overrides(deps)
+
         manifest = run_manager(
             personas=personas,
             coverage=coverage,
             search_news=deps.search_news,
             cfg=deps.roles.manager,
             prompts_dir=deps.prompts_dir,
+            overrides=prompt_overrides,
             n_max=scope.n,
             max_steps=settings.max_manager_steps,
             circuit_breaker=settings.manager_circuit_breaker,
@@ -356,6 +379,7 @@ def execute_run(*, run: Run, scope: RunScope, deps: RunDeps) -> RunReport:
             evaluator_cfg=deps.roles.evaluator,
             finalize_cfg=deps.roles.finalize,
             prompts_dir=deps.prompts_dir,
+            overrides=prompt_overrides,
             budget_factory=_budget_factory(settings),
             max_sweeps=settings.max_sweeps,
             concurrency=settings.fanout_concurrency,
@@ -557,6 +581,10 @@ def execute_direct(
                 run_id=run.id, mode=run.mode, status="done", manifest=Manifest(assignments=[])
             )
 
+        # The operator's active prompt edits, resolved once and threaded into the pipeline
+        # (the direct path bypasses the manager, but the per-article stages are identical).
+        prompt_overrides = _resolve_prompt_overrides(deps)
+
         instruction = _direct_instruction(brief, focus)
         spec = AssignmentSpec(
             persona_id=persona.id,
@@ -592,6 +620,7 @@ def execute_direct(
             evaluator_cfg=deps.roles.evaluator,
             finalize_cfg=deps.roles.finalize,
             prompts_dir=deps.prompts_dir,
+            overrides=prompt_overrides,
             budget_factory=_budget_factory(settings),
             max_sweeps=settings.max_sweeps,
             concurrency=1,  # one article: nothing to fan out

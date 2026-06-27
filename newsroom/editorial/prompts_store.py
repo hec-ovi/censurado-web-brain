@@ -141,6 +141,20 @@ class PromptStore:
         ).fetchall()
         return [r["key"] for r in rows]
 
+    def active_overrides(self) -> dict[str, str]:
+        """Every key's ACTIVE body as a ``{key: body}`` map for ``load_prompt``'s
+        ``overrides``: ONE join (active pointer -> version) so a run resolves the whole
+        prompt library in a single query. A key with no active version is simply absent,
+        so the caller falls back to the on-disk file (the B1 behavior). The store holds no
+        lock; the run resolves this under the shared connection lock at the call site."""
+        rows = self._conn.execute(
+            """
+            SELECT t.key AS key, t.body AS body FROM prompt_template t
+            JOIN prompt_template_active a ON a.version = t.version
+            """
+        ).fetchall()
+        return {row["key"]: (row["body"] or "") for row in rows}
+
 
 def _row_to_template(row: sqlite3.Row, *, is_active: bool) -> PromptTemplate:
     return PromptTemplate(

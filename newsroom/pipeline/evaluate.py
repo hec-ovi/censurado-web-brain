@@ -102,6 +102,7 @@ def evaluate_draft(
     budget=None,
     house_style: str = "",
     lexicon: dict | None = None,
+    overrides: dict[str, str] | None = None,
 ) -> Evaluation:
     """Evaluate a draft. Model-driven on a distinct endpoint, else rules-grounded. The
     house-style rules ride into the model prompt; the banned lexicon is a deterministic
@@ -109,7 +110,7 @@ def evaluate_draft(
     if evaluator_cfg.endpoint_id == drafter_cfg.endpoint_id:
         return _apply_lexicon_gate(_rules_evaluate(draft, ledger), draft, lexicon)
 
-    template = load_prompt(prompts_dir, "journalist", "evaluate.md")
+    template = load_prompt(prompts_dir, "journalist", "evaluate.md", overrides=overrides)
     prompt = render(
         template, draft=draft, outline=outline, ledger=ledger_text(ledger), style_guide=house_style
     )

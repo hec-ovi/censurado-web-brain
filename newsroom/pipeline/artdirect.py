@@ -77,11 +77,12 @@ def art_direct(
     cfg: ProviderConfig,
     prompts_dir,
     budget=None,
+    overrides: dict[str, str] | None = None,
 ) -> ArtDirection:
     """Produce one illustration brief for the finished article. Raises pydantic-ai's
     error if validation still fails after the one retry; the caller treats any failure
     as "no image" and publishes the article without one."""
-    template = load_prompt(prompts_dir, "art_director", "illustrate.md")
+    template = load_prompt(prompts_dir, "art_director", "illustrate.md", overrides=overrides)
     article_text = f"# {title}\n\n{body}"
     prompt = render(
         template,

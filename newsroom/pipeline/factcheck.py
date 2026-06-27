@@ -89,6 +89,7 @@ def fact_check(
     cfg: ProviderConfig,
     prompts_dir,
     budget=None,
+    overrides: dict[str, str] | None = None,
 ) -> tuple[str, GroundingResult]:
     """Verify the body against the ledger (citations AND verbatim preservation); on
     failure, one bounded persona-blind revise that carries BOTH halves' problems in a
@@ -99,7 +100,7 @@ def fact_check(
     if result.ok:
         return body, result
 
-    template = load_prompt(prompts_dir, "journalist", "factcheck.md")
+    template = load_prompt(prompts_dir, "journalist", "factcheck.md", overrides=overrides)
     problems = []
     if result.citation.unsupported_urls:
         problems.append("Citations not backed by an approved source: " + ", ".join(result.citation.unsupported_urls))

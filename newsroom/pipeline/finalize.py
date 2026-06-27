@@ -57,12 +57,13 @@ def finalize_article(
     run_id: str,
     sweeps: int,
     budget=None,
+    overrides: dict[str, str] | None = None,
 ) -> PublishArticleInput:
     """Structure ``article_text`` into a validated ``PublishArticleInput``. The
     model authors only the content fields; ``author`` and ``section`` are set here.
     Raises pydantic-ai's error if validation still fails after the one retry (the
     caller treats that as a finalize failure, never a truncated publish)."""
-    template = load_prompt(prompts_dir, "journalist", "finalize.md")
+    template = load_prompt(prompts_dir, "journalist", "finalize.md", overrides=overrides)
     prompt = render(template, article=article_text, section=section, author=author)
 
     result = retry_transient(lambda: _agent(cfg).run_sync(prompt))

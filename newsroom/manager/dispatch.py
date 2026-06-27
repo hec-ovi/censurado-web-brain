@@ -64,6 +64,7 @@ def dispatch_run(
     evaluator_cfg: ProviderConfig,
     finalize_cfg: ProviderConfig,
     prompts_dir: Path | str,
+    overrides: dict[str, str] | None = None,
     budget_factory: Callable[[], ArticleBudget],
     max_sweeps: int = 4,
     concurrency: int = 1,
@@ -75,8 +76,11 @@ def dispatch_run(
 
     ``persona_index`` maps persona id -> ``Persona`` (loaded by the caller).
     ``budget_factory`` mints a FRESH per-article budget for each assignment (the
-    budget is per-article, not per-run). Returns the persisted rows and their
-    outcomes, aligned by index."""
+    budget is per-article, not per-run). ``overrides`` is the run-start map of active
+    prompt bodies; it is CAPTURED into each submitted task (a closure variable) so the
+    edited stage templates cross the ThreadPoolExecutor boundary into the worker threads,
+    exactly like ``prompts_dir``. Returns the persisted rows and their outcomes, aligned
+    by index."""
     guard = lock if lock is not None else nullcontext()
 
     # 1. Persist the specs as assignment rows (serial, under the lock).
@@ -112,6 +116,7 @@ def dispatch_run(
                 evaluator_cfg=evaluator_cfg,
                 finalize_cfg=finalize_cfg,
                 prompts_dir=prompts_dir,
+                overrides=overrides,  # captured into the task: edited prompts cross the pool
                 max_sweeps=max_sweeps,
                 lock=lock,
                 illustrate=illustrate,

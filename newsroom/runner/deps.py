@@ -26,7 +26,7 @@ import threading
 from contextlib import nullcontext
 
 from newsroom.config import Settings
-from newsroom.editorial import LocationStore, PortalStore, StyleStore
+from newsroom.editorial import LocationStore, PortalStore, PromptStore, StyleStore
 from newsroom.editorial.portals import normalize_domain
 from newsroom.imagery.comfy_client import ComfyClient
 from newsroom.imagery.illustrator import Illustrator
@@ -145,6 +145,7 @@ def _research_ledger(
     portal_store: PortalStore | None = None,
     location_store: LocationStore | None = None,
     lock: threading.Lock | None = None,
+    prompt_store: PromptStore | None = None,
 ) -> LedgerBuilder:
     """Build the grounding ledger for one assignment by running the bounded research
     loop (Step 4) over its story. Bounded by ``max_research_steps`` + the ledger-stall
@@ -164,14 +165,21 @@ def _research_ledger(
         topic = spec.headline or spec.angle or assignment.angle
         sites = _author_domains(persona) if persona is not None else []
         country = language = None
+        overrides: dict[str, str] | None = None
         # Fall back to the enabled portals when the author has no own pool, and read
-        # the editable portal/location config fresh, under the lock (worker thread).
+        # the editable portal/location config (and the active research prompt) fresh,
+        # under the lock (worker thread). Research runs behind the make_ledger seam, which
+        # carries its own prompts_dir, so it resolves the prompt override from the store
+        # here rather than receiving it threaded from execute_run -- a console prompt edit
+        # still takes effect on the next run's research.
         with (lock if lock is not None else nullcontext()):
             if not sites and portal_store is not None:
                 sites = portal_store.domains()
             if location_store is not None:
                 loc = location_store.get()
                 country, language = loc.region, loc.language
+            if prompt_store is not None:
+                overrides = prompt_store.active_overrides()
 
         def scoped(query: str):
             return tool.search(query, sites=sites, country=country, language=language)
@@ -186,17 +194,26 @@ def _research_ledger(
             max_steps=settings.max_research_steps,
             stall_limit=settings.research_stall_limit,
             budget=budget,
+            overrides=overrides,
         )
         return ledger
 
     return make_ledger
 
 
-def _build_illustrator(settings: Settings, roles: ResolvedRoles) -> Illustrator | None:
+def _build_illustrator(
+    settings: Settings,
+    roles: ResolvedRoles,
+    *,
+    prompt_store: PromptStore | None = None,
+    lock: threading.Lock | None = None,
+) -> Illustrator | None:
     """Assemble the art-director image seam from settings, or None when no art-director
     role resolved. The media endpoint is the article publish host unless
     ``NEWSROOM_MEDIA_BASE_URL`` overrides it. Whether it actually runs for a given run is
-    decided later (settings.auto_generate_image + the per-run flag), in ``execute_run``."""
+    decided later (settings.auto_generate_image + the per-run flag), in ``execute_run``.
+    The prompt store + lock let the art director pick up an edited illustrate prompt; it
+    resolves the override itself (it carries its own prompts_dir, like research)."""
     if roles.art_director is None:
         return None
     media_base = str(settings.media_base_url or settings.publish_base_url).rstrip("/")
@@ -211,6 +228,8 @@ def _build_illustrator(settings: Settings, roles: ResolvedRoles) -> Illustrator 
         height=settings.image_height,
         steps=settings.image_steps,
         reference_limit=settings.reference_image_limit,
+        prompt_store=prompt_store,
+        lock=lock,
     )
 
 
@@ -239,6 +258,11 @@ def build_run_deps(
     # per run inside the seams so a console edit takes effect without a restart.
     portal_store = PortalStore(conn)
     location_store = LocationStore(conn)
+    # The versioned prompt library over the same shared connection, so a console prompt
+    # edit and a running pipeline serialize on the same lock. A run resolves its active
+    # overrides from this at run start (the direct pipeline stages) and inside the
+    # research/illustrate seams (which carry their own prompts_dir).
+    prompt_store = PromptStore(conn)
     # The cross-source corroboration resolver, built ONCE here (the single place that
     # reaches the store): a domain -> ownership_group map over the registered portals, so
     # the pure corroboration gate can collapse co-owned outlets to one independent source
@@ -264,14 +288,17 @@ def build_run_deps(
         or _research_ledger(
             tool, roles, settings,
             portal_store=portal_store, location_store=location_store, lock=lock,
+            prompt_store=prompt_store,
         ),
         publish_base_url=str(settings.publish_base_url).rstrip("/"),
         operator_token=settings.operator_token,
         prompts_dir=settings.prompts_dir,
         settings=settings,
         lock=lock,
-        illustrate=illustrate if illustrate is not None else _build_illustrator(settings, roles),
+        illustrate=illustrate if illustrate is not None
+        else _build_illustrator(settings, roles, prompt_store=prompt_store, lock=lock),
         style_store=StyleStore(conn),
+        prompt_store=prompt_store,
         # The direct-from-link seed seam: the same research tool's page fetch (its
         # backend builds lazily on first use), overridable for tests.
         fetch=fetch if fetch is not None else tool.fetch,

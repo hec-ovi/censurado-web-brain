@@ -17,7 +17,9 @@ timeout. No output-length cap is set anywhere.
 from __future__ import annotations
 
 import hashlib
+import threading
 from collections.abc import Callable
+from contextlib import nullcontext
 from dataclasses import dataclass, field
 
 import httpx
@@ -85,11 +87,19 @@ class Illustrator:
     download_image: Callable[[str], bytes] | None = None
     fetch_page: Callable[[str], str | None] | None = None
     upload: Callable[..., object] = upload_media
+    # The versioned prompt library + the shared connection lock, so the art director picks
+    # up an edited ``art_director/illustrate.md``. This seam carries its own prompts_dir
+    # (it is built in build_run_deps, not threaded from the pipeline), so it resolves the
+    # active override here, under the lock, rather than receiving it as a call argument.
+    # None on either keeps the on-disk prompt (the B1 fallback).
+    prompt_store: object | None = None
+    lock: threading.Lock | None = None
 
     def __call__(
         self, *, article: PublishArticleInput, persona: Persona, ledger: Ledger, budget=None
     ) -> ImageResult | None:
         download = self.download_image or _default_download(self.comfy.timeout)
+        overrides = self._active_overrides()
 
         # 1) Candidate reference images from the article's own sources (best-effort).
         references = collect_reference_images(
@@ -106,6 +116,7 @@ class Illustrator:
             cfg=self.art_director_cfg,
             prompts_dir=self.prompts_dir,
             budget=budget,
+            overrides=overrides,
         )
 
         # 3) Upload the chosen references to ComfyUI (skip any that fail to fetch).
@@ -143,6 +154,16 @@ class Illustrator:
             workflow=self.workflow,
             references=used,
         )
+
+    def _active_overrides(self) -> dict[str, str] | None:
+        """The active prompt-library bodies, read under the shared connection lock (a brief
+        read in the worker thread, released before inference). None when no store is wired,
+        so the art director falls back to the on-disk ``art_director/illustrate.md``."""
+        if self.prompt_store is None:
+            return None
+        guard = self.lock if self.lock is not None else nullcontext()
+        with guard:
+            return self.prompt_store.active_overrides()
 
 
 def _select(references: list[ReferenceImage], indices: list[int], limit: int) -> list[ReferenceImage]:

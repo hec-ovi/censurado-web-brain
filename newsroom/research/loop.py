@@ -46,13 +46,14 @@ class ResearchOutcome:
 
 
 def plan_subquestions(
-    topic: str, *, cfg: ProviderConfig, prompts_dir: Path | str, budget=None
+    topic: str, *, cfg: ProviderConfig, prompts_dir: Path | str, budget=None,
+    overrides: dict[str, str] | None = None,
 ) -> list[str]:
     """One model call: turn the assignment into 3 to 6 searchable sub-questions.
     Accepts a JSON array or an object with a ``sub_questions`` key; returns the
     non-empty questions as strings. Debits the plan call against ``budget`` (when one
     is given) so research charges the shared per-article ceiling (A.8)."""
-    template = load_prompt(prompts_dir, "journalist", "research.md")
+    template = load_prompt(prompts_dir, "journalist", "research.md", overrides=overrides)
     prompt = render(template, topic=topic)
     response = chat(ChatRequest(messages=[{"role": "user", "content": prompt}]), cfg=cfg)
     if budget is not None:
@@ -77,16 +78,20 @@ def run_research(
     stall_limit: int = 2,
     budget=None,
     clock: Callable[[], datetime] | None = None,
+    overrides: dict[str, str] | None = None,
 ) -> ResearchOutcome:
     """Plan (unless ``subquestions`` is given), then search each sub-question into
     the ledger under the three guards. ``budget`` (optional) needs an
-    ``exhausted() -> bool`` method. Returns the steps taken, the stop reason, the
-    plan, and the filled ledger."""
+    ``exhausted() -> bool`` method. ``overrides`` is the active-prompt map threaded into
+    the plan's ``load_prompt`` so an edited ``journalist/research.md`` takes effect.
+    Returns the steps taken, the stop reason, the plan, and the filled ledger."""
     led = ledger if ledger is not None else Ledger(clock=clock)
     if subquestions is None:
         if cfg is None or prompts_dir is None:
             raise ValueError("planning requires cfg and prompts_dir (or pass subquestions)")
-        subquestions = plan_subquestions(topic, cfg=cfg, prompts_dir=prompts_dir, budget=budget)
+        subquestions = plan_subquestions(
+            topic, cfg=cfg, prompts_dir=prompts_dir, budget=budget, overrides=overrides
+        )
 
     stall = 0
     steps = 0
