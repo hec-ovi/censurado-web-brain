@@ -2,8 +2,14 @@ import { el, clear, field, help } from "./el.js";
 
 // The Sources tab: a portals manager. A portal is a source of record (a news
 // outlet, by its domain/homepage/feeds) the newsroom is allowed to draw from.
-// The panel is a create form on top and a roster of source cards below; each
-// card toggles enabled, edits the non-domain fields, or deletes the source.
+// The panel is a create form on top and a clean LIST of sources below; each row
+// shows the source plus the authors that read it (the reverse of the per-author
+// source linking, since one source can feed several authors), and toggles
+// enabled, edits the non-domain fields, or deletes the source.
+//
+// The author-per-source view is resolved client-side: it reads every persona's
+// `sources` pool and inverts it to portalId -> authors, so no extra endpoint is
+// needed. If the personas fetch fails the sources still render, without chips.
 //
 // `onChanged` (optional) fires after any successful mutation so a parent can
 // refresh anything that depends on the source set. `reload()` re-fetches and
@@ -101,23 +107,43 @@ export function SourcesPanel({ api, onChanged } = {}) {
     clear(listEl);
     listEl.append(el("p", { class: "muted" }, "Loading sources..."));
     try {
-      const data = await api.listPortals();
+      const [data, authorsByPortal] = await Promise.all([api.listPortals(), loadAuthorsByPortal()]);
       const portals = (data && data.portals) || [];
       clear(listEl);
       if (!portals.length) {
         listEl.append(el("p", { class: "muted" }, "No sources yet."));
         return;
       }
-      for (const portal of portals) listEl.append(card(portal));
+      for (const portal of portals) listEl.append(row(portal, authorsByPortal.get(portal.id) || []));
     } catch (err) {
       clear(listEl);
       listEl.append(el("p", { class: "error", role: "alert" }, `Could not load sources: ${err.message}`));
     }
   }
 
-  // A single source card: domain heading, status pill, optional ownership
-  // badge and description, the per-card actions, and a hidden inline edit form.
-  function card(portal) {
+  // Invert the per-author source pools into portalId -> [{id, name, beat}], so a
+  // row can show which authors read it. Read from the personas list; if that
+  // fetch fails the map is empty and sources render without chips (not an error).
+  async function loadAuthorsByPortal() {
+    const map = new Map();
+    try {
+      const data = await api.listPersonas();
+      for (const p of (data && data.personas) || []) {
+        for (const pid of p.sources || []) {
+          if (!map.has(pid)) map.set(pid, []);
+          map.get(pid).push({ id: p.id, name: p.display_name || p.id, beat: p.beat || "" });
+        }
+      }
+    } catch {
+      /* personas unavailable: render sources without author chips */
+    }
+    return map;
+  }
+
+  // A single source row in the clean list: domain + status pill + optional
+  // ownership badge, the chips of authors this source feeds, an optional
+  // description, the per-row actions, and a hidden inline edit form.
+  function row(portal, authors) {
     const enabled = !!portal.enabled;
     const pill = el("span", { class: "status", dataset: { state: enabled ? "online" : "offline" } }, enabled ? "online" : "offline");
     const head = el("div", { class: "source-head" }, [
@@ -125,6 +151,14 @@ export function SourcesPanel({ api, onChanged } = {}) {
       pill,
       portal.ownership_group ? el("span", { class: "badge" }, portal.ownership_group) : null,
     ]);
+    // Which authors read this source (a source can feed several). Empty = unassigned.
+    const authorsEl = el(
+      "div",
+      { class: "source-authors" },
+      authors.length
+        ? authors.map((a) => el("span", { class: "author-chip", dataset: { section: a.beat } }, a.name))
+        : [el("span", { class: "source-authors-none" }, "Sin autores asignados")],
+    );
     const desc = portal.description ? el("p", { class: "source-desc" }, portal.description) : null;
     const cardStatus = el("p", { class: "form-status", role: "status", "aria-live": "polite" });
 
@@ -155,7 +189,7 @@ export function SourcesPanel({ api, onChanged } = {}) {
     editBtn.setAttribute("aria-expanded", "false");
 
     const actions = el("div", { class: "source-actions" }, [toggleBtn, editBtn, deleteBtn]);
-    return el("article", { class: "source-card", dataset: { id: portal.id } }, [head, desc, actions, editForm, cardStatus]);
+    return el("div", { class: "source-row", dataset: { id: portal.id } }, [head, authorsEl, desc, actions, editForm, cardStatus]);
   }
 
   // The inline edit form: every editable field EXCEPT domain (PATCH refuses it).

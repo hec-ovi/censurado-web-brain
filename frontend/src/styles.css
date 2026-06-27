@@ -406,16 +406,38 @@ button:disabled {
 .source-list {
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 0;
 }
-.source-card {
+/* A clean list row (not a boxed card): rows stack with a hairline between. */
+.source-row {
   display: flex;
   flex-direction: column;
-  gap: 8px;
-  padding: 12px;
+  gap: 6px;
+  padding: 10px 4px;
+  border-bottom: 1px solid var(--border);
+}
+.source-row:first-child {
+  border-top: 1px solid var(--border);
+}
+/* The authors this source feeds, as small chips. */
+.source-authors {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+}
+.author-chip {
+  padding: 1px 9px;
   border: 1px solid var(--border);
-  border-radius: 8px;
+  border-radius: 999px;
   background: var(--surface-2);
+  font-size: 0.78rem;
+  white-space: nowrap;
+}
+.source-authors-none {
+  font-size: 0.78rem;
+  color: var(--muted);
+  font-style: italic;
 }
 .source-head {
   display: flex;

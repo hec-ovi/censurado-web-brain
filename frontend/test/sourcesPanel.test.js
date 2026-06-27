@@ -1,5 +1,5 @@
 import "./setup.js";
-import { test } from "node:test";
+import { test, beforeEach } from "node:test";
 import assert from "node:assert/strict";
 import { http, HttpResponse } from "msw";
 import { screen, within, waitFor } from "@testing-library/dom";
@@ -11,6 +11,13 @@ import { api } from "../src/api.js";
 
 installDom();
 const server = installServer();
+
+// reload() now also fetches /personas to invert their pools into per-source
+// author chips. Default it to an empty roster so tests that only care about the
+// source list need not restate it; tests about the chips override this.
+beforeEach(() => {
+  server.use(http.get(`${ORIGIN}/api/personas`, () => HttpResponse.json({ personas: [] })));
+});
 
 // A full PortalOut, so a card has every field it might render. Overrides let a
 // test tweak one field (enabled, description, ...) without restating the rest.
@@ -46,7 +53,7 @@ test("renders a card per portal with domain, description, ownership badge, and a
   const { panel } = mount();
   await panel.reload();
 
-  const card = (await screen.findByText("example.com")).closest(".source-card");
+  const card = (await screen.findByText("example.com")).closest(".source-row");
   assert.ok(card, "the source card should render");
   assert.ok(within(card).getByText("A daily"));
   assert.ok(within(card).getByText("Grupo X"));
@@ -161,20 +168,20 @@ test("toggles a source between enabled and disabled, flipping the pill and hitti
   const { panel } = mount();
   await panel.reload();
 
-  let card = (await screen.findByText("example.com")).closest(".source-card");
+  let card = (await screen.findByText("example.com")).closest(".source-row");
   assert.ok(within(card).getByText("online"));
   await user.click(within(card).getByRole("button", { name: /disable/i }));
 
   await waitFor(() => {
-    const c = screen.getByText("example.com").closest(".source-card");
+    const c = screen.getByText("example.com").closest(".source-row");
     assert.ok(within(c).getByText("offline"));
   });
 
-  card = screen.getByText("example.com").closest(".source-card");
+  card = screen.getByText("example.com").closest(".source-row");
   await user.click(within(card).getByRole("button", { name: /enable/i }));
 
   await waitFor(() => {
-    const c = screen.getByText("example.com").closest(".source-card");
+    const c = screen.getByText("example.com").closest(".source-row");
     assert.ok(within(c).getByText("online"));
   });
   assert.deepEqual(hits, ["disable", "enable"]);
@@ -195,7 +202,7 @@ test("deletes a source after a two-click confirm", async () => {
   const { panel } = mount();
   await panel.reload();
 
-  const card = (await screen.findByText("example.com")).closest(".source-card");
+  const card = (await screen.findByText("example.com")).closest(".source-row");
   // First click only arms the confirm.
   await user.click(within(card).getByRole("button", { name: /^delete$/i }));
   assert.equal(delHit, false, "the first click should not delete");
@@ -222,7 +229,7 @@ test("edits a source via the inline form and PATCHes without the domain", async 
   const { panel } = mount();
   await panel.reload();
 
-  const card = (await screen.findByText("example.com")).closest(".source-card");
+  const card = (await screen.findByText("example.com")).closest(".source-row");
   // The inline edit form has no domain field at all.
   await user.click(within(card).getByRole("button", { name: /^edit$/i }));
   assert.equal(within(card).queryByLabelText(/^domain$/i), null, "the edit form must not edit the domain");
@@ -253,7 +260,7 @@ test("edit can CLEAR ownership group (sends empty string so the masthead un-grou
   const { panel } = mount();
   await panel.reload();
 
-  const card = (await screen.findByText("example.com")).closest(".source-card");
+  const card = (await screen.findByText("example.com")).closest(".source-row");
   await user.click(within(card).getByRole("button", { name: /^edit$/i }));
   await user.clear(within(card).getByLabelText(/ownership group/i));
   await user.click(within(card).getByRole("button", { name: /save/i }));
@@ -261,4 +268,60 @@ test("edit can CLEAR ownership group (sends empty string so the masthead un-grou
   await waitFor(() => assert.ok(patched, "a PATCH should have been sent"));
   // A blanked-then-saved field is sent as "" so the brain clears it (exclude_none keeps "").
   assert.equal(patched.ownership_group, "", "clearing ownership group must send an empty string, not omit it");
+});
+
+test("each source row lists the authors that read it (reverse of author->sources)", async () => {
+  server.use(
+    http.get(`${ORIGIN}/api/portals`, () =>
+      HttpResponse.json({
+        portals: [portal({ id: "p1", domain: "alpha.com" }), portal({ id: "p2", domain: "beta.com" })],
+        total: 2,
+      })),
+    // alpha (p1) is read by Lara AND Borge; beta (p2) only by Borge.
+    http.get(`${ORIGIN}/api/personas`, () =>
+      HttpResponse.json({
+        personas: [
+          { id: "lara", display_name: "Lara Arianna", beat: "politics", sources: ["p1"] },
+          { id: "borge", display_name: "Borge Luis Jorges", beat: "economics", sources: ["p1", "p2"] },
+        ],
+      })),
+  );
+  const { panel } = mount();
+  await panel.reload();
+
+  const alpha = (await screen.findByText("alpha.com")).closest(".source-row");
+  assert.ok(within(alpha).getByText("Lara Arianna"), "alpha should list Lara");
+  assert.ok(within(alpha).getByText("Borge Luis Jorges"), "alpha should list Borge");
+
+  const beta = screen.getByText("beta.com").closest(".source-row");
+  assert.ok(within(beta).getByText("Borge Luis Jorges"), "beta should list Borge");
+  assert.equal(within(beta).queryByText("Lara Arianna"), null, "beta should NOT list Lara");
+});
+
+test("a source no author reads shows the unassigned hint", async () => {
+  server.use(
+    http.get(`${ORIGIN}/api/portals`, () =>
+      HttpResponse.json({ portals: [portal({ id: "p9", domain: "orphan.com" })], total: 1 })),
+    http.get(`${ORIGIN}/api/personas`, () =>
+      HttpResponse.json({ personas: [{ id: "lara", display_name: "Lara", beat: "politics", sources: ["other"] }] })),
+  );
+  const { panel } = mount();
+  await panel.reload();
+
+  const orphan = (await screen.findByText("orphan.com")).closest(".source-row");
+  assert.ok(within(orphan).getByText(/sin autores asignados/i));
+});
+
+test("renders the sources even when the personas fetch fails (no chips, not an error)", async () => {
+  server.use(
+    http.get(`${ORIGIN}/api/portals`, () => HttpResponse.json({ portals: [portal()], total: 1 })),
+    http.get(`${ORIGIN}/api/personas`, () => HttpResponse.json({ code: "boom" }, { status: 500 })),
+  );
+  const { panel } = mount();
+  await panel.reload();
+
+  // The source list still renders; the author lookup degraded to "unassigned".
+  const card = (await screen.findByText("example.com")).closest(".source-row");
+  assert.ok(card, "the source row should render despite the personas failure");
+  assert.ok(within(card).getByText(/sin autores asignados/i));
 });
