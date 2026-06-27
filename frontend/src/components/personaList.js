@@ -252,8 +252,8 @@ export function PersonaList({ api, onChanged } = {}) {
         const table = el("table", { class: "link-table" }, [
           el("thead", {}, el("tr", {}, [
             el("th", { class: "link-check" }, ""),
-            el("th", {}, "Fuente"),
-            el("th", {}, "Descripción"),
+            el("th", {}, "Source"),
+            el("th", {}, "Description"),
           ])),
           tbody,
         ]);

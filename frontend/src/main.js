@@ -9,6 +9,45 @@ import { RunPanel } from "./components/runPanel.js";
 import { EditorialPanel } from "./components/editorialPanel.js";
 import { PromptsPanel } from "./components/promptsPanel.js";
 
+const THEME_KEY = "admin-theme";
+
+function readTheme() {
+  try {
+    return localStorage.getItem(THEME_KEY) || "system";
+  } catch {
+    return "system";
+  }
+}
+
+function applyTheme(value) {
+  const theme = value === "light" || value === "dark" ? value : "system";
+  document.documentElement.dataset.theme = theme;
+  return theme;
+}
+
+function saveTheme(value) {
+  const theme = applyTheme(value);
+  try {
+    localStorage.setItem(THEME_KEY, theme);
+  } catch {
+    /* localStorage can be unavailable in hardened browsers. */
+  }
+  return theme;
+}
+
+function ThemeControl() {
+  const select = el("select", { class: "theme-select", id: "theme-select", "aria-label": "Theme" }, [
+    el("option", { value: "system" }, "System"),
+    el("option", { value: "light" }, "Light"),
+    el("option", { value: "dark" }, "Dark"),
+  ]);
+  select.value = applyTheme(readTheme());
+  select.addEventListener("change", () => {
+    select.value = saveTheme(select.value);
+  });
+  return el("label", { class: "theme-control", for: "theme-select" }, [el("span", {}, "Theme"), select]);
+}
+
 // Mount the console into `root`. `deps.api` is injectable so a test can mount
 // the whole app against MSW or a stub; production passes nothing and the real
 // /api client is used. Returns the live component handles for tests.
@@ -57,13 +96,16 @@ export function mountApp(root, deps = {}) {
   const tabButtons = [];
   const panels = [];
   const tablist = el("div", { class: "tablist", role: "tablist", "aria-label": "Console sections" });
+  const pageTitle = el("h1", { class: "page-title" }, tabs[0].label);
   let active = 0;
 
   function select(i) {
     active = i;
+    pageTitle.textContent = tabs[i].label;
     tabButtons.forEach((btn, j) => {
       const on = j === i;
       btn.setAttribute("aria-selected", on ? "true" : "false");
+      btn.toggleAttribute("aria-current", on);
       btn.tabIndex = on ? 0 : -1;
     });
     panels.forEach((p, j) => {
@@ -114,14 +156,25 @@ export function mountApp(root, deps = {}) {
     tablist.append(button);
   });
 
-  const header = el("header", { class: "app-header" }, [
+  const sidebar = el("aside", { class: "app-sidebar", "aria-label": "Primary" }, [
     el("div", { class: "brand" }, [
-      el("h1", {}, "Newsroom Brain"),
-      el("span", { class: "subtitle" }, "console"),
+      el("span", { class: "brand-mark" }, "AP"),
+      el("span", { class: "brand-name" }, "Admin Panel"),
     ]),
+    tablist,
   ]);
 
-  root.replaceChildren(header, el("main", { class: "app-main" }, [tablist, ...panels]));
+  const topbar = el("header", { class: "app-topbar" }, [
+    el("div", {}, [el("p", { class: "kicker" }, "Control panel"), pageTitle]),
+    el("div", { class: "topbar-actions" }, [ThemeControl()]),
+  ]);
+
+  root.replaceChildren(
+    el("div", { class: "app-shell" }, [
+      sidebar,
+      el("div", { class: "app-workspace" }, [topbar, el("main", { class: "app-main" }, panels)]),
+    ]),
+  );
 
   health.check();
   backend.refresh();

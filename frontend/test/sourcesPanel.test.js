@@ -311,7 +311,7 @@ test("a source no author reads shows the unassigned hint", async () => {
   await panel.reload();
 
   const orphan = (await screen.findByText("orphan.com")).closest(".source-row");
-  assert.ok(within(orphan).getByText(/sin autores asignados/i));
+  assert.ok(within(orphan).getByText(/no authors assigned/i));
 });
 
 test("renders the sources even when the personas fetch fails (no chips, not an error)", async () => {
@@ -325,7 +325,7 @@ test("renders the sources even when the personas fetch fails (no chips, not an e
   // The source list still renders; the author lookup degraded to "unassigned".
   const card = (await screen.findByText("example.com")).closest(".source-row");
   assert.ok(card, "the source row should render despite the personas failure");
-  assert.ok(within(card).getByText(/sin autores asignados/i));
+  assert.ok(within(card).getByText(/no authors assigned/i));
 });
 
 test("the create form's Enabled is an inline checkbox, not a full-width box", async () => {
@@ -338,7 +338,7 @@ test("the create form's Enabled is an inline checkbox, not a full-width box", as
   assert.ok(enabled.closest(".field-check"), "Enabled should use the inline check layout, not the stacked text-field one");
 });
 
-test("renders sources as a table with the Portal / Acciones / Asignado a / Descripcion columns", async () => {
+test("renders sources as a table with the Portal / Actions / Assigned to / Description columns", async () => {
   server.use(http.get(`${ORIGIN}/api/portals`, () => HttpResponse.json({ portals: [portal()], total: 1 })));
   const { panel } = mount();
   await panel.reload();
@@ -346,7 +346,7 @@ test("renders sources as a table with the Portal / Acciones / Asignado a / Descr
   await screen.findByText("example.com");
   assert.ok(document.querySelector("table.source-table"), "the sources render in a table");
   const headers = [...document.querySelectorAll(".source-table thead th")].map((h) => h.textContent);
-  assert.deepEqual(headers, ["Portal", "Acciones", "Asignado a", "Descripción"]);
+  assert.deepEqual(headers, ["Portal", "Actions", "Assigned to", "Description"]);
   // The data row is a table row, and its cells hold the parts.
   const dataRow = document.querySelector("tr.source-row");
   assert.equal(dataRow.tagName, "TR");

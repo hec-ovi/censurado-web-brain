@@ -123,9 +123,9 @@ export function SourcesPanel({ api, onChanged } = {}) {
         el("table", { class: "source-table" }, [
           el("thead", {}, el("tr", {}, [
             el("th", {}, "Portal"),
-            el("th", {}, "Acciones"),
-            el("th", {}, "Asignado a"),
-            el("th", {}, "Descripción"),
+            el("th", {}, "Actions"),
+            el("th", {}, "Assigned to"),
+            el("th", {}, "Description"),
           ])),
           tbody,
         ]),
@@ -204,7 +204,7 @@ export function SourcesPanel({ api, onChanged } = {}) {
         { class: "source-authors" },
         authors.length
           ? authors.map((a) => el("span", { class: "author-chip", dataset: { section: a.beat } }, a.name))
-          : [el("span", { class: "source-authors-none" }, "Sin autores asignados")],
+          : [el("span", { class: "source-authors-none" }, "No authors assigned")],
       ),
     );
 

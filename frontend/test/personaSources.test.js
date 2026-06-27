@@ -95,7 +95,7 @@ test("renders the source pool as a one-line-per-source table: checkbox, portal, 
     return t;
   });
   const headers = within(table).getAllByRole("columnheader").map((h) => h.textContent.trim());
-  assert.deepEqual(headers, ["", "Fuente", "Descripción"]);
+  assert.deepEqual(headers, ["", "Source", "Description"]);
 
   // The single source is one row: its checkbox (still label-linked for a11y),
   // the portal domain, and its description carried in full via title.
