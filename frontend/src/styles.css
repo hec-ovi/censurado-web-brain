@@ -212,6 +212,22 @@ textarea:focus {
 textarea {
   resize: vertical;
 }
+/* Checkboxes/radios must not inherit the full-width text-input box. */
+input[type="checkbox"],
+input[type="radio"] {
+  width: auto;
+  padding: 0;
+}
+/* An inline checkbox field: the box then its label on one row. */
+.field-check {
+  flex-direction: row;
+  align-items: center;
+  gap: 8px;
+}
+.field-check label {
+  font-size: 0.9rem;
+  color: var(--text);
+}
 button {
   font: inherit;
   font-weight: 600;
@@ -404,34 +420,51 @@ button:disabled {
   gap: var(--gap);
 }
 .source-list {
-  display: flex;
-  flex-direction: column;
-  gap: 0;
+  overflow-x: auto;
 }
-/* A clean list row (not a boxed card): rows stack with a hairline between. */
-.source-row {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  padding: 10px 4px;
+/* Sources as a table: Portal | Acciones | Asignado a | Descripción. */
+.source-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+.source-table thead th {
+  text-align: left;
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--muted);
+  font-weight: 700;
+  padding: 6px 8px;
   border-bottom: 1px solid var(--border);
 }
-.source-row:first-child {
-  border-top: 1px solid var(--border);
+.source-table td {
+  padding: 9px 8px;
+  border-bottom: 1px solid var(--border);
+  vertical-align: top;
+  font-size: 0.88rem;
 }
-/* The authors this source feeds, as small chips. */
+.source-portal {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.source-domain {
+  font-weight: 600;
+}
+/* The authors this source feeds, as small chips, in their column. */
 .source-authors {
   display: flex;
   flex-wrap: wrap;
-  gap: 6px;
-  align-items: center;
+  gap: 5px;
+  align-items: flex-start;
 }
 .author-chip {
   padding: 1px 9px;
   border: 1px solid var(--border);
   border-radius: 999px;
   background: var(--surface-2);
-  font-size: 0.78rem;
+  font-size: 0.76rem;
   white-space: nowrap;
 }
 .source-authors-none {
@@ -439,19 +472,20 @@ button:disabled {
   color: var(--muted);
   font-style: italic;
 }
-.source-head {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-.source-head h3 {
-  margin: 0;
-  font-size: 0.98rem;
-}
 .source-desc {
-  margin: 0;
   color: var(--muted);
   font-size: 0.86rem;
+}
+.source-edit-row > td {
+  background: var(--surface-2);
+}
+/* Compact, single-line action buttons inside the table cell. */
+.source-table .source-actions {
+  flex-wrap: nowrap;
+}
+.source-table .source-actions button {
+  padding: 5px 10px;
+  font-size: 0.82rem;
 }
 .source-actions {
   display: flex;

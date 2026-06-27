@@ -2,18 +2,18 @@ import { el, clear, field, help } from "./el.js";
 
 // The Sources tab: a portals manager. A portal is a source of record (a news
 // outlet, by its domain/homepage/feeds) the newsroom is allowed to draw from.
-// The panel is a create form on top and a clean LIST of sources below; each row
-// shows the source plus the authors that read it (the reverse of the per-author
-// source linking, since one source can feed several authors), and toggles
-// enabled, edits the non-domain fields, or deletes the source.
+// The panel is a create form on top and a TABLE of sources below: one row per
+// source with its portal, the actions (edit / enable-disable / delete), the
+// authors that read it, and the description. Edit expands an inline form as a
+// full-width row beneath.
 //
-// The author-per-source view is resolved client-side: it reads every persona's
+// The author-per-source column is resolved client-side: it reads every persona's
 // `sources` pool and inverts it to portalId -> authors, so no extra endpoint is
 // needed. If the personas fetch fails the sources still render, without chips.
 //
 // `onChanged` (optional) fires after any successful mutation so a parent can
 // refresh anything that depends on the source set. `reload()` re-fetches and
-// re-renders the list, and is exposed so the app can prime it on mount.
+// re-renders the table, and is exposed so the app can prime it on mount.
 
 const SOURCE_HELP =
   "A source (portal) is a news outlet the newsroom may draw from: its domain, homepage, and feeds. " +
@@ -54,7 +54,7 @@ export function SourcesPanel({ api, onChanged } = {}) {
     field("Feed URLs (comma separated)", feedsInput, "sp-feeds"),
     field("Feed type", feedTypeInput, "sp-feed-type"),
     field("Language", languageInput, "sp-language"),
-    field("Enabled", enabledCheck, "sp-enabled"),
+    checkField("Enabled", enabledCheck, "sp-enabled"),
     submit,
     createStatus,
   ]);
@@ -65,7 +65,7 @@ export function SourcesPanel({ api, onChanged } = {}) {
     form,
   ]);
 
-  // --- List --------------------------------------------------------------
+  // --- List (table) ------------------------------------------------------
   const listEl = el("div", { class: "source-list" });
   const listPanel = el("section", { class: "panel" }, [
     el("div", { class: "panel-head" }, [el("h2", {}, "Sources")]),
@@ -114,7 +114,22 @@ export function SourcesPanel({ api, onChanged } = {}) {
         listEl.append(el("p", { class: "muted" }, "No sources yet."));
         return;
       }
-      for (const portal of portals) listEl.append(row(portal, authorsByPortal.get(portal.id) || []));
+      const tbody = el("tbody", {});
+      for (const portal of portals) {
+        const { dataRow, editRow } = rows(portal, authorsByPortal.get(portal.id) || []);
+        tbody.append(dataRow, editRow);
+      }
+      listEl.append(
+        el("table", { class: "source-table" }, [
+          el("thead", {}, el("tr", {}, [
+            el("th", {}, "Portal"),
+            el("th", {}, "Acciones"),
+            el("th", {}, "Asignado a"),
+            el("th", {}, "Descripción"),
+          ])),
+          tbody,
+        ]),
+      );
     } catch (err) {
       clear(listEl);
       listEl.append(el("p", { class: "error", role: "alert" }, `Could not load sources: ${err.message}`));
@@ -140,34 +155,28 @@ export function SourcesPanel({ api, onChanged } = {}) {
     return map;
   }
 
-  // A single source row in the clean list: domain + status pill + optional
-  // ownership badge, the chips of authors this source feeds, an optional
-  // description, the per-row actions, and a hidden inline edit form.
-  function row(portal, authors) {
+  // A source's two rows: the data row (.source-row) and a hidden full-width edit
+  // row (.source-edit-row) the Edit button expands. The cardStatus line is shared
+  // so a failed toggle/delete/edit surfaces under the row's actions.
+  function rows(portal, authors) {
     const enabled = !!portal.enabled;
     const pill = el("span", { class: "status", dataset: { state: enabled ? "online" : "offline" } }, enabled ? "online" : "offline");
-    const head = el("div", { class: "source-head" }, [
-      el("h3", {}, portal.domain),
+    // The flex layouts live on inner divs, never on the <td> itself: a flex <td>
+    // drops out of the table's column grid and the cells stop aligning.
+    const portalCell = el("td", {}, el("div", { class: "source-portal" }, [
+      el("span", { class: "source-domain" }, portal.domain),
       pill,
       portal.ownership_group ? el("span", { class: "badge" }, portal.ownership_group) : null,
-    ]);
-    // Which authors read this source (a source can feed several). Empty = unassigned.
-    const authorsEl = el(
-      "div",
-      { class: "source-authors" },
-      authors.length
-        ? authors.map((a) => el("span", { class: "author-chip", dataset: { section: a.beat } }, a.name))
-        : [el("span", { class: "source-authors-none" }, "Sin autores asignados")],
-    );
-    const desc = portal.description ? el("p", { class: "source-desc" }, portal.description) : null;
+    ]));
+
     const cardStatus = el("p", { class: "form-status", role: "status", "aria-live": "polite" });
 
     const toggleBtn = el("button", { type: "button" }, enabled ? "Disable" : "Enable");
     toggleBtn.addEventListener("click", () =>
       act(toggleBtn, () => (enabled ? api.disablePortal(portal.id) : api.enablePortal(portal.id)), cardStatus));
 
-    // Two-click delete instead of window.confirm (which is a no-op under jsdom):
-    // the first click arms the button, the second performs the delete.
+    // Two-click delete instead of window.confirm (a no-op under jsdom): the first
+    // click arms the button, the second performs the delete.
     let armed = false;
     const deleteBtn = el("button", { type: "button", class: "secondary" }, "Delete");
     deleteBtn.addEventListener("click", () => {
@@ -180,21 +189,52 @@ export function SourcesPanel({ api, onChanged } = {}) {
       act(deleteBtn, () => api.deletePortal(portal.id), cardStatus);
     });
 
-    const editForm = buildEditForm(portal, cardStatus);
     const editBtn = el("button", { type: "button", class: "secondary" }, "Edit");
-    editBtn.addEventListener("click", () => {
-      editForm.hidden = !editForm.hidden;
-      editBtn.setAttribute("aria-expanded", editForm.hidden ? "false" : "true");
-    });
-    editBtn.setAttribute("aria-expanded", "false");
+    const actionsCell = el("td", {}, [
+      el("div", { class: "source-actions" }, [toggleBtn, editBtn, deleteBtn]),
+      cardStatus,
+    ]);
 
-    const actions = el("div", { class: "source-actions" }, [toggleBtn, editBtn, deleteBtn]);
-    return el("div", { class: "source-row", dataset: { id: portal.id } }, [head, authorsEl, desc, actions, editForm, cardStatus]);
+    // Which authors read this source (a source can feed several). Empty = unassigned.
+    const authorsCell = el(
+      "td",
+      {},
+      el(
+        "div",
+        { class: "source-authors" },
+        authors.length
+          ? authors.map((a) => el("span", { class: "author-chip", dataset: { section: a.beat } }, a.name))
+          : [el("span", { class: "source-authors-none" }, "Sin autores asignados")],
+      ),
+    );
+
+    const descCell = el("td", { class: "source-desc" }, portal.description || "");
+
+    const dataRow = el("tr", { class: "source-row", dataset: { id: portal.id } }, [
+      portalCell,
+      actionsCell,
+      authorsCell,
+      descCell,
+    ]);
+
+    const editForm = buildEditForm(portal, cardStatus, () => setEditOpen(false));
+    const editRow = el("tr", { class: "source-edit-row", dataset: { id: portal.id }, hidden: true }, [
+      el("td", { colspan: "4" }, editForm),
+    ]);
+    function setEditOpen(open) {
+      editRow.hidden = !open;
+      editBtn.setAttribute("aria-expanded", open ? "true" : "false");
+    }
+    setEditOpen(false);
+    editBtn.addEventListener("click", () => setEditOpen(editRow.hidden));
+
+    return { dataRow, editRow };
   }
 
-  // The inline edit form: every editable field EXCEPT domain (PATCH refuses it).
-  // Prefilled from the portal so an edit starts from its current values.
-  function buildEditForm(portal, cardStatus) {
+  // The inline edit form: every editable field EXCEPT domain (PATCH refuses it),
+  // prefilled from the portal. `onClose` collapses the edit row (Cancel); a
+  // successful save reloads the whole table so it never has to close by hand.
+  function buildEditForm(portal, cardStatus, onClose) {
     const id = portal.id;
     const homepage = el("input", { type: "url", id: `se-${id}-homepage`, value: portal.homepage || "" });
     const description = el("input", { type: "text", id: `se-${id}-desc`, value: portal.description || "" });
@@ -216,13 +256,10 @@ export function SourcesPanel({ api, onChanged } = {}) {
       field("Feed URLs (comma separated)", feeds, `se-${id}-feeds`),
       field("Feed type", feedType, `se-${id}-feed-type`),
       field("Language", language, `se-${id}-language`),
-      field("Enabled", enabled, `se-${id}-enabled`),
+      checkField("Enabled", enabled, `se-${id}-enabled`),
       el("div", { class: "source-actions" }, [save, cancel]),
     ]);
-    editForm.hidden = true;
-    cancel.addEventListener("click", () => {
-      editForm.hidden = true;
-    });
+    cancel.addEventListener("click", () => onClose());
     editForm.addEventListener("submit", async (event) => {
       event.preventDefault();
       const body = collectEditable(refs, { allowClear: true });
@@ -240,9 +277,9 @@ export function SourcesPanel({ api, onChanged } = {}) {
     return editForm;
   }
 
-  // Run a card action, then reload the list. On success the card is replaced by
+  // Run a row action, then reload the table. On success the row is replaced by
   // the fresh render, so the button is discarded; on failure it re-enables and
-  // the card surfaces the brain's error.
+  // the row surfaces the brain's error.
   async function act(button, run, statusNode) {
     button.disabled = true;
     try {
@@ -299,6 +336,12 @@ function helpField(labelText, control, id, helpText) {
     el("span", { class: "field-label" }, [el("label", { for: id }, labelText), help(helpText)]),
     control,
   ]);
+}
+
+// A checkbox field laid out inline (box then label on one row), so it never
+// inherits the full-width text-input look. Used for the Enabled toggles.
+function checkField(labelText, control, id) {
+  return el("div", { class: "field field-check" }, [control, el("label", { for: id }, labelText)]);
 }
 
 function setBusy(button, formEl, busy) {

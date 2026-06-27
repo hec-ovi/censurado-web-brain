@@ -230,14 +230,15 @@ test("edits a source via the inline form and PATCHes without the domain", async 
   await panel.reload();
 
   const card = (await screen.findByText("example.com")).closest(".source-row");
-  // The inline edit form has no domain field at all.
   await user.click(within(card).getByRole("button", { name: /^edit$/i }));
-  assert.equal(within(card).queryByLabelText(/^domain$/i), null, "the edit form must not edit the domain");
+  // Edit expands a full-width row beneath; the form has no domain field at all.
+  const editRow = document.querySelector('.source-edit-row[data-id="p1"]');
+  assert.equal(within(editRow).queryByLabelText(/^domain$/i), null, "the edit form must not edit the domain");
 
-  const descField = within(card).getByLabelText(/^description$/i);
+  const descField = within(editRow).getByLabelText(/^description$/i);
   await user.clear(descField);
   await user.type(descField, "Updated desc");
-  await user.click(within(card).getByRole("button", { name: /save/i }));
+  await user.click(within(editRow).getByRole("button", { name: /save/i }));
 
   await waitFor(() => assert.ok(patched, "a PATCH should have been sent"));
   assert.equal(patched.domain, undefined, "the PATCH body must not carry a domain");
@@ -262,8 +263,9 @@ test("edit can CLEAR ownership group (sends empty string so the masthead un-grou
 
   const card = (await screen.findByText("example.com")).closest(".source-row");
   await user.click(within(card).getByRole("button", { name: /^edit$/i }));
-  await user.clear(within(card).getByLabelText(/ownership group/i));
-  await user.click(within(card).getByRole("button", { name: /save/i }));
+  const editRow = document.querySelector('.source-edit-row[data-id="p1"]');
+  await user.clear(within(editRow).getByLabelText(/ownership group/i));
+  await user.click(within(editRow).getByRole("button", { name: /save/i }));
 
   await waitFor(() => assert.ok(patched, "a PATCH should have been sent"));
   // A blanked-then-saved field is sent as "" so the brain clears it (exclude_none keeps "").
@@ -324,4 +326,29 @@ test("renders the sources even when the personas fetch fails (no chips, not an e
   const card = (await screen.findByText("example.com")).closest(".source-row");
   assert.ok(card, "the source row should render despite the personas failure");
   assert.ok(within(card).getByText(/sin autores asignados/i));
+});
+
+test("the create form's Enabled is an inline checkbox, not a full-width box", async () => {
+  server.use(http.get(`${ORIGIN}/api/portals`, () => HttpResponse.json({ portals: [], total: 0 })));
+  const { panel } = mount();
+  await panel.reload();
+
+  const enabled = screen.getByLabelText("Enabled");
+  assert.equal(enabled.type, "checkbox");
+  assert.ok(enabled.closest(".field-check"), "Enabled should use the inline check layout, not the stacked text-field one");
+});
+
+test("renders sources as a table with the Portal / Acciones / Asignado a / Descripcion columns", async () => {
+  server.use(http.get(`${ORIGIN}/api/portals`, () => HttpResponse.json({ portals: [portal()], total: 1 })));
+  const { panel } = mount();
+  await panel.reload();
+
+  await screen.findByText("example.com");
+  assert.ok(document.querySelector("table.source-table"), "the sources render in a table");
+  const headers = [...document.querySelectorAll(".source-table thead th")].map((h) => h.textContent);
+  assert.deepEqual(headers, ["Portal", "Acciones", "Asignado a", "Descripción"]);
+  // The data row is a table row, and its cells hold the parts.
+  const dataRow = document.querySelector("tr.source-row");
+  assert.equal(dataRow.tagName, "TR");
+  assert.ok(within(dataRow).getByText("A daily"), "the description sits in its cell");
 });
