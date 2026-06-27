@@ -528,6 +528,62 @@ button.secondary:hover {
   overflow-x: auto;
 }
 
+/* Editorial tab: the five house-style sections stack like the other tabs. */
+.editorial {
+  display: flex;
+  flex-direction: column;
+  gap: var(--gap);
+}
+.editorial-derived {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface-2);
+}
+.derived-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--gap);
+  font-size: 0.85rem;
+}
+.derived-label {
+  color: var(--muted);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+.derived-value {
+  color: var(--text);
+  word-break: break-all;
+  text-align: right;
+}
+.editorial-versions {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.version-row {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface-2);
+}
+.version-meta {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.version-num {
+  font-weight: 700;
+  font-size: 0.95rem;
+}
+
 /* Off-screen but available to assistive tech (e.g. the table caption). */
 .visually-hidden {
   position: absolute;

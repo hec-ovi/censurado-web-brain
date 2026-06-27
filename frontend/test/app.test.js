@@ -32,6 +32,35 @@ function baseHandlers(extra = []) {
         status_code: 200,
         detail: "",
       })),
+    ...editorialHandlers(),
+  ];
+}
+
+// The Editorial tab loads style + lexicon + sourcing + location + versions on
+// mount, so any mount has to stub all five (MSW is in onUnhandledRequest:
+// "error" mode). The defaults model an empty newsroom: no published style yet
+// (404 on style/lexicon/sourcing), an empty version history, and a blank
+// location. A test that exercises the editor overrides these per route.
+function editorialHandlers() {
+  const notFound = () => HttpResponse.json({ code: "not_found", detail: "no active style" }, { status: 404 });
+  return [
+    http.get(`${ORIGIN}/api/editorial/style`, notFound),
+    http.get(`${ORIGIN}/api/editorial/style/lexicon`, notFound),
+    http.get(`${ORIGIN}/api/editorial/style/sourcing`, notFound),
+    http.get(`${ORIGIN}/api/editorial/style/versions`, () => HttpResponse.json({ versions: [], total: 0 })),
+    http.get(`${ORIGIN}/api/editorial/location`, () =>
+      HttpResponse.json({
+        region: "",
+        ui_lang: "",
+        language: "",
+        gdelt_country: "",
+        city: "",
+        latlong: "",
+        updated_at: "",
+        gl: "",
+        hl: "",
+        ceid: "",
+      })),
   ];
 }
 
@@ -65,6 +94,7 @@ test("mounts the app, shows health, and refreshes the roster after a create", as
       created = true;
       return HttpResponse.json({ job_id: "j", status: "done", persona_id: "ada-reporter", error: "" });
     }),
+    ...editorialHandlers(),
   );
   const user = userEvent.setup();
   mount();
@@ -137,12 +167,30 @@ test("placeholder tabs show their heading", async () => {
   mount();
   await screen.findByText("online");
 
-  for (const name of ["Editorial", "Prompts"]) {
+  // Editorial is now a real editor; only Prompts is still a placeholder.
+  for (const name of ["Prompts"]) {
     await user.click(screen.getByRole("tab", { name }));
     const heading = screen.getByRole("heading", { name });
     assert.ok(heading, `${name} heading should render`);
     assert.match(heading.closest(".panel").textContent, /built in a later step/i);
   }
+});
+
+test("the Editorial tab renders the style editor, not a placeholder", async () => {
+  server.use(...baseHandlers());
+  const user = userEvent.setup();
+  mount();
+  await screen.findByText("online");
+
+  await user.click(screen.getByRole("tab", { name: /editorial/i }));
+  const panel = screen.getByRole("tabpanel", { name: /editorial/i });
+  // The five section headings are mounted, and the no-active-style affordance
+  // resolved, so this is the real editor, not the stub.
+  assert.ok(within(panel).getByRole("heading", { name: "Style" }));
+  assert.ok(within(panel).getByRole("heading", { name: "Versions" }));
+  assert.ok(within(panel).getByLabelText(/^voice$/i), "the style form is present");
+  await within(panel).findByText(/no active style yet/i);
+  assert.equal(within(panel).queryByText(/built in a later step/i), null);
 });
 
 test("the Sources tab renders the portals manager, not a placeholder", async () => {
