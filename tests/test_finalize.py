@@ -60,6 +60,30 @@ def test_valid_reply_becomes_publish_input_with_forced_author_and_section(fake):
     assert article.topics == ["ai", "policy"]  # deduped
 
 
+def test_subtitle_and_summary_land_in_metadata(fake):
+    # The dek and standalone summary the model authors are stamped into
+    # metadata.subtitle / metadata.description (what the public generator renders
+    # as the card/article subtitle + standfirst), and stay out of the content hash.
+    fake.state.script_chat(json.dumps({
+        "title": "A Clear Headline",
+        "subtitle": "Por qué esto importa hoy.",
+        "summary": "Lo esencial en tres frases, autónomo.",
+        "body": "# Body\n\nText.",
+    }))
+    article = _finalize(fake)
+    assert article.metadata["subtitle"] == "Por qué esto importa hoy."
+    assert article.metadata["description"] == "Lo esencial en tres frases, autónomo."
+
+
+def test_absent_subtitle_and_summary_leave_keys_off(fake):
+    # Optional: a model that omits them must not fail, and must not stamp empty keys
+    # (the generator falls back cleanly when the keys are absent).
+    fake.state.script_chat(json.dumps({"title": "T", "body": "B"}))
+    article = _finalize(fake)
+    assert "subtitle" not in article.metadata
+    assert "description" not in article.metadata
+
+
 def test_provenance_namespace_is_stamped(fake):
     fake.state.script_chat(json.dumps({"title": "T", "body": "B"}))
     article = _finalize(fake)

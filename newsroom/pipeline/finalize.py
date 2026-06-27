@@ -80,6 +80,16 @@ def finalize_article(
             "ledger_digest": ledger.digest(),
         }
     }
+    # The authored dek + standalone summary the public generator renders as the
+    # card/article subtitle and the article standfirst. Stamped only when present
+    # (mirrors author_avatar): an empty value leaves the key off so the generator
+    # falls back cleanly rather than rendering an empty block. Both live OUTSIDE
+    # the content hash (which is over title/body/author/section), so adding them
+    # never changes idempotency.
+    if draft.subtitle.strip():
+        metadata["subtitle"] = draft.subtitle.strip()
+    if draft.summary.strip():
+        metadata["description"] = draft.summary.strip()
     return PublishArticleInput(
         title=draft.title,
         body=draft.body,

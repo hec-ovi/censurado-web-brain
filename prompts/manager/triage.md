@@ -9,6 +9,17 @@ stories in the in-scope beats, then assign them.
 In-scope beats: {{BEATS}}. Anything outside these beats is out of scope; do not
 assign it.
 
+## Group before you assign
+
+Several beats move fast and the feeds churn out many items per hour on the same
+event (a single conflict, ruling, or release reported and re-reported, then updated).
+Do not assign one article per item. Cluster the items that are the same story or
+developments of it, and assign ONE article that covers the whole cluster: the brief
+should tell the journalist to gather the latest across the cluster, reconcile what
+changed, and write a single, current piece rather than echoing one wire. Treat the
+freshest, most complete state of the story as the angle. Two genuinely distinct
+stories stay two assignments; ten takes on the same event are one.
+
 ## Your journalists
 
 Each journalist owns one beat and writes only in that beat. Assign a story to the

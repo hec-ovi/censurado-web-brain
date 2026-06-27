@@ -57,6 +57,13 @@ class FinalizedDraft(BaseModel):
     model_config = ConfigDict(extra="ignore")
 
     title: str = Field(min_length=1, max_length=300)
+    # The attention-staged dek and standalone summary. Optional with an empty
+    # default so a model that omits them does not burn the one finalize retry;
+    # the finalize prompt still asks for them firmly. The pipeline stamps them
+    # into metadata.subtitle / metadata.description only when non-empty (the
+    # public generator renders those as the card/article subtitle + standfirst).
+    subtitle: str = Field(default="", max_length=400)
+    summary: str = Field(default="", max_length=1000)
     body: str = Field(min_length=1)  # no maximum: bodies are never truncated
     topics: list[str] = Field(default_factory=list)
     slug: str | None = Field(default=None, min_length=1, max_length=200, pattern=_SLUG_PATTERN)
