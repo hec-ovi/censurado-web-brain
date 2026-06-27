@@ -32,13 +32,39 @@ export function field(labelText, control, id) {
   return el("div", { class: "field" }, [el("label", { for: id }, labelText), control]);
 }
 
+let helpSeq = 0;
+
 // A small inline (?) marker that carries an explanation for the control next to
-// it. Both `title` (hover tooltip) and `aria-label` (screen readers + tests)
-// carry the text, and tabindex makes it keyboard-focusable so the tooltip is
-// reachable without a mouse. Used across sections so every control is
-// self-explaining.
+// it. Clicking toggles a real popover instead of relying on the browser title
+// tooltip, so the explanation works with mouse, touch, and keyboard.
 export function help(text) {
-  return el("span", { class: "help", role: "img", tabindex: "0", "aria-label": text, title: text }, "?");
+  const id = `help-popover-${++helpSeq}`;
+  const popover = el("span", { class: "help-popover", id, hidden: true }, text);
+  const button = el(
+    "button",
+    {
+      class: "help",
+      type: "button",
+      "aria-label": text,
+      "aria-expanded": "false",
+      "aria-describedby": id,
+      title: text,
+    },
+    "?",
+  );
+  function setOpen(open) {
+    popover.hidden = !open;
+    button.setAttribute("aria-expanded", open ? "true" : "false");
+  }
+  button.addEventListener("click", (event) => {
+    event.stopPropagation();
+    setOpen(popover.hidden);
+  });
+  button.addEventListener("keydown", (event) => {
+    if (event.key === "Escape") setOpen(false);
+  });
+  document.addEventListener("click", () => setOpen(false));
+  return el("span", { class: "help-wrap" }, [button, popover]);
 }
 
 // Only render an image src we trust: a same-origin path or an explicit http(s)

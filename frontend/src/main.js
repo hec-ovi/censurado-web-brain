@@ -36,16 +36,32 @@ function saveTheme(value) {
 }
 
 function ThemeControl() {
-  const select = el("select", { class: "theme-select", id: "theme-select", "aria-label": "Theme" }, [
-    el("option", { value: "system" }, "System"),
-    el("option", { value: "light" }, "Light"),
-    el("option", { value: "dark" }, "Dark"),
-  ]);
-  select.value = applyTheme(readTheme());
-  select.addEventListener("change", () => {
-    select.value = saveTheme(select.value);
+  const buttons = ["system", "light", "dark"].map((theme) =>
+    el(
+      "button",
+      {
+        type: "button",
+        class: "theme-option",
+        dataset: { theme },
+        "aria-pressed": "false",
+        onClick: () => setTheme(theme),
+      },
+      theme[0].toUpperCase() + theme.slice(1),
+    ),
+  );
+
+  function setTheme(theme) {
+    const active = saveTheme(theme);
+    buttons.forEach((button) => {
+      button.setAttribute("aria-pressed", button.dataset.theme === active ? "true" : "false");
+    });
+  }
+
+  const initial = applyTheme(readTheme());
+  buttons.forEach((button) => {
+    button.setAttribute("aria-pressed", button.dataset.theme === initial ? "true" : "false");
   });
-  return el("label", { class: "theme-control", for: "theme-select" }, [el("span", {}, "Theme"), select]);
+  return el("div", { class: "theme-switch", role: "group", "aria-label": "Theme" }, buttons);
 }
 
 // Mount the console into `root`. `deps.api` is injectable so a test can mount
