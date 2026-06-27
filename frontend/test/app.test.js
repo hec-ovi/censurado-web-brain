@@ -33,6 +33,7 @@ function baseHandlers(extra = []) {
         detail: "",
       })),
     ...editorialHandlers(),
+    ...promptsHandlers(),
   ];
 }
 
@@ -61,6 +62,27 @@ function editorialHandlers() {
         hl: "",
         ceid: "",
       })),
+  ];
+}
+
+// The Prompts tab lists templates on mount; reload auto-selects the first key
+// and loads its active body + version history. The default models one published
+// template so all three GETs (list, template, versions) are stubbed and the
+// editor has a real body to show. A test that exercises the editor overrides
+// these per route.
+function promptsHandlers() {
+  const tmpl = {
+    key: "journalist/research.md",
+    version: 2,
+    body: "Research {{TOPIC}} thoroughly.",
+    created_by: "editor",
+    created_at: "2026-06-01T00:00:00Z",
+    is_active: true,
+  };
+  return [
+    http.get(`${ORIGIN}/api/prompts`, () => HttpResponse.json({ templates: [tmpl], total: 1 })),
+    http.get(`${ORIGIN}/api/prompts/template`, () => HttpResponse.json(tmpl)),
+    http.get(`${ORIGIN}/api/prompts/versions`, () => HttpResponse.json({ versions: [tmpl], total: 1 })),
   ];
 }
 
@@ -95,6 +117,7 @@ test("mounts the app, shows health, and refreshes the roster after a create", as
       return HttpResponse.json({ job_id: "j", status: "done", persona_id: "ada-reporter", error: "" });
     }),
     ...editorialHandlers(),
+    ...promptsHandlers(),
   );
   const user = userEvent.setup();
   mount();
@@ -161,19 +184,22 @@ test("the Status tab renders backend status from /api/status/backend", async () 
   assert.ok(within(panel).getByText("403"));
 });
 
-test("placeholder tabs show their heading", async () => {
+test("the Prompts tab renders the editor, not a placeholder", async () => {
   server.use(...baseHandlers());
   const user = userEvent.setup();
   mount();
   await screen.findByText("online");
 
-  // Editorial is now a real editor; only Prompts is still a placeholder.
-  for (const name of ["Prompts"]) {
-    await user.click(screen.getByRole("tab", { name }));
-    const heading = screen.getByRole("heading", { name });
-    assert.ok(heading, `${name} heading should render`);
-    assert.match(heading.closest(".panel").textContent, /built in a later step/i);
-  }
+  await user.click(screen.getByRole("tab", { name: /prompts/i }));
+  const panel = screen.getByRole("tabpanel", { name: /prompts/i });
+  // The editor + versions sections are mounted, and reload auto-selected the
+  // first key, so its active body loaded into the textarea. This is the real
+  // editor, not the stub.
+  assert.ok(within(panel).getByRole("heading", { name: "Editor" }));
+  assert.ok(within(panel).getByRole("heading", { name: "Versions" }));
+  await within(panel).findByText(/active version 2 for journalist\/research\.md/i);
+  assert.match(within(panel).getByLabelText(/^body$/i).value, /Research \{\{TOPIC\}\}/);
+  assert.equal(within(panel).queryByText(/built in a later step/i), null);
 });
 
 test("the Editorial tab renders the style editor, not a placeholder", async () => {

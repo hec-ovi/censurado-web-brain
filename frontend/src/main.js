@@ -7,6 +7,7 @@ import { PersonaForm } from "./components/personaForm.js";
 import { SourcesPanel } from "./components/sourcesPanel.js";
 import { RunPanel } from "./components/runPanel.js";
 import { EditorialPanel } from "./components/editorialPanel.js";
+import { PromptsPanel } from "./components/promptsPanel.js";
 
 // Mount the console into `root`. `deps.api` is injectable so a test can mount
 // the whole app against MSW or a stub; production passes nothing and the real
@@ -14,8 +15,8 @@ import { EditorialPanel } from "./components/editorialPanel.js";
 //
 // The console is a six-tab ARIA tablist. Switching tabs only toggles `hidden`
 // (hide, not unmount), so controls in inactive tabs stay in the DOM and remain
-// findable by tests and assistive tech instead of being rebuilt. Prompts is a
-// placeholder here; it gets filled in a later phase.
+// findable by tests and assistive tech instead of being rebuilt. Every tab is a
+// real panel; none are placeholders.
 export function mountApp(root, deps = {}) {
   const api = deps.api || defaultApi;
 
@@ -26,6 +27,7 @@ export function mountApp(root, deps = {}) {
   const sources = SourcesPanel({ api });
   const runs = RunPanel({ api });
   const editorial = EditorialPanel({ api });
+  const prompts = PromptsPanel({ api });
 
   const newPersonaPanel = el("section", { class: "panel" }, [
     el("div", { class: "panel-head" }, [
@@ -48,7 +50,7 @@ export function mountApp(root, deps = {}) {
     { id: "sources", label: "Sources", content: [sources.element] },
     { id: "runs", label: "Runs", content: [runs.element] },
     { id: "editorial", label: "Editorial", content: [editorial.element] },
-    { id: "prompts", label: "Prompts", content: [placeholder("Prompts")] },
+    { id: "prompts", label: "Prompts", content: [prompts.element] },
     { id: "status", label: "Status", content: [healthPanel, backend.element] },
   ];
 
@@ -128,15 +130,7 @@ export function mountApp(root, deps = {}) {
   runs.loadAuthors();
   runs.reloadHistory();
   editorial.reload();
+  prompts.reload();
 
-  return { health, backend, list, form, sources, runs, editorial, tabs: tabButtons, panels, select };
-}
-
-// A stand-in panel for a section that lands in a later phase: just the heading
-// and a muted note, so the tab is navigable and labeled before it has content.
-function placeholder(title) {
-  return el("section", { class: "panel" }, [
-    el("h2", {}, title),
-    el("p", { class: "muted" }, "Built in a later step."),
-  ]);
+  return { health, backend, list, form, sources, runs, editorial, prompts, tabs: tabButtons, panels, select };
 }
