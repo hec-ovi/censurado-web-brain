@@ -131,7 +131,7 @@ def test_edited_draft_prompt_reaches_the_journalist_in_a_pool_worker(fake, tmp_p
     # A full managed run: assign -> outline -> draft -> enrich -> finalize (rules-degraded
     # eval and a URL-free draft add no further calls).
     fake.state.script_chat(_assign("ada"))
-    for body in ("an outline", "a clean draft", "an enriched body"):
+    for body in ("an outline", "a clean draft", "an enriched body", "a respin 1", "a respin 2"):
         fake.state.script_chat(body)
     fake.state.script_chat(_finalize_ok())
 
@@ -162,7 +162,7 @@ def test_unedited_run_uses_only_file_bodies(fake, tmp_path):
     # files, so no run prompt carries the marker and the run still completes normally.
     deps, _prompt_store = _deps_with_prompts(fake, tmp_path)
     fake.state.script_chat(_assign("ada"))
-    for body in ("an outline", "a clean draft", "an enriched body"):
+    for body in ("an outline", "a clean draft", "an enriched body", "a respin 1", "a respin 2"):
         fake.state.script_chat(body)
     fake.state.script_chat(_finalize_ok())
 

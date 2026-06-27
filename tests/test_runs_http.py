@@ -101,7 +101,7 @@ def test_post_runs_returns_202_then_polls_to_a_published_run(fake, tmp_path, ser
 
     # Script the full run: manager assign, then ada's pipeline, then finalize.
     fake.state.script_chat(_assign("ada", "Chips ship early"))
-    for body in ("outline", "draft", "enriched"):
+    for body in ("outline", "draft", "enriched", "respin 1", "respin 2"):
         fake.state.script_chat(body)
     fake.state.script_chat(json.dumps({"title": "Chips Ship Early", "body": "Shipped.", "topics": []}))
 
@@ -128,7 +128,7 @@ def test_post_runs_returns_202_then_polls_to_a_published_run(fake, tmp_path, ser
 
 def _script_managed_run(fake):
     fake.state.script_chat(_assign("ada", "Chips ship early"))
-    for body in ("outline", "draft", "enriched"):
+    for body in ("outline", "draft", "enriched", "respin 1", "respin 2"):
         fake.state.script_chat(body)
     fake.state.script_chat(json.dumps({"title": "Chips Ship Early", "body": "Shipped.", "topics": []}))
 
@@ -187,7 +187,7 @@ def _script_run(fake, titles):
     fanout_concurrency is 1, so the articles run sequentially and the chat FIFO aligns."""
     fake.state.script_chat(_assign_many([("ada", t) for t in titles]))
     for title in titles:
-        for body in ("outline", "draft", "enriched"):
+        for body in ("outline", "draft", "enriched", "respin 1", "respin 2"):
             fake.state.script_chat(body)
         fake.state.script_chat(json.dumps({"title": title, "body": f"Body of {title}.", "topics": []}))
 

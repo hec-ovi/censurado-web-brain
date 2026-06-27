@@ -94,10 +94,10 @@ def test_no_cross_persona_context_bleed(fake):
     ])
     # A's pipeline (outline, draft, enrich, finalize), then B's. Rules-degraded eval,
     # clean bodies -> no eval call and no fact-check revise.
-    for body in ("ada outline", "ada draft", "ada enriched"):
+    for body in ("ada outline", "ada draft", "ada enriched", "ada respin 1", "ada respin 2"):
         fake.state.script_chat(body)
     fake.state.script_chat(_finalize_ok("Ada Title", "Ada body"))
-    for body in ("bruno outline", "bruno draft", "bruno enriched"):
+    for body in ("bruno outline", "bruno draft", "bruno enriched", "bruno respin 1", "bruno respin 2"):
         fake.state.script_chat(body)
     fake.state.script_chat(_finalize_ok("Bruno Title", "Bruno body"))
 
@@ -142,7 +142,7 @@ def test_dispatch_persists_assignments_and_collects_ready_outcomes(fake):
     ada = Persona(id="ada", display_name="Ada", beat="tech", who_i_am="tech", style="dry")
     env = _Env(fake, [ada])
     manifest = Manifest(assignments=[AssignmentSpec(persona_id="ada", section="tech", angle="a story")])
-    for body in ("outline", "draft", "enriched"):
+    for body in ("outline", "draft", "enriched", "respin 1", "respin 2"):
         fake.state.script_chat(body)
     fake.state.script_chat(_finalize_ok())
 
@@ -190,7 +190,7 @@ def test_dispatch_persists_entities_onto_the_assignment_row(fake):
         AssignmentSpec(persona_id="ada", section="tech", angle="a story",
                        entities=["Javier Milei", "Casa Rosada"]),
     ])
-    for body in ("outline", "draft", "enriched"):
+    for body in ("outline", "draft", "enriched", "respin 1", "respin 2"):
         fake.state.script_chat(body)
     fake.state.script_chat(_finalize_ok())
 
@@ -212,10 +212,10 @@ def test_one_finalize_failure_does_not_crash_the_run(fake):
         AssignmentSpec(persona_id="bea", section="world", angle="b"),
     ])
     # A finalizes cleanly; B's finalize is invalid on both the attempt and its retry.
-    for body in ("a outline", "a draft", "a enriched"):
+    for body in ("a outline", "a draft", "a enriched", "a respin 1", "a respin 2"):
         fake.state.script_chat(body)
     fake.state.script_chat(_finalize_ok("A", "A body"))
-    for body in ("b outline", "b draft", "b enriched"):
+    for body in ("b outline", "b draft", "b enriched", "b respin 1", "b respin 2"):
         fake.state.script_chat(body)
     fake.state.script_chat(json.dumps({"title": ""}))
     fake.state.script_chat(json.dumps({"title": ""}))
@@ -252,7 +252,7 @@ def test_store_writes_go_through_the_lock(fake):
     ada = Persona(id="ada", display_name="Ada", beat="tech", who_i_am="tech", style="dry")
     env = _Env(fake, [ada])
     manifest = Manifest(assignments=[AssignmentSpec(persona_id="ada", section="tech", angle="a")])
-    for body in ("outline", "draft", "enriched"):
+    for body in ("outline", "draft", "enriched", "respin 1", "respin 2"):
         fake.state.script_chat(body)
     fake.state.script_chat(_finalize_ok())
 

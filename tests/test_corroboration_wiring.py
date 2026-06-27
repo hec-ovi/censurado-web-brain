@@ -198,7 +198,7 @@ def test_execute_run_does_not_drop_a_corroborated_assignment(fake, tmp_path):
         make_ledger=_ledger_from("https://www.clarin.com/a", "https://www.lanacion.com.ar/b"),
     )
     fake.state.script_chat(_assign("ada", headline="Dos fuentes independientes"))
-    for body in ("an outline", "a clean draft", "an enriched body"):
+    for body in ("an outline", "a clean draft", "an enriched body", "a respin 1", "a respin 2"):
         fake.state.script_chat(body)
     fake.state.script_chat(_finalize_ok("Dos Fuentes", "El cuerpo de la nota."))
 
@@ -234,6 +234,8 @@ def test_direct_link_single_source_is_not_dropped(fake, tmp_path):
     fake.state.script_chat("an outline")
     fake.state.script_chat(f"Grounded prose citing {url}.")
     fake.state.script_chat("an enriched body")
+    fake.state.script_chat(f"Respun once citing {url}.")
+    fake.state.script_chat(f"Respun twice citing {url}.")
     fake.state.script_chat(_finalize_ok("Una Fuente", "El cuerpo de la nota."))
 
     report = run_direct(deps=deps, links=[url], persona_id="ada", brief="cubrilo")

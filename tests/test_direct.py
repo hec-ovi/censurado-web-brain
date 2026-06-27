@@ -121,6 +121,8 @@ def _script_pipeline(fake, *, cite: str, title="Direct Title", body="The finaliz
     fake.state.script_chat("an outline")
     fake.state.script_chat(f"Grounded prose citing {cite}.")
     fake.state.script_chat("an enriched body")
+    fake.state.script_chat(f"Respun once, still citing {cite}.")
+    fake.state.script_chat(f"Respun twice, still citing {cite}.")
     fake.state.script_chat(_finalize_ok(title, body))
 
 

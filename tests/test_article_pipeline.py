@@ -105,6 +105,8 @@ def test_pass_on_second_sweep_runs_exactly_two_drafts(fake):
     fake.state.script_chat("draft two")
     fake.state.script_chat(json.dumps({"verdict": "PASS"}))
     fake.state.script_chat("enriched body")
+    fake.state.script_chat("respin pass 1")
+    fake.state.script_chat("respin pass 2")
     fake.state.script_chat(json.dumps({"title": "Final Title", "body": "FINAL BODY", "topics": ["t"]}))
 
     out = _run(env, budget=_big_budget())
@@ -116,8 +118,9 @@ def test_pass_on_second_sweep_runs_exactly_two_drafts(fake):
     assert out.article.body == "FINAL BODY"
     assert out.article.author == "ada-reporter"  # persona id, not model-chosen
     assert out.article.section == "tech"
-    # exactly: outline + (draft,eval) x2 + enrich + finalize == 7 model calls, no extra fact-check call
-    assert len(fake.state.chat_requests) == 7
+    # exactly: outline + (draft,eval) x2 + enrich + respin x2 + finalize == 9 model calls,
+    # no extra fact-check call (clean body)
+    assert len(fake.state.chat_requests) == 9
 
     # The assignment row is finalized (body persisted before any publish, B.0).
     row = env.store.get_assignment(env.assignment.id)
@@ -141,6 +144,8 @@ def test_never_pass_stops_at_max_sweeps(fake):
         fake.state.script_chat(f"draft {i}")
         fake.state.script_chat(_revise([sweep]))
     fake.state.script_chat("enriched body")
+    fake.state.script_chat("respin pass 1")
+    fake.state.script_chat("respin pass 2")
     fake.state.script_chat(json.dumps({"title": "T", "body": "B"}))
 
     out = _run(env, budget=_big_budget(), max_sweeps=3)
@@ -148,8 +153,8 @@ def test_never_pass_stops_at_max_sweeps(fake):
     assert out.drafts == 3  # EXACTLY max_sweeps, asserted exactly
     assert out.stop_reason == "max_sweeps"
     assert out.status == "ready"  # publish-as-is with the best draft
-    # outline + (draft,eval) x3 + enrich + finalize == 9
-    assert len(fake.state.chat_requests) == 9
+    # outline + (draft,eval) x3 + enrich + respin x2 + finalize == 11
+    assert len(fake.state.chat_requests) == 11
 
 
 def test_repeated_empty_failing_set_runs_to_max_sweeps_not_stalled(fake):
@@ -161,6 +166,8 @@ def test_repeated_empty_failing_set_runs_to_max_sweeps_not_stalled(fake):
         fake.state.script_chat(f"draft {i}")
         fake.state.script_chat(json.dumps({"verdict": "REVISE", "failing_sections": []}))
     fake.state.script_chat("enriched body")
+    fake.state.script_chat("respin pass 1")
+    fake.state.script_chat("respin pass 2")
     fake.state.script_chat(json.dumps({"title": "T", "body": "B"}))
 
     out = _run(env, budget=_big_budget(), max_sweeps=2)
@@ -190,6 +197,8 @@ def test_store_writes_go_through_the_lock_when_given(fake):
     fake.state.script_chat("draft one")
     fake.state.script_chat(json.dumps({"verdict": "PASS"}))
     fake.state.script_chat("enriched body")
+    fake.state.script_chat("respin pass 1")
+    fake.state.script_chat("respin pass 2")
     fake.state.script_chat(json.dumps({"title": "T", "body": "B"}))
 
     lock = _CountingLock()
@@ -211,6 +220,8 @@ def test_identical_failing_set_twice_stops_as_stalled(fake):
     fake.state.script_chat("draft 1")
     fake.state.script_chat(_revise(["lede"]))  # identical set -> stall after this eval
     fake.state.script_chat("enriched body")
+    fake.state.script_chat("respin pass 1")
+    fake.state.script_chat("respin pass 2")
     fake.state.script_chat(json.dumps({"title": "T", "body": "B"}))
 
     out = _run(env, budget=_big_budget(), max_sweeps=4)
@@ -258,6 +269,8 @@ def test_finalize_failure_drops_the_article_without_publishing(fake):
     fake.state.script_chat("draft one")
     fake.state.script_chat(json.dumps({"verdict": "PASS"}))
     fake.state.script_chat("enriched body")
+    fake.state.script_chat("respin pass 1")
+    fake.state.script_chat("respin pass 2")
     # Both finalize attempts (original + the one retry) return an invalid payload.
     fake.state.script_chat(json.dumps({"title": ""}))
     fake.state.script_chat(json.dumps({"title": ""}))
@@ -277,11 +290,16 @@ def test_finalize_failure_drops_the_article_without_publishing(fake):
 
 
 def _pass_run_script(fake):
-    """Script a one-sweep PASS run through finalize (shared by the image tests)."""
+    """Script a one-sweep PASS run through finalize (shared by the image tests).
+
+    Includes the two voiced self-respin passes that run after enrich/fact-check and
+    before finalize (respin_passes defaults to 2)."""
     fake.state.script_chat("OUTLINE")
     fake.state.script_chat("draft one")
     fake.state.script_chat(json.dumps({"verdict": "PASS"}))
     fake.state.script_chat("enriched body")
+    fake.state.script_chat("respin pass 1")
+    fake.state.script_chat("respin pass 2")
     fake.state.script_chat(json.dumps({"title": "Final Title", "body": "FINAL BODY"}))
 
 
@@ -355,6 +373,8 @@ def test_spent_budget_at_finalize_skips_the_art_director_without_dropping(fake):
     fake.state.script_chat("draft one")
     fake.state.script_chat(json.dumps({"verdict": "PASS"}))
     fake.state.script_chat("enriched body")
+    fake.state.script_chat("respin pass 1")
+    fake.state.script_chat("respin pass 2")
     # Finalize reports usage that exhausts the small budget, so by the art-director gate
     # the budget is spent: the step is skipped, but the article still finalizes. (The
     # usage carries the full OpenAI shape, which the pydantic-ai finalize seam validates.)
@@ -385,6 +405,8 @@ def test_rules_degraded_evaluator_passes_a_grounded_draft(fake):
     fake.state.script_chat("OUTLINE")
     fake.state.script_chat("Grounded prose citing https://src.test/a, clean.")
     fake.state.script_chat("Enriched, still cites https://src.test/a.")
+    fake.state.script_chat("Respun, still cites https://src.test/a, pass 1.")
+    fake.state.script_chat("Respun, still cites https://src.test/a, pass 2.")
     fake.state.script_chat(json.dumps({"title": "T", "body": "B"}))
 
     # evaluator shares the drafter's endpoint -> rules-grounded check, no eval model call.
@@ -394,8 +416,8 @@ def test_rules_degraded_evaluator_passes_a_grounded_draft(fake):
     assert out.stop_reason == "pass"
     assert out.status == "ready"
     assert out.evaluations[0].mode == "rules"
-    # outline + draft + enrich + finalize == 4 (no evaluator call, no fact-check call)
-    assert len(fake.state.chat_requests) == 4
+    # outline + draft + enrich + respin x2 + finalize == 6 (no evaluator call, no fact-check call)
+    assert len(fake.state.chat_requests) == 6
 
 
 # ----- author identity stamped into metadata (bylines / author pages / About) -----
@@ -489,6 +511,60 @@ def test_author_identity_coexists_with_image_metadata(fake):
     assert out.content_hash == expected_hash
 
 
+# ----- self-respin: two voiced revision passes before finalize -----
+
+
+def test_respin_runs_two_voiced_passes_in_the_author_voice(fake):
+    # After enrich/fact-check the author re-spins its own article twice (default
+    # respin_passes=2), each pass carrying the persona block (voiced, unlike enrich) and
+    # the article-so-far. The body fed to finalize is the LAST respin's output.
+    env = _env(fake)
+    fake.state.script_chat("OUTLINE")
+    fake.state.script_chat("draft one")
+    fake.state.script_chat(json.dumps({"verdict": "PASS"}))
+    fake.state.script_chat("enriched body")
+    fake.state.script_chat("RESPUN ONCE")
+    fake.state.script_chat("RESPUN TWICE")
+    fake.state.script_chat(json.dumps({"title": "T", "body": "FINAL"}))
+
+    out = _run(env, budget=_big_budget())
+
+    assert out.status == "ready"
+    # outline(0) + draft(1) + eval(2) + enrich(3) + respin(4) + respin(5) + finalize(6)
+    assert len(fake.state.chat_requests) == 7
+    respin_1 = _content(fake.state.chat_requests[4])
+    respin_2 = _content(fake.state.chat_requests[5])
+    # Voiced: the persona's who-i-am rides in both respin prompts (enrich is persona-blind).
+    assert "I cover chips." in respin_1 and "I cover chips." in respin_2
+    # Each pass sees the prior stage's output: pass 1 gets the enriched body, pass 2 the
+    # first respin's output.
+    assert "enriched body" in respin_1
+    assert "RESPUN ONCE" in respin_2
+    # The pass number is threaded into the prompt.
+    assert "pass 1" in respin_1 and "pass 2" in respin_2
+
+
+def test_respin_passes_zero_skips_the_respin_stage(fake):
+    # respin_passes=0 is an escape hatch (e.g. a fast lane): straight from fact-check to
+    # finalize, no respin call.
+    env = _env(fake)
+    fake.state.script_chat("OUTLINE")
+    fake.state.script_chat("draft one")
+    fake.state.script_chat(json.dumps({"verdict": "PASS"}))
+    fake.state.script_chat("enriched body")
+    fake.state.script_chat(json.dumps({"title": "T", "body": "B"}))
+
+    out = run_article_pipeline(
+        assignment=env.assignment, persona=env.persona, ledger=env.ledger, store=env.store,
+        budget=_big_budget(), drafter_cfg=env.drafter, evaluator_cfg=env.evaluator,
+        finalize_cfg=env.finalize, prompts_dir=_prompts_dir(), max_sweeps=4, respin_passes=0,
+    )
+
+    assert out.status == "ready"
+    # outline + draft + eval + enrich + finalize == 5 (no respin call)
+    assert len(fake.state.chat_requests) == 5
+
+
 # ----- editorial context: the house style + recent coverage reach the prompts (R8/R9) -----
 
 
@@ -506,7 +582,7 @@ def test_house_style_and_recent_coverage_reach_the_draft(fake):
     out = _run(env, budget=_big_budget(), editorial=ed)
 
     assert out.status == "ready"
-    # chat calls: 0=outline, 1=draft, 2=evaluate, 3=enrich, 4=finalize.
+    # chat calls: 0=outline, 1=draft, 2=evaluate, 3=enrich, 4/5=respin, 6=finalize.
     draft_prompt = _content(fake.state.chat_requests[1])
     assert "HOUSE STYLE FOR THE DRAFTER" in draft_prompt
     assert "WHAT WAS ALREADY PUBLISHED" in draft_prompt
@@ -526,6 +602,8 @@ def test_lexicon_gate_forces_a_revise_inside_the_pipeline(fake):
     fake.state.script_chat("Una version sobria del mismo hecho.")  # second draft, clean
     fake.state.script_chat(json.dumps({"verdict": "PASS"}))
     fake.state.script_chat("enriched body")
+    fake.state.script_chat("respin pass 1")
+    fake.state.script_chat("respin pass 2")
     fake.state.script_chat(json.dumps({"title": "T", "body": "B"}))
 
     ed = EditorialContext(style_lexicon={"banned_terms": ["demoledor"]})
@@ -590,6 +668,8 @@ def test_corroborated_ledger_is_not_dropped_and_proceeds_to_draft(fake):
     fake.state.script_chat("draft one")
     fake.state.script_chat(json.dumps({"verdict": "PASS"}))
     fake.state.script_chat("enriched body")
+    fake.state.script_chat("respin pass 1")
+    fake.state.script_chat("respin pass 2")
     fake.state.script_chat(json.dumps({"title": "T", "body": "B"}))
     ed = EditorialContext(min_independent_sources=2, ownership_of=_ownership_resolver())
 
@@ -598,5 +678,5 @@ def test_corroborated_ledger_is_not_dropped_and_proceeds_to_draft(fake):
     assert out.status == "ready"  # NOT dropped for corroboration
     assert out.stop_reason == "pass"
     assert out.drafts == 1
-    # outline + draft + eval + enrich + finalize == 5 (eval distinct endpoint, clean body)
-    assert len(fake.state.chat_requests) == 5
+    # outline + draft + eval + enrich + respin x2 + finalize == 7 (eval distinct endpoint, clean body)
+    assert len(fake.state.chat_requests) == 7

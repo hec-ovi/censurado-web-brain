@@ -119,7 +119,7 @@ def test_cli_managed_run_publishes_end_to_end(fake, tmp_path, capsys):
     settings = _settings(fake, tmp_path)
     deps = _deps_with(fake, settings, [_ada()])
     fake.state.script_chat(_assign("ada", headline="Chips ship early"))
-    for body in ("an outline", "a clean draft", "an enriched body"):
+    for body in ("an outline", "a clean draft", "an enriched body", "a respin 1", "a respin 2"):
         fake.state.script_chat(body)
     fake.state.script_chat(_finalize_ok("Chips Ship Early", "The chips shipped."))
 
@@ -147,7 +147,7 @@ def test_cli_publish_failure_exits_2_and_keeps_the_article(fake, tmp_path, capsy
     settings = _settings(fake, tmp_path, operator_token="noscope-token")  # fake 403s this key
     deps = _deps_with(fake, settings, [_ada()])
     fake.state.script_chat(_assign("ada"))
-    for body in ("outline", "draft", "enriched"):
+    for body in ("outline", "draft", "enriched", "respin 1", "respin 2"):
         fake.state.script_chat(body)
     fake.state.script_chat(_finalize_ok())
 
@@ -203,7 +203,7 @@ def test_cli_dropped_article_is_surfaced_in_the_summary(fake, tmp_path, capsys):
     settings = _settings(fake, tmp_path)
     deps = _deps_with(fake, settings, [_ada()])
     fake.state.script_chat(_assign("ada"))
-    for body in ("outline", "draft", "enriched"):
+    for body in ("outline", "draft", "enriched", "respin 1", "respin 2"):
         fake.state.script_chat(body)
     fake.state.script_chat(json.dumps({"title": ""}))  # invalid finalize
     fake.state.script_chat(json.dumps({"title": ""}))  # invalid retry
@@ -246,7 +246,7 @@ def test_cli_persona_ids_scope_the_run(fake, tmp_path, capsys):
     settings = _settings(fake, tmp_path)
     deps = _deps_with(fake, settings, [_ada(), _bea()])
     fake.state.script_chat(_assign_many([("ada", "A tech story"), ("bea", "A world story")]))
-    for body in ("outline", "draft", "enriched"):
+    for body in ("outline", "draft", "enriched", "respin 1", "respin 2"):
         fake.state.script_chat(body)
     fake.state.script_chat(_finalize_ok())
 

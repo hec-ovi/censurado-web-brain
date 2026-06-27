@@ -255,7 +255,7 @@ def test_managed_run_drafts_and_publishes_one_article(fake, tmp_path):
     # The manager assigns one story to ada; then her pipeline runs (outline, draft,
     # enrich, finalize -- rules-degraded eval and a clean body add no calls).
     fake.state.script_chat(_assign("ada", headline="Chips ship early"))
-    for body in ("an outline", "a clean draft", "an enriched body"):
+    for body in ("an outline", "a clean draft", "an enriched body", "a respin 1", "a respin 2"):
         fake.state.script_chat(body)
     fake.state.script_chat(_finalize_ok("Chips Ship Early", "The chips shipped."))
 
@@ -299,7 +299,7 @@ def test_a_rerun_publish_of_a_finalized_assignment_is_idempotent(fake, tmp_path)
     settings = _settings(fake, tmp_path, publish_batch=False)
     deps = _deps(fake, settings, personas=[_ada()])
     fake.state.script_chat(_assign("ada", headline="Chips ship early"))
-    for body in ("outline", "draft", "enriched"):
+    for body in ("outline", "draft", "enriched", "respin 1", "respin 2"):
         fake.state.script_chat(body)
     fake.state.script_chat(_finalize_ok("Chips Ship Early", "The chips shipped."))
 
@@ -343,7 +343,7 @@ def test_publish_payload_carries_newsroom_provenance(fake, tmp_path):
     settings = _settings(fake, tmp_path)
     deps = _deps(fake, settings, personas=[_ada()])
     fake.state.script_chat(_assign("ada"))
-    for body in ("outline", "draft", "enriched"):
+    for body in ("outline", "draft", "enriched", "respin 1", "respin 2"):
         fake.state.script_chat(body)
     fake.state.script_chat(_finalize_ok())
 
@@ -413,7 +413,7 @@ def test_dropped_article_is_not_published(fake, tmp_path):
     settings = _settings(fake, tmp_path)
     deps = _deps(fake, settings, personas=[_ada()])
     fake.state.script_chat(_assign("ada"))
-    for body in ("outline", "draft", "enriched"):
+    for body in ("outline", "draft", "enriched", "respin 1", "respin 2"):
         fake.state.script_chat(body)
     fake.state.script_chat(json.dumps({"title": ""}))  # invalid finalize
     fake.state.script_chat(json.dumps({"title": ""}))  # invalid retry
@@ -435,7 +435,7 @@ def test_publish_failure_marks_done_with_errors_and_keeps_the_article(fake, tmp_
     deps = _deps(fake, settings, personas=[_ada()])
     deps.operator_token = "noscope-token"  # the fake 403s insufficient_scope on publish
     fake.state.script_chat(_assign("ada"))
-    for body in ("outline", "draft", "enriched"):
+    for body in ("outline", "draft", "enriched", "respin 1", "respin 2"):
         fake.state.script_chat(body)
     fake.state.script_chat(_finalize_ok())
 
@@ -461,7 +461,7 @@ def test_batch_validation_failure_marks_every_article_done_with_errors(fake, tmp
     deps.operator_token = "agent-a-token"  # write-only, locked to author "agent-a"
     fake.state.script_chat(_assign_many([("ada", "A tech story"), ("bea", "A world story")]))
     for _ in range(2):
-        for body in ("outline", "draft", "enriched"):
+        for body in ("outline", "draft", "enriched", "respin 1", "respin 2"):
             fake.state.script_chat(body)
         fake.state.script_chat(_finalize_ok("Distinct " + str(_), "A body."))
 
@@ -486,7 +486,7 @@ def test_per_article_fallback_publish_failure_marks_done_with_errors(fake, tmp_p
     deps.operator_token = "noscope-token"  # the fake 403s insufficient_scope on publish
     fake.state.script_chat(_assign_many([("ada", "A tech story"), ("bea", "A world story")]))
     for _ in range(2):
-        for body in ("outline", "draft", "enriched"):
+        for body in ("outline", "draft", "enriched", "respin 1", "respin 2"):
             fake.state.script_chat(body)
         fake.state.script_chat(_finalize_ok("Fallback " + str(_), "A body."))
 
@@ -511,7 +511,7 @@ def test_run_decollides_a_duplicate_slug_and_stays_green(fake, tmp_path):
     # -> same derived slug; distinct bodies -> distinct content hashes (so they do not
     # just dedup, forcing the slug clash the de-collision must resolve).
     for body_text in ("Ada's take on the scoop.", "Bea's different angle on it."):
-        for body in ("outline", "draft", "enriched"):
+        for body in ("outline", "draft", "enriched", "respin 1", "respin 2"):
             fake.state.script_chat(body)
         fake.state.script_chat(_finalize_ok("Hot Scoop", body_text))
 
@@ -531,7 +531,7 @@ def test_manual_run_honors_a_persona_subset(fake, tmp_path):
     settings = _settings(fake, tmp_path)
     deps = _deps(fake, settings, personas=[_ada(), _bea()])
     fake.state.script_chat(_assign_many([("ada", "A tech story"), ("bea", "A world story")]))
-    for body in ("outline", "draft", "enriched"):
+    for body in ("outline", "draft", "enriched", "respin 1", "respin 2"):
         fake.state.script_chat(body)
     fake.state.script_chat(_finalize_ok())
 
@@ -551,7 +551,7 @@ def test_express_caps_the_batch_to_express_n(fake, tmp_path):
     deps = _deps(fake, settings, personas=[_ada(), _bea(), _cleo()])
     fake.state.script_chat(_assign_many([("ada", "A"), ("bea", "B"), ("cleo", "C")]))
     for _ in range(2):  # the two that survive the clamp, in manifest order
-        for body in ("outline", "draft", "enriched"):
+        for body in ("outline", "draft", "enriched", "respin 1", "respin 2"):
             fake.state.script_chat(body)
         fake.state.script_chat(_finalize_ok())
 

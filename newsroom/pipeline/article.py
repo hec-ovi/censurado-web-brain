@@ -53,6 +53,9 @@ __all__ = ["ArticleOutcome", "run_article_pipeline"]
 _OUTLINE_TEMP = 0.4
 _DRAFT_TEMP = 0.9
 _ENRICH_TEMP = 0.3
+# Re-spin runs in the author's voice (warmer than the persona-blind enrich) but below
+# the first-draft heat: it is revising its own prose, not generating freely.
+_RESPIN_TEMP = 0.6
 
 
 @dataclass
@@ -110,6 +113,20 @@ def _enrich(*, body: str, ledger: Ledger, cfg: ProviderConfig, prompts_dir,
     return response.content
 
 
+def _respin(*, persona: Persona, body: str, ledger: Ledger, pass_no: int, cfg: ProviderConfig,
+            prompts_dir, budget: ArticleBudget, overrides: dict[str, str] | None = None) -> str:
+    # The author re-spins its OWN article (persona re-injected, UNLIKE enrich): a voiced
+    # self-revision that interrogates the draft against the staged format and an
+    # anti-slop / redundancy rubric, preserving grounded facts and citations (form, not
+    # new reporting). Run more than once so each pass cleans what the last left.
+    template = load_prompt(prompts_dir, "journalist", "respin.md", overrides=overrides)
+    prompt = render(template, persona=persona_block(persona), article=body,
+                    ledger=ledger_text(ledger), pass_no=str(pass_no))
+    response = chat(ChatRequest(messages=[{"role": "user", "content": prompt}], temperature=_RESPIN_TEMP), cfg=cfg)
+    budget.debit_response(response)
+    return response.content
+
+
 def run_article_pipeline(
     *,
     assignment: Assignment,
@@ -123,6 +140,7 @@ def run_article_pipeline(
     prompts_dir: Path | str,
     overrides: dict[str, str] | None = None,
     max_sweeps: int = 4,
+    respin_passes: int = 2,
     lock: threading.Lock | None = None,
     illustrate: Callable[..., object] | None = None,
     editorial: EditorialContext | None = None,
@@ -218,6 +236,17 @@ def run_article_pipeline(
         return drop("budget_exhausted")
     body, _verify = fact_check(body, ledger=ledger, entities=assignment.entities, cfg=drafter_cfg,
                                prompts_dir=prompts_dir, budget=budget, overrides=overrides)
+
+    # Self-respin: the author re-spins its own, now-grounded article against the staged
+    # format and the anti-slop / redundancy rubric, in its own voice. Runs a fixed number
+    # of passes (default two) so each pass cleans what the last left, then finalize lifts
+    # the staged parts (title / subtitle / summary) out of the polished body. Each pass is
+    # a stage boundary that drops on budget exhaustion, like enrich and fact-check.
+    for _pass in range(max(0, respin_passes)):
+        if budget.exhausted():
+            return drop("budget_exhausted")
+        body = _respin(persona=persona, body=body, ledger=ledger, pass_no=_pass + 1, cfg=drafter_cfg,
+                       prompts_dir=prompts_dir, budget=budget, overrides=overrides)
 
     if budget.exhausted():
         return drop("budget_exhausted")
