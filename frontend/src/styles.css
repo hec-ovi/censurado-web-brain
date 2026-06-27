@@ -272,11 +272,85 @@ button:disabled {
 }
 .persona-card {
   display: flex;
+  flex-wrap: wrap;
   gap: 12px;
   padding: 12px;
   border: 1px solid var(--border);
   border-radius: 8px;
   background: var(--surface-2);
+}
+.persona-body {
+  flex: 1 1 12rem;
+  min-width: 0;
+}
+/* Inline panels (edit form, source linking) drop to a full-width row under the
+   profile instead of floating to the right of it. */
+.persona-edit,
+.persona-sources,
+.persona-card > .form-status {
+  flex-basis: 100%;
+  width: 100%;
+}
+.persona-sources {
+  margin-top: 2px;
+}
+
+/* The author's source pool as a compact one-line-per-source table:
+   checkbox | portal | trimmed description. */
+.link-table-wrap {
+  max-height: 340px;
+  overflow-y: auto;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+}
+.link-table {
+  width: 100%;
+  border-collapse: collapse;
+  table-layout: fixed;
+  font-size: 0.84rem;
+}
+.link-table th,
+.link-table td {
+  text-align: left;
+  padding: 5px 9px;
+  border-bottom: 1px solid var(--border);
+  vertical-align: middle;
+}
+.link-table tbody tr:last-child td {
+  border-bottom: none;
+}
+.link-table thead th {
+  position: sticky;
+  top: 0;
+  background: var(--surface-2);
+  color: var(--muted);
+  font-weight: 600;
+  text-transform: uppercase;
+  font-size: 0.7rem;
+  letter-spacing: 0.04em;
+}
+.link-table .link-check {
+  width: 32px;
+  text-align: center;
+}
+.link-table .link-check input {
+  width: auto;
+  padding: 0;
+  margin: 0;
+}
+.link-table .link-portal {
+  width: 34%;
+}
+.link-table .link-portal label {
+  color: var(--text);
+  cursor: pointer;
+  word-break: break-all;
+}
+.link-table .link-desc {
+  color: var(--muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 .persona-head {
   display: flex;

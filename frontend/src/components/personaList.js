@@ -234,12 +234,30 @@ export function PersonaList({ api, onChanged } = {}) {
           return;
         }
         save.disabled = false;
+        const tbody = el("tbody");
         for (const portal of portals) {
-          const box = el("input", { type: "checkbox", id: `ps-${id}-${portal.id}` });
+          const boxId = `ps-${id}-${portal.id}`;
+          const box = el("input", { type: "checkbox", id: boxId });
           box.checked = selected.has(portal.id);
           boxes.push({ id: portal.id, box });
-          checksWrap.append(field(portal.domain, box, `ps-${id}-${portal.id}`));
+          const desc = (portal.description || "").trim();
+          tbody.append(
+            el("tr", { class: "link-row" }, [
+              el("td", { class: "link-check" }, box),
+              el("td", { class: "link-portal" }, el("label", { for: boxId }, portal.domain)),
+              el("td", { class: "link-desc", title: desc }, desc || "—"),
+            ]),
+          );
         }
+        const table = el("table", { class: "link-table" }, [
+          el("thead", {}, el("tr", {}, [
+            el("th", { class: "link-check" }, ""),
+            el("th", {}, "Fuente"),
+            el("th", {}, "Descripción"),
+          ])),
+          tbody,
+        ]);
+        checksWrap.append(el("div", { class: "link-table-wrap" }, table));
       } catch (err) {
         clear(checksWrap);
         checksWrap.append(el("p", { class: "error", role: "alert" }, `Could not load sources: ${err.message}`));

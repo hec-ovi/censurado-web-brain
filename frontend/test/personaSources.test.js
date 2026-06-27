@@ -24,8 +24,8 @@ function persona(overrides = {}) {
   };
 }
 
-function portal(id, domain) {
-  return { id, domain, enabled: true };
+function portal(id, domain, description = "") {
+  return { id, domain, enabled: true, description };
 }
 
 function mount() {
@@ -68,6 +68,42 @@ test("links sources: portals as checkboxes pre-checked, toggle one, Save PUTs th
   await waitFor(() => assert.ok(put, "a PUT should have been sent"));
   assert.deepEqual(put, { sources: ["p1", "p2"] });
   await waitFor(() => assert.ok(changed.length >= 1, "onChanged should fire after linking"));
+});
+
+test("renders the source pool as a one-line-per-source table: checkbox, portal, description", async () => {
+  server.use(
+    http.get(`${ORIGIN}/api/personas`, () => HttpResponse.json({ personas: [persona()] })),
+    http.get(`${ORIGIN}/api/portals`, () =>
+      HttpResponse.json({
+        portals: [portal("p1", "alpha.com", "Independent tech desk covering model releases")],
+        total: 1,
+      })),
+    http.get(`${ORIGIN}/api/personas/ada/sources`, () =>
+      HttpResponse.json({ persona_id: "ada", sources: ["p1"], portals: [] })),
+  );
+  const user = userEvent.setup();
+  const { list } = mount();
+  await list.reload();
+
+  const card = (await screen.findByText("Ada Lovelace")).closest(".persona-card");
+  await user.click(within(card).getByRole("button", { name: /^sources$/i }));
+
+  // The pool is a table with the three requested columns.
+  const table = await waitFor(() => {
+    const t = card.querySelector(".link-table");
+    assert.ok(t, "the source pool should render as a .link-table");
+    return t;
+  });
+  const headers = within(table).getAllByRole("columnheader").map((h) => h.textContent.trim());
+  assert.deepEqual(headers, ["", "Fuente", "Descripción"]);
+
+  // The single source is one row: its checkbox (still label-linked for a11y),
+  // the portal domain, and its description carried in full via title.
+  const row = table.querySelector("tbody tr");
+  assert.ok(within(row).getByLabelText("alpha.com"), "the row carries a label-linked checkbox");
+  assert.match(row.textContent, /alpha\.com/);
+  const descCell = row.querySelector(".link-desc");
+  assert.equal(descCell.getAttribute("title"), "Independent tech desk covering model releases");
 });
 
 test("unchecking every source sends an empty set so the pool clears", async () => {
