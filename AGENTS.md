@@ -8,6 +8,11 @@ pointed-at file for exact signatures.
 The deep design rationale (the eight questions, the seam pins, the build plan) lives in
 `docs/research/stage-2-newsroom-architecture.md`. This file is the operational map.
 
+To OPERATE the running brain rather than edit it (run a batch, write one article, read or
+edit the authors and their sources, hit the API), read `AGENT.md`: the CLI-operator
+blueprint with the article quality bar, the run modes, and every endpoint. `AGENTS.md`
+(here) maps the machine; `AGENT.md` is the manual for driving it.
+
 ## What this is
 
 The brain is an agentic newsroom: AI journalist personas research the day's news, write
@@ -93,8 +98,13 @@ exemplars (local models lean on contrast).
 
 ### Per-article pipeline (the one model-driven loop)
 Drives one assignment: `outline -> draft/evaluate sweeps -> enrich -> fact-check ->
-finalize -> art-direct`. Three simultaneous guards bound the sweep loop (`MAX_SWEEPS`, the
-evaluator's PASS, an identical-failing-section-set stall); a shared `ArticleBudget`
+respin x2 -> finalize -> art-direct`. Three simultaneous guards bound the sweep loop
+(`MAX_SWEEPS`, the evaluator's PASS, an identical-failing-section-set stall); after
+fact-check the author re-spins its own article in its own voice (`respin_passes`,
+default 2) against an anti-slop / redundancy / staged-format rubric, preserving every
+grounded fact and citation; finalize then lifts `title + subtitle + summary + body +
+topics + slug` and stamps the dek/summary into `metadata.subtitle`/`metadata.description`.
+A shared `ArticleBudget`
 (token + wall-clock) is debited by every stage and DROPS the assignment on exhaustion
 (never truncates). The persona is re-injected warm on each draft; enrich/fact-check run
 persona-blind; the art director runs persona-AWARE so the image matches the byline. The
@@ -103,7 +113,8 @@ hash, so idempotency is unaffected) and never drops a finalized article.
 - → `newsroom/pipeline/article.py` (`run_article_pipeline`, `ArticleOutcome`, `_art_direct_image`)
 - → `newsroom/pipeline/evaluate.py` (`evaluate_draft`, `Evaluation`)
 - → `newsroom/pipeline/factcheck.py` (`fact_check`, `citation_verify`, `CitationResult`)
-- → `newsroom/pipeline/finalize.py` (`finalize_article`, pydantic-ai structured output)
+- → `newsroom/pipeline/article.py` (`_respin`, the voiced 2-pass self-revision) + `prompts/journalist/respin.md`
+- → `newsroom/pipeline/finalize.py` (`finalize_article`, pydantic-ai structured output: title/subtitle/summary/body/topics/slug)
 - → `newsroom/pipeline/artdirect.py` (`art_direct`, `ArtDirection`)
 - → `newsroom/pipeline/budget.py` (`ArticleBudget`) and `context.py` (`persona_block`, `ledger_text`)
 
