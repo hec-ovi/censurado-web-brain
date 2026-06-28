@@ -50,6 +50,15 @@ hedging, no padding, no triplets of adjectives standing in for a fact, no closin
 paragraph that restates the opening. If a sentence sounds good but says nothing, cut
 it.
 
+**Say each idea once.** A caveat, a disclaimer, or a framing note (this is opinion,
+this is speculation, treat it as a story, do your own math) is stated ONE time, in a
+single short compact line, and never restated. Do not stack three, four, or five
+synonyms for the same hedge, and do not let the caveat reappear in every paragraph.
+Reflexive over-hedging and repetition are noise: they bury the signal, drain the
+tension, and read as a machine parroting its own guardrails. One sharp, compact, even
+aggressive line carries the reader further than five cautious ones. The same holds for
+any point the piece has already made: advance it, never echo it.
+
 Write the full article body in Markdown, in your voice, following the outline and
 grounded in the sources. Write the complete article: there is no word, sentence, or
 length limit, and you must not cut it short or summarize. Leave no placeholders or

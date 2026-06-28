@@ -59,6 +59,20 @@ def test_finalize_prompt_carries_headline_discipline():
     assert "no length limit on the body" in low
 
 
+def test_draft_prompt_enforces_say_each_idea_once():
+    # Every author drafts through journalist/draft.md, so the anti-redundancy rule
+    # lives there once and applies to all of them: a caveat/disclaimer is stated a
+    # single compact time, never stacked into three-to-five synonyms, never echoed
+    # in every paragraph.
+    text = load_prompt(load_settings().prompts_dir, "journalist", "draft.md")
+    low = text.lower()
+    assert "say each idea once" in low
+    assert "single short compact line" in low
+    # The explicit "do not stack N synonyms for the same hedge" guardrail.
+    assert "synonyms for the same hedge" in low
+    assert "over-hedging" in low
+
+
 def test_load_prompt_overrides_returns_override_and_falls_back_to_fs():
     prompts_dir = load_settings().prompts_dir
     overrides = {"persona/synthesize.md": "OVERRIDDEN BODY"}
