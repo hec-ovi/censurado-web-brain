@@ -1,6 +1,6 @@
 # censurado-web-brain
 
-The agentic newsroom for [censurado-web](https://github.com/hec-ovi/censurado-web). AI journalist personas research the day's news, write full articles in their own voice, an art director gives each one a locally generated hero image, and the brain publishes them to the portal over one HTTP contract. It is built as an **agentic workflow hosting bounded agentic loops**: deterministic code owns the control flow, the model does the work inside each step, and guards at every seam make each run terminate.
+The agentic newsroom behind Censurado. AI journalist personas research the day's news, write full articles in their own voice, an art director gives each one a locally generated hero image, and the brain publishes them over one HTTP contract to the [backend](https://github.com/hec-ovi/censurado-web-backend) (the publish API and store of record), which the [generator](https://github.com/hec-ovi/censurado-web) renders into the static public site. The whole stack runs together via the [harness](https://github.com/hec-ovi/censurado-web-harness). It is built as an **agentic workflow hosting bounded agentic loops**: deterministic code owns the control flow, the model does the work inside each step, and guards at every seam make each run terminate.
 
 ![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)
 ![Python](https://img.shields.io/badge/python-3.11%2B-3776AB.svg)
@@ -8,7 +8,7 @@ The agentic newsroom for [censurado-web](https://github.com/hec-ovi/censurado-we
 ![Agentic workflow](https://img.shields.io/badge/agentic-workflow-7c3aed.svg)
 ![Agentic loop](https://img.shields.io/badge/agentic-loop-0ea5e9.svg)
 
-All the agentic code lives in this repo. The portal has no concept of personas (its article schema takes only an `author` string), and the two systems connect through one seam, the publish API.
+All the agentic code lives in this repo. The backend has no concept of personas (its article schema takes only an `author` string), and the two systems connect through one seam, the publish API.
 
 ---
 
@@ -42,13 +42,15 @@ Bounding a loop is not capping output. The number of drafts is bounded; a single
 
 They compose by altitude: the deterministic workflow hosts the bounded loops, and the guards live exactly where a workflow node hands control to a model-driven loop. The workflow owns the cap, the budget, and the progress detector that bring control back. The manager is the one seam where the workflow lets the model decide how many workers to spawn, and even that decision is clamped to `N_MAX`.
 
-## How it fits censurado-web
+## How it fits the rest of the system
 
-- The portal serves a static archive to readers and exposes one authenticated write API (`POST /articles` for one article, `POST /articles:batch` for many, plus `POST /media` for image bytes).
+- The backend exposes one authenticated write API (`POST /articles` for one article, `POST /articles:batch` for many, plus `POST /media` for image bytes) and is the store of record; the generator renders that store into the static archive readers see.
 - This repo owns the personas (its own SQLite), the prompts (versioned `.md` files), and the agents that turn the day's news into finished articles.
 - It authors each article as the persona who wrote it, using a single operator key that carries both the `articles:write` and `articles:publish-any` scopes. That key is the only coupling between the two systems.
 - A run's finished articles publish together in one atomic batch (`POST /articles:batch`): the portal validates every item, then stores all of them or none, and each item carries its own content-derived idempotency key so a resend never doubles. Turn `NEWSROOM_PUBLISH_BATCH` off to fall back to one `POST /articles` per article.
-- A generated hero image is uploaded to the portal and referenced by URL in the article's open `metadata.image` field, so attaching imagery needs no change to the article schema, and the image is outside the content hash, so it never disturbs idempotency.
+- A generated hero image is uploaded to the backend and referenced by URL in the article's open `metadata.image` field, so attaching imagery needs no change to the article schema, and the image is outside the content hash, so it never disturbs idempotency.
+
+Run the brain together with inference, the backend, the generator, and the site through the [harness](https://github.com/hec-ovi/censurado-web-harness): one Docker Compose for the whole stack. To author a single article from a CLI agent without a brain run, use the harness publishing skill (`cli/AGENTS.md`).
 
 ## Run modes
 

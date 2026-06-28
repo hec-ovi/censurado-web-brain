@@ -8,10 +8,12 @@ pointed-at file for exact signatures.
 The deep design rationale (the eight questions, the seam pins, the build plan) lives in
 `docs/research/stage-2-newsroom-architecture.md`. This file is the operational map.
 
-To OPERATE the running brain rather than edit it (run a batch, write one article, read or
-edit the authors and their sources, hit the API), read `AGENT.md`: the CLI-operator
-blueprint with the article quality bar, the run modes, and every endpoint. `AGENTS.md`
-(here) maps the machine; `AGENT.md` is the manual for driving it.
+This file maps the codebase (for working IN the brain). To DRIVE the running brain
+(trigger runs, edit authors and sources, tune editorial controls), use its HTTP API,
+summarized under [Operating the running brain](#operating-the-running-brain) below.
+To AUTHOR and publish an article yourself, the publish contract and the editorial bar
+live in the harness `cli/AGENTS.md` (the publishing skill), since the publish API and
+the operator token sit in the harness.
 
 ## What this is
 
@@ -224,3 +226,39 @@ the reverse.
   `metadata.youtube`, `metadata.video`) from the open metadata bag.
 - **ComfyUI**: `POST /prompt {prompt, client_id} -> {prompt_id}`, poll
   `GET /history/{id}`, fetch `GET /view`, upload references `POST /upload/image`.
+
+## Operating the running brain
+
+The brain has no auth; treat it as a trusted-network service. In the harness it sits
+behind the console nginx proxy at `http://127.0.0.1:8083/api/<path>` (the container
+listens on `:8000`); standalone it binds `127.0.0.1:8722`. Errors come back as
+`application/problem+json`. This is the run/edit surface; for authoring an article by
+hand and the editorial bar, see the harness `cli/AGENTS.md`.
+
+**Drive a run** (async: returns `202` + a `run_id`, then poll `GET /runs/{id}` until
+`done` / `done_with_errors` / `failed`):
+
+- `POST /runs {"mode": "managed|express|manual", "n"?, "persona_ids"?, "images"?}`.
+  `managed` triages live news and assigns across authors; `express` is a smaller
+  batch; `manual` honors an explicit `n` / `persona_ids` subset. CLI:
+  `censurado-brain --mode managed --n 4`.
+- `POST /articles/from-link {"persona_id", "brief"?, "links"?, "focus"?}`: one author
+  writes one piece from a brief, bypassing the manager (the corroboration gate is
+  forced off because you vouched for the source; every other gate still runs). CLI:
+  `censurado-brain direct --persona <id> --brief "..." --link <url>`.
+
+**Authors and sources.** `GET /personas` and `GET /personas/{id}` (the full record:
+`who_i_am`, `about`, `style`, `few_shots_*`, `sources`, ...); `PATCH /personas/{id}`
+(partial edit); `POST /personas/direct` (create from explicit fields) or
+`POST /personas` (synthesize from a seed, async). Manage the source registry with
+`/portals` and the per-author corroboration pool with
+`PUT|POST|DELETE /personas/{id}/sources`. Co-owned outlets share an `ownership_group`
+and count once in the corroboration gate.
+
+**Editorial controls** (these shape every run): `/editorial/style` (versioned house
+style), `/editorial/style/lexicon` (banned terms force a revise),
+`/editorial/style/sourcing` (the `min_sources` floor and the corroboration threshold;
+blank turns the gate off, which differs from zero), `/editorial/location`, and
+`/prompts` (every pipeline stage is a versioned `.md` template; `POST /prompts/template`
+publishes a version that takes effect on the next run). The full endpoint list is in
+`newsroom/brain/app.py`.
