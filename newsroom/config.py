@@ -74,6 +74,11 @@ class Settings(BaseSettings):
     # Publish seam (Step 7). The platform requires BOTH scopes on the operator key.
     publish_base_url: str = "http://127.0.0.1:8080"
     operator_token: str = Field(default="", repr=False)
+    # The operator EDIT key (admin:write scope), used by maintenance passes that mutate
+    # existing articles in place (the topic cleanse remaps via PUT /articles, which the
+    # append-only operator_token cannot reach). Falls back to operator_token when unset,
+    # so a deployment that mints one key with all scopes needs no extra config.
+    admin_token: str = Field(default="", repr=False)
     # Publish a run's ready articles together in ONE atomic request (POST /articles:batch)
     # instead of one POST per article. The batch is all-or-nothing: any invalid item
     # rejects the whole batch (nothing written), so it stays re-publishable on the next

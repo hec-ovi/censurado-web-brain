@@ -39,6 +39,26 @@ def test_load_prompt_reads_the_role_play_synthesis_prompt():
     assert "no length limit" in text.lower()
 
 
+def test_finalize_prompt_carries_headline_discipline():
+    # The finalize prompt is where the title and dek are authored. It must ship the
+    # honest-but-arresting headline rubric (promise kept, name the concrete noun, the
+    # dek does not repeat the title) AND keep the body uncapped and the fixed tokens.
+    text = load_prompt(load_settings().prompts_dir, "journalist", "finalize.md")
+    low = text.lower()
+    # The token contract the pipeline fills.
+    for token in ("{{SECTION}}", "{{AUTHOR}}", "{{ARTICLE}}"):
+        assert token in text, f"finalize prompt dropped {token}"
+    # The honesty gate and the pull hooks are present.
+    assert "a headline is a promise" in low
+    assert "honesty gate" in low
+    assert "no withheld subject" in low or "name the real thing" in low
+    assert "stakes" in low
+    # The dek must not parrot the title.
+    assert "does not repeat the title" in low
+    # Bodies are never length-capped.
+    assert "no length limit on the body" in low
+
+
 def test_load_prompt_overrides_returns_override_and_falls_back_to_fs():
     prompts_dir = load_settings().prompts_dir
     overrides = {"persona/synthesize.md": "OVERRIDDEN BODY"}

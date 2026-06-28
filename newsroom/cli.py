@@ -564,6 +564,111 @@ def _runs_main(argv: list[str], *, store: RunStore | None = None) -> int:
     return 0
 
 
+# A topics-cleanse seam bundle, injected by tests so the verb is driven end to end
+# without a network or a model call (fetch the corpus, cluster the tags, apply the
+# remap). In production each defaults to the real implementation over the live APIs.
+TopicsFetch = Callable[[], list]
+TopicsCluster = Callable[[list], dict]
+TopicsApply = Callable[[list], tuple]
+
+
+def _topics_main(
+    argv: list[str],
+    *,
+    fetch: TopicsFetch | None = None,
+    cluster: TopicsCluster | None = None,
+    apply: TopicsApply | None = None,
+) -> int:
+    """``censurado-brain topics cleanse [--apply]``: the agentic topic cleanse. Reads the
+    corpus tag set over the read API, asks the model to cluster synonymous/overlapping
+    tags into a small canonical set, and (with ``--apply``) remaps each changed article in
+    place over the operator edit lane (``PUT /articles``, admin:write). Default is a
+    DRY-RUN that prints the canonical map + the per-article plan and writes nothing. Prints
+    a JSON summary via ``_emit``; returns 0 on success, 2 if some applies failed, 1 on a
+    read/usage error. The three seams are injectable so a test drives the verb without a
+    network or a model."""
+    if not argv or argv[0] != "cleanse":
+        _emit({"error": "usage: topics cleanse [--apply]"})
+        return _EXIT["failed"]
+    parser = argparse.ArgumentParser(prog="censurado-brain topics cleanse")
+    parser.add_argument(
+        "--apply", action="store_true",
+        help="apply the remap (default: dry-run, print the plan and write nothing)",
+    )
+    parser.add_argument(
+        "--map-file", default=None, metavar="PATH",
+        help="apply a pre-computed canonical map (JSON {tag: canonical}) from PATH (or '-' "
+        "for stdin) INSTEAD of asking the model. This is how a CLI agent (e.g. Claude) "
+        "supplies the clustering itself, with no inference backend in the loop.",
+    )
+    args = parser.parse_args(argv[1:])
+
+    from newsroom.cleanse import (
+        apply_remap,
+        cluster_topics,
+        collect_topics,
+        fetch_articles,
+        remap_plan,
+    )
+
+    settings = load_settings()
+    base = str(settings.publish_base_url).rstrip("/")
+    read_token = settings.operator_token
+    edit_token = settings.admin_token or settings.operator_token
+
+    fetch = fetch or (lambda: fetch_articles(base, read_token))
+    cluster = cluster or (lambda tags: cluster_topics(tags))
+    apply = apply or (lambda plan: apply_remap(plan, base_url=base, read_token=read_token, edit_token=edit_token))
+
+    try:
+        articles = fetch()
+    except Exception as exc:  # a read failure is a clean usage error, not a crash
+        _emit({"error": f"failed to read the corpus: {exc}"})
+        return _EXIT["failed"]
+
+    tags = collect_topics(articles)
+    if args.map_file:
+        # The agent-supplied path: read a {tag: canonical} map (file or '-' stdin) and use
+        # it directly, so the clustering can come from a CLI agent rather than a backend
+        # model. Every corpus tag maps to itself unless the map overrides it.
+        try:
+            src = sys.stdin.read() if args.map_file == "-" else open(args.map_file, encoding="utf-8").read()
+            raw = json.loads(src)
+            if not isinstance(raw, dict):
+                raise ValueError("map must be a JSON object {tag: canonical}")
+        except (OSError, ValueError, json.JSONDecodeError) as exc:
+            _emit({"error": f"failed to read --map-file: {exc}"})
+            return _EXIT["failed"]
+        canon = {t: (str(raw.get(t, t)).strip() or t) for t in tags}
+    else:
+        try:
+            canon = cluster(tags)
+        except Exception as exc:  # an inference failure (e.g. 429) exits cleanly, not a traceback
+            _emit({"error": f"clustering failed (inference): {exc}"})
+            return _EXIT["failed"]
+    plan = remap_plan(articles, canon)
+    summary = {
+        "tags_before": len(tags),
+        "tags_after": len({c for c in canon.values()}),
+        "articles_changed": len(plan),
+        "applied": 0,
+        "failed": [],
+        "dry_run": not args.apply,
+        "mapping": canon,
+        "plan": [{"slug": rm.slug, "before": rm.before, "after": rm.after} for rm in plan],
+    }
+    if args.apply:
+        try:
+            applied, failed = apply(plan)
+        except Exception as exc:
+            _emit({"error": f"apply failed: {exc}"})
+            return _EXIT["failed"]
+        summary["applied"] = applied
+        summary["failed"] = failed
+    _emit(summary)
+    return _EXIT["done_with_errors"] if summary["failed"] else _EXIT["done"]
+
+
 def _open_persona_store() -> PersonaStore:
     """Open the brain DB the API uses and wrap it in a ``PersonaStore``. The CLI author
     verbs are their own process (a separate connection from a live brain); WAL + the busy
@@ -1266,6 +1371,10 @@ def main(
         return _editorial_main(
             argv[1:], style_store=style_store, location_store=location_store
         )
+    if argv and argv[0] == "topics":
+        # Agentic topic cleanse: cluster the corpus tag set into a canonical set and
+        # remap changed articles. A subcommand so the bare --mode run path is unchanged.
+        return _topics_main(argv[1:])
     args = _parser().parse_args(argv)
     settings = load_settings()
     deps = (build_deps or build_deps_from_env)(settings)
