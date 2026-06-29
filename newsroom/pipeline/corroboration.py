@@ -2,7 +2,7 @@
 enough INDEPENDENT sources before a single draft token is spent.
 
 The house style asks for the central fact to hold across "at least N independent
-sources" (the seeded ``sourcing.min_sources`` of 2). Until now that was only a SOFT
+sources" (the seeded ``sourcing.min_sources`` of 5). Until now that was only a SOFT
 evaluator hint rendered into the prompt (``editorial/render.py``): a local model under a
 persona is free to ignore it, and a thin ledger (one outlet, or two outlets that are the
 same company wearing two mastheads) still drafts, evaluates, enriches, fact-checks, and

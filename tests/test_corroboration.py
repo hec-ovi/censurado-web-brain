@@ -64,6 +64,16 @@ def test_two_different_groups_count_as_two():
     assert len(groups) == 2
 
 
+def test_five_independent_sources_meet_the_seeded_floor():
+    # The newsroom's seeded sourcing floor is now 5 (>=5-source cross-validation): five
+    # distinct independent sources pass the gate, four miss it and the article is dropped
+    # before any draft token is spent.
+    five = _ledger(*(f"https://outlet{i}.example/a" for i in range(5)))
+    assert corroboration_check(five, ownership_of=_resolver(), required=5).ok is True
+    four = _ledger(*(f"https://outlet{i}.example/a" for i in range(4)))
+    assert corroboration_check(four, ownership_of=_resolver(), required=5).ok is False
+
+
 def test_two_unknown_domains_each_count_independently():
     # Off-allowlist / unknown domains are NOT collapsed: each is its own per-domain
     # sentinel, so two genuinely independent uncatalogued sources still corroborate.

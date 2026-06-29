@@ -112,7 +112,7 @@ def test_default_style_is_coherent_and_uncapped():
     # length cap: no rule or structure text imposes a word/character count.
     assert any(e["label"] == "bad" for e in DEFAULT_STYLE.exemplars)
     assert any(r["severity"] == "gate" for r in DEFAULT_STYLE.rules)
-    assert DEFAULT_STYLE.sourcing["min_sources"] == 2
+    assert DEFAULT_STYLE.sourcing["min_sources"] == 5
 
     texts = " ".join(
         [DEFAULT_STYLE.voice, *(r["text"] for r in DEFAULT_STYLE.rules), *DEFAULT_STYLE.structure.values()]

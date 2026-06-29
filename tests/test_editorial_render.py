@@ -51,7 +51,7 @@ def test_style_for_eval_is_empty_without_a_guide():
 def test_style_for_eval_is_a_checklist_with_sourcing_and_banned_terms():
     out = style_for_eval(DEFAULT_STYLE)
     assert "failing_sections" in out  # it instructs the evaluator to flag failures
-    assert "at least 2 independent sources" in out
+    assert "at least 5 independent sources" in out
     assert "no fabricated quotes" in out
     assert "Banned terms" in out and "demoledor" in out
     # An eval-or-both rule is present; a draft-only rule (titulo-directo) is not.

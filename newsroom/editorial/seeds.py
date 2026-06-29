@@ -191,7 +191,7 @@ DEFAULT_STYLE = StyleGuide(
         "banned_terms": ["demoledor", "escandaloso", "letal", "brutal", "sin precedentes", "increible", "no te lo podes perder"],
         "preferred_swaps": {"polemico": "discutido", "fulmino": "rechazo", "castigo": "afecto", "historico": "destacado"},
     },
-    sourcing={"min_sources": 2, "require_attribution": True, "no_fabricated_quotes": True},
+    sourcing={"min_sources": 5, "require_attribution": True, "no_fabricated_quotes": True},
     structure={
         "headline": "Breve y directo: el hecho esencial, sin relleno ni adjetivos.",
         "dateline": "CIUDAD, fecha, al inicio del cuerpo.",
