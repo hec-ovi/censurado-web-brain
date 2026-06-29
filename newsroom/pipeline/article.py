@@ -42,6 +42,7 @@ from newsroom.pipeline.corroboration import corroboration_check
 from newsroom.pipeline.evaluate import Evaluation, evaluate_draft
 from newsroom.pipeline.factcheck import fact_check
 from newsroom.pipeline.finalize import finalize_article
+from newsroom.pipeline.widgets import attach_widgets
 from newsroom.prompts import load_prompt, render
 from newsroom.research.ledger import Ledger
 from newsroom.runs import Assignment, RunStore
@@ -144,6 +145,7 @@ def run_article_pipeline(
     lock: threading.Lock | None = None,
     illustrate: Callable[..., object] | None = None,
     editorial: EditorialContext | None = None,
+    widget_fetch: Callable[[str], object] | None = None,
 ) -> ArticleOutcome:
     """Drive one assignment through the pipeline. Returns ``ready`` with a finalized
     ``PublishArticleInput`` (persisted on the assignment, awaiting publish) or
@@ -262,6 +264,21 @@ def run_article_pipeline(
         # (the run continues) rather than crashing, mirroring persona synthesis. The
         # body was never published, so there is nothing to undo.
         return drop("finalize_failed")
+
+    # Inline widgets (deterministic, best-effort): connect the finished article to the
+    # rich cards the static generator renders. From the grounding ledger we capture any
+    # CITED tweet / YouTube video (keyless) and emit a {{tweet}}/{{video}} marker only
+    # when a real snapshot was captured, storing it in metadata.tweets / media_checks
+    # (the recheck sweep later flips a deleted one). From prior coverage we emit one
+    # {{relacionado:slug}} card for the best-matching earlier article. The markers ride in
+    # the body, so they ARE part of the article identity, inserted BEFORE the content hash
+    # below; snapshots ride in metadata, outside it. Never raises: a widget failure never
+    # drops the article (like the art-director step). This runs BEFORE _stamp_author /
+    # _art_direct so the body edit lands ahead of the hash, and the metadata merges compose.
+    attach_widgets(
+        article, ledger=ledger, fetch=widget_fetch,
+        related_coverage=ed.related_coverage, entities=assignment.entities,
+    )
 
     # Stamp the author's identity into the open metadata map so the static portal can
     # render bylines, author pages, and an About page from the publish contract alone

@@ -680,3 +680,79 @@ def test_corroborated_ledger_is_not_dropped_and_proceeds_to_draft(fake):
     assert out.drafts == 1
     # outline + draft + eval + enrich + respin x2 + finalize == 7 (eval distinct endpoint, clean body)
     assert len(fake.state.chat_requests) == 7
+
+
+# ----- inline widgets: a cited tweet + a related card reach the finished article -----
+
+
+def test_widget_step_emits_cited_tweet_marker_and_snapshot(fake):
+    # The journalist's ledger cites a tweet; the widget step captures it (keyless, via the
+    # injected fetch) and emits a {{tweet}} marker into the finished body plus a snapshot in
+    # metadata. The marker is part of the body, so it lands INSIDE the content hash.
+    from newsroom.embeds.fetch import FetchResult
+
+    env = _env(fake)
+    env.ledger = Ledger(clock=lambda: datetime(2026, 6, 23, tzinfo=timezone.utc))
+    env.ledger.add(claim="the founder posted", url="https://x.com/jack/status/20", snippet="a tweet")
+
+    fake.state.script_chat("OUTLINE")
+    fake.state.script_chat("draft one")
+    fake.state.script_chat(json.dumps({"verdict": "PASS"}))
+    fake.state.script_chat("enriched body")
+    fake.state.script_chat("respin pass 1")
+    fake.state.script_chat("respin pass 2")
+    fake.state.script_chat(json.dumps(
+        {"title": "Final Title", "body": "El fundador habló en https://x.com/jack/status/20 ayer."}
+    ))
+
+    def fetch(url):
+        if "/status/20" in url:
+            return FetchResult(200, {"tweet": {
+                "id": "20", "text": "just setting up my twttr",
+                "url": "https://twitter.com/jack/status/20", "created_timestamp": 1142974214,
+                "author": {"screen_name": "jack", "name": "Jack", "avatar_url": "https://pbs.twimg.com/jack.jpg"},
+            }}, True)
+        return FetchResult(404, None, False)
+
+    out = run_article_pipeline(
+        assignment=env.assignment, persona=env.persona, ledger=env.ledger, store=env.store,
+        budget=_big_budget(), drafter_cfg=env.drafter, evaluator_cfg=env.evaluator,
+        finalize_cfg=env.finalize, prompts_dir=_prompts_dir(), max_sweeps=4, widget_fetch=fetch,
+    )
+
+    assert out.status == "ready"
+    assert "{{tweet:20}}" in out.article.body
+    snap = out.article.metadata["tweets"][0]
+    assert snap["id"] == "20" and snap["text"] == "just setting up my twttr"
+    # The marker rides in the body, so the persisted hash is over the marked-up body.
+    expected = content_hash("Final Title", out.article.body, "ada-reporter", "tech")
+    assert out.content_hash == expected
+    assert env.store.get_assignment(env.assignment.id).content_hash == expected
+
+
+def test_widget_step_emits_related_card_from_editorial_coverage(fake):
+    # Prior coverage threaded on the EditorialContext lets the step emit one
+    # {{relacionado:slug}} for the best fingerprint match.
+    from newsroom.manager.coverage import CoverageItem
+    from newsroom.pipeline.context import EditorialContext
+
+    env = _env(fake)
+    fake.state.script_chat("OUTLINE")
+    fake.state.script_chat("draft one")
+    fake.state.script_chat(json.dumps({"verdict": "PASS"}))
+    fake.state.script_chat("enriched body")
+    fake.state.script_chat("respin pass 1")
+    fake.state.script_chat("respin pass 2")
+    fake.state.script_chat(json.dumps(
+        {"title": "El nuevo chip llega al mercado", "body": "Una nota sobre el nuevo chip.",
+         "topics": ["chip", "mercado"]}
+    ))
+
+    ed = EditorialContext(related_coverage=[
+        CoverageItem(section="tech", headline="El nuevo chip en pruebas",
+                     topics=["chip", "mercado"], slug="chip-pruebas-1a2b"),
+    ])
+    out = _run(env, budget=_big_budget(), editorial=ed)
+
+    assert out.status == "ready"
+    assert "{{relacionado:chip-pruebas-1a2b}}" in out.article.body

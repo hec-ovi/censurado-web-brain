@@ -365,6 +365,7 @@ def execute_run(*, run: Run, scope: RunScope, deps: RunDeps) -> RunReport:
             house_style_eval=style_for_eval(style_guide),
             style_lexicon=(style_guide.lexicon if style_guide is not None else {}),
             recent_coverage=recent_coverage_text(coverage),
+            related_coverage=coverage,  # structured, so the widget step can emit a related card
             min_independent_sources=(style_guide.sourcing.get("min_sources", 0) if style_guide is not None else 0),
             ownership_of=deps.ownership_of,
         )
@@ -602,6 +603,7 @@ def execute_direct(
             house_style_eval=style_for_eval(style_guide),
             style_lexicon=(style_guide.lexicon if style_guide is not None else {}),
             recent_coverage=recent_coverage_text(coverage),
+            related_coverage=coverage,  # structured, so the widget step can emit a related card
             # The operator vouched for the source: corroboration is OFF for the direct
             # path, never read from the style guide. Managed runs keep it armed (see
             # execute_run). The agent still researches outward, it just is not DROPPED for

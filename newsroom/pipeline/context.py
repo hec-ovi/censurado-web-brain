@@ -41,6 +41,12 @@ class EditorialContext:
     house_style_eval: str = ""
     style_lexicon: dict = field(default_factory=dict)
     recent_coverage: str = ""
+    # The same recent-coverage items rendered into ``recent_coverage``, kept structured
+    # (each carries a slug + fingerprint) so the widget step can emit ONE
+    # ``{{relacionado:slug}}`` card for the best-matching prior article. ``CoverageItem``
+    # is left untyped here (a plain list) to avoid a pipeline<->manager import cycle;
+    # empty (the default) means no related card is ever emitted.
+    related_coverage: list = field(default_factory=list)
     min_independent_sources: int = 0
     ownership_of: Callable[[str], str] = _no_ownership
 
