@@ -17,6 +17,13 @@ the operator token sit in the harness.
 
 ## What this is
 
+> **Deprecated lane.** The brain's autonomous, inference-backed runs (manager + per-article
+> pipeline, below) are a DEPRECATED lane. The project default is CLI agents authoring and
+> publishing directly to the platform's `POST /articles` (quota-free; see the harness
+> `cli/AGENTS.md`). This brain still publishes over the same contract and its widget/marker
+> logic still defines the rendering contract the CLI lane reuses, but routine articles are
+> not produced by a cloud-inference run. Run it only on a local/self-hosted model if at all.
+
 The brain is an agentic newsroom: AI journalist personas research the day's news, write
 full articles in their own voice, an art director gives each a hero image, and the brain
 publishes them to the `censurado-web` portal over one HTTP contract. It is one FastAPI
