@@ -1,5 +1,6 @@
 import { api as defaultApi } from "./api.js";
 import { el, help } from "./components/el.js";
+import { t, currentLocale, setLocale, LANGS, LANG_LABEL } from "./components/i18n.js";
 import { Health } from "./components/health.js";
 import { BackendStatus } from "./components/backendStatus.js";
 import { PersonaList } from "./components/personaList.js";
@@ -35,6 +36,10 @@ function saveTheme(value) {
   return theme;
 }
 
+// The visible theme label is translated; the dataset.theme value (system/light/
+// dark) is the behavior-bearing token and stays untranslated.
+const THEME_LABEL = { system: "System", light: "Light", dark: "Dark" };
+
 function ThemeControl() {
   const buttons = ["system", "light", "dark"].map((theme) =>
     el(
@@ -46,7 +51,7 @@ function ThemeControl() {
         "aria-pressed": "false",
         onClick: () => setTheme(theme),
       },
-      theme[0].toUpperCase() + theme.slice(1),
+      t(THEME_LABEL[theme]),
     ),
   );
 
@@ -61,7 +66,7 @@ function ThemeControl() {
   buttons.forEach((button) => {
     button.setAttribute("aria-pressed", button.dataset.theme === initial ? "true" : "false");
   });
-  return el("div", { class: "theme-switch", role: "group", "aria-label": "Theme" }, buttons);
+  return el("div", { class: "theme-switch", role: "group", "aria-label": t("Theme") }, buttons);
 }
 
 // Mount the console into `root`. `deps.api` is injectable so a test can mount
@@ -86,32 +91,32 @@ export function mountApp(root, deps = {}) {
 
   const newPersonaPanel = el("section", { class: "panel" }, [
     el("div", { class: "panel-head" }, [
-      el("h2", {}, "New persona"),
-      help("Synthesize an author persona from a short seed. The new author joins the roster below."),
+      el("h2", {}, t("New persona")),
+      help(t("Synthesize an author persona from a short seed. The new author joins the roster below.")),
     ]),
     form.element,
   ]);
 
   const healthPanel = el("section", { class: "panel" }, [
     el("div", { class: "panel-head" }, [
-      el("h2", {}, "Health"),
-      help("Live ping of the brain API behind nginx. Green means the API answered."),
+      el("h2", {}, t("Health")),
+      help(t("Live ping of the brain API behind nginx. Green means the API answered.")),
     ]),
     health.element,
   ]);
 
   const tabs = [
-    { id: "authors", label: "Authors", content: [newPersonaPanel, list.element] },
-    { id: "sources", label: "Sources", content: [sources.element] },
-    { id: "runs", label: "Runs", content: [runs.element] },
-    { id: "editorial", label: "Editorial", content: [editorial.element] },
-    { id: "prompts", label: "Prompts", content: [prompts.element] },
-    { id: "status", label: "Status", content: [healthPanel, backend.element] },
+    { id: "authors", label: t("Authors"), content: [newPersonaPanel, list.element] },
+    { id: "sources", label: t("Sources"), content: [sources.element] },
+    { id: "runs", label: t("Runs"), content: [runs.element] },
+    { id: "editorial", label: t("Editorial"), content: [editorial.element] },
+    { id: "prompts", label: t("Prompts"), content: [prompts.element] },
+    { id: "status", label: t("Status"), content: [healthPanel, backend.element] },
   ];
 
   const tabButtons = [];
   const panels = [];
-  const tablist = el("div", { class: "tablist", role: "tablist", "aria-label": "Console sections" });
+  const tablist = el("div", { class: "tablist", role: "tablist", "aria-label": t("Console sections") });
   const pageTitle = el("h1", { class: "page-title" }, tabs[0].label);
   let active = 0;
 
@@ -172,17 +177,43 @@ export function mountApp(root, deps = {}) {
     tablist.append(button);
   });
 
-  const sidebar = el("aside", { class: "app-sidebar", "aria-label": "Primary" }, [
+  // The language switch mirrors ThemeControl: two buttons (EN/ES), aria-pressed by
+  // the active locale. Switching persists the choice and RE-MOUNTS the whole app
+  // through mountApp(root, deps), so every string rebuilds in the new locale.
+  // It is defined here so it closes over `root` and `deps`. Switching resets to
+  // the first tab (the tree is rebuilt from scratch).
+  function LangControl() {
+    const active = currentLocale();
+    const buttons = LANGS.map((lang) =>
+      el(
+        "button",
+        {
+          type: "button",
+          class: "lang-option",
+          dataset: { lang },
+          "aria-pressed": lang === active ? "true" : "false",
+          onClick: () => {
+            setLocale(lang);
+            mountApp(root, deps);
+          },
+        },
+        LANG_LABEL[lang],
+      ),
+    );
+    return el("div", { class: "lang-switch", role: "group", "aria-label": t("Language") }, buttons);
+  }
+
+  const sidebar = el("aside", { class: "app-sidebar", "aria-label": t("Primary") }, [
     el("div", { class: "brand" }, [
       el("span", { class: "brand-mark" }, "AP"),
-      el("span", { class: "brand-name" }, "Admin Panel"),
+      el("span", { class: "brand-name" }, t("Admin Panel")),
     ]),
     tablist,
   ]);
 
   const topbar = el("header", { class: "app-topbar" }, [
-    el("div", {}, [el("p", { class: "kicker" }, "Control panel"), pageTitle]),
-    el("div", { class: "topbar-actions" }, [ThemeControl()]),
+    el("div", {}, [el("p", { class: "kicker" }, t("Control panel")), pageTitle]),
+    el("div", { class: "topbar-actions" }, [LangControl(), ThemeControl()]),
   ]);
 
   root.replaceChildren(
@@ -191,6 +222,10 @@ export function mountApp(root, deps = {}) {
       el("div", { class: "app-workspace" }, [topbar, el("main", { class: "app-main" }, panels)]),
     ]),
   );
+
+  // Keep the document chrome in step with the active locale.
+  document.documentElement.lang = currentLocale();
+  document.title = t("Admin Panel");
 
   health.check();
   backend.refresh();

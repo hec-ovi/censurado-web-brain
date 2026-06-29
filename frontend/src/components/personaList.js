@@ -1,4 +1,5 @@
 import { el, clear, field, help, isSafeImageSrc } from "./el.js";
+import { t } from "./i18n.js";
 import { SECTIONS } from "./personaForm.js";
 
 // The persona roster: a beat filter over GET /personas, rendering one card per
@@ -16,13 +17,13 @@ const LINK_HELP =
   "Link a few trusted, independent outlets per author.";
 
 export function PersonaList({ api, onChanged } = {}) {
-  const filter = el("select", { class: "list-filter", id: "pl-filter", "aria-label": "Filter personas by beat" }, [
-    el("option", { value: "" }, "All beats"),
+  const filter = el("select", { class: "list-filter", id: "pl-filter", "aria-label": t("Filter personas by beat") }, [
+    el("option", { value: "" }, t("All beats")),
     ...SECTIONS.map((s) => el("option", { value: s }, s)),
   ]);
   const listEl = el("div", { class: "persona-list" });
   const element = el("section", { class: "panel" }, [
-    el("div", { class: "panel-head" }, [el("h2", {}, "Personas"), filter]),
+    el("div", { class: "panel-head" }, [el("h2", {}, t("Personas")), filter]),
     listEl,
   ]);
 
@@ -30,19 +31,19 @@ export function PersonaList({ api, onChanged } = {}) {
 
   async function load() {
     clear(listEl);
-    listEl.append(el("p", { class: "muted" }, "Loading personas..."));
+    listEl.append(el("p", { class: "muted" }, t("Loading personas...")));
     try {
       const data = await api.listPersonas(filter.value || null);
       const personas = (data && data.personas) || [];
       clear(listEl);
       if (!personas.length) {
-        listEl.append(el("p", { class: "muted" }, "No personas yet. Create one to get started."));
+        listEl.append(el("p", { class: "muted" }, t("No personas yet. Create one to get started.")));
         return;
       }
       for (const persona of personas) listEl.append(card(persona));
     } catch (err) {
       clear(listEl);
-      listEl.append(el("p", { class: "error", role: "alert" }, `Could not load personas: ${err.message}`));
+      listEl.append(el("p", { class: "error", role: "alert" }, t("Could not load personas: {msg}", { msg: err.message })));
     }
   }
 
@@ -56,25 +57,25 @@ export function PersonaList({ api, onChanged } = {}) {
     let editForm = null;
     let sources = null;
 
-    const editBtn = el("button", { type: "button", class: "secondary" }, "Edit");
+    const editBtn = el("button", { type: "button", class: "secondary" }, t("Edit"));
     editBtn.setAttribute("aria-expanded", "false");
 
-    const sourcesBtn = el("button", { type: "button", class: "secondary" }, "Sources");
+    const sourcesBtn = el("button", { type: "button", class: "secondary" }, t("Sources"));
     sourcesBtn.setAttribute("aria-expanded", "false");
 
     // Two-click delete instead of window.confirm (a no-op under jsdom): the first
     // click arms the button, the second performs the delete.
     let armed = false;
-    const deleteBtn = el("button", { type: "button", class: "secondary" }, "Delete");
+    const deleteBtn = el("button", { type: "button", class: "secondary" }, t("Delete"));
     function disarmDelete() {
       armed = false;
-      deleteBtn.textContent = "Delete";
+      deleteBtn.textContent = t("Delete");
       delete deleteBtn.dataset.confirm;
     }
     deleteBtn.addEventListener("click", () => {
       if (!armed) {
         armed = true;
-        deleteBtn.textContent = "Confirm";
+        deleteBtn.textContent = t("Confirm");
         deleteBtn.dataset.confirm = "true";
         return;
       }
@@ -141,20 +142,20 @@ export function PersonaList({ api, onChanged } = {}) {
     const fewPos = el("textarea", { id: `pe-${id}-pos`, rows: "4" }, JSON.stringify(persona.few_shots_pos || [], null, 2));
     const fewNeg = el("textarea", { id: `pe-${id}-neg`, rows: "4" }, JSON.stringify(persona.few_shots_neg || [], null, 2));
 
-    const save = el("button", { type: "submit" }, "Save");
-    const cancel = el("button", { type: "button", class: "secondary" }, "Cancel");
+    const save = el("button", { type: "submit" }, t("Save"));
+    const cancel = el("button", { type: "button", class: "secondary" }, t("Cancel"));
 
     const form = el("form", { class: "persona-edit" }, [
-      field("Display name", displayName, `pe-${id}-name`),
-      field("Beat", beat, `pe-${id}-beat`),
-      field("Language", language, `pe-${id}-language`),
-      field("Avatar path", avatarPath, `pe-${id}-avatar`),
-      field("Active", active, `pe-${id}-active`),
-      field("Who I am", whoIAm, `pe-${id}-who`),
-      field("About", about, `pe-${id}-about`),
-      field("Style", style, `pe-${id}-style`),
-      field("Positive examples (JSON array)", fewPos, `pe-${id}-pos`),
-      field("Negative examples (JSON array)", fewNeg, `pe-${id}-neg`),
+      field(t("Display name"), displayName, `pe-${id}-name`),
+      field(t("Beat"), beat, `pe-${id}-beat`),
+      field(t("Language"), language, `pe-${id}-language`),
+      field(t("Avatar path"), avatarPath, `pe-${id}-avatar`),
+      field(t("Active"), active, `pe-${id}-active`),
+      field(t("Who I am"), whoIAm, `pe-${id}-who`),
+      field(t("About"), about, `pe-${id}-about`),
+      field(t("Style"), style, `pe-${id}-style`),
+      field(t("Positive examples (JSON array)"), fewPos, `pe-${id}-pos`),
+      field(t("Negative examples (JSON array)"), fewNeg, `pe-${id}-neg`),
       el("div", { class: "persona-actions" }, [save, cancel]),
     ]);
     cancel.addEventListener("click", () => {
@@ -164,9 +165,9 @@ export function PersonaList({ api, onChanged } = {}) {
     form.addEventListener("submit", async (event) => {
       event.preventDefault();
       // Parse the two example lists first; a bad list aborts before any request.
-      const pos = parseJsonArray(fewPos.value, "Positive examples");
+      const pos = parseJsonArray(fewPos.value, t("Positive examples"));
       if (pos.error) return setStatus(cardStatus, "error", pos.error);
-      const neg = parseJsonArray(fewNeg.value, "Negative examples");
+      const neg = parseJsonArray(fewNeg.value, t("Negative examples"));
       if (neg.error) return setStatus(cardStatus, "error", neg.error);
 
       const body = {
@@ -183,14 +184,14 @@ export function PersonaList({ api, onChanged } = {}) {
       };
 
       save.disabled = true;
-      setStatus(cardStatus, "pending", "Saving...");
+      setStatus(cardStatus, "pending", t("Saving..."));
       try {
         await api.patchPersona(id, body);
         await load();
         if (onChanged) onChanged();
       } catch (err) {
         save.disabled = false;
-        setStatus(cardStatus, "error", `Could not save (${err.code}): ${err.message}`);
+        setStatus(cardStatus, "error", t("Could not save ({code}): {msg}", { code: err.code, msg: err.message }));
       }
     });
     return form;
@@ -203,10 +204,10 @@ export function PersonaList({ api, onChanged } = {}) {
     const id = persona.id;
     const checksWrap = el("div", { class: "persona-source-checks" });
     const status = el("p", { class: "form-status", role: "status", "aria-live": "polite" });
-    const save = el("button", { type: "button" }, "Save sources");
+    const save = el("button", { type: "button" }, t("Save sources"));
 
     const panel = el("div", { class: "persona-sources" }, [
-      el("div", { class: "panel-head" }, [el("h4", {}, "Linked sources"), help(LINK_HELP)]),
+      el("div", { class: "panel-head" }, [el("h4", {}, t("Linked sources")), help(t(LINK_HELP))]),
       checksWrap,
       el("div", { class: "persona-actions" }, [save]),
       status,
@@ -216,7 +217,7 @@ export function PersonaList({ api, onChanged } = {}) {
 
     async function loadSources() {
       clear(checksWrap);
-      checksWrap.append(el("p", { class: "muted" }, "Loading sources..."));
+      checksWrap.append(el("p", { class: "muted" }, t("Loading sources...")));
       boxes = [];
       try {
         // Pull a large page so every portal is a checkbox: Save derives the linked
@@ -230,7 +231,7 @@ export function PersonaList({ api, onChanged } = {}) {
         clear(checksWrap);
         if (!portals.length) {
           save.disabled = true;
-          checksWrap.append(el("p", { class: "muted" }, "Add sources in the Sources tab first."));
+          checksWrap.append(el("p", { class: "muted" }, t("Add sources in the Sources tab first.")));
           return;
         }
         save.disabled = false;
@@ -252,30 +253,30 @@ export function PersonaList({ api, onChanged } = {}) {
         const table = el("table", { class: "link-table" }, [
           el("thead", {}, el("tr", {}, [
             el("th", { class: "link-check" }, ""),
-            el("th", {}, "Source"),
-            el("th", {}, "Description"),
+            el("th", {}, t("Source")),
+            el("th", {}, t("Description")),
           ])),
           tbody,
         ]);
         checksWrap.append(el("div", { class: "link-table-wrap" }, table));
       } catch (err) {
         clear(checksWrap);
-        checksWrap.append(el("p", { class: "error", role: "alert" }, `Could not load sources: ${err.message}`));
+        checksWrap.append(el("p", { class: "error", role: "alert" }, t("Could not load sources: {msg}", { msg: err.message })));
       }
     }
 
     save.addEventListener("click", async () => {
       const checked = boxes.filter((b) => b.box.checked).map((b) => b.id);
       save.disabled = true;
-      setStatus(status, "pending", "Saving...");
+      setStatus(status, "pending", t("Saving..."));
       try {
         await api.putPersonaSources(id, checked);
-        setStatus(status, "done", "Sources updated.");
+        setStatus(status, "done", t("Sources updated."));
         await loadSources();
         if (onChanged) onChanged();
       } catch (err) {
         save.disabled = false;
-        setStatus(status, "error", `Could not save sources (${err.code}): ${err.message}`);
+        setStatus(status, "error", t("Could not save sources ({code}): {msg}", { code: err.code, msg: err.message }));
       }
     });
 
@@ -294,7 +295,7 @@ export function PersonaList({ api, onChanged } = {}) {
     } catch (err) {
       button.disabled = false;
       if (onFail) onFail();
-      setStatus(statusNode, "error", `Action failed (${err.code}): ${err.message}`);
+      setStatus(statusNode, "error", t("Action failed ({code}): {msg}", { code: err.code, msg: err.message }));
     }
   }
 
@@ -318,9 +319,9 @@ function parseJsonArray(text, label) {
   try {
     value = JSON.parse(text);
   } catch {
-    return { error: `${label} must be a valid JSON array.` };
+    return { error: t("{label} must be a valid JSON array.", { label }) };
   }
-  if (!Array.isArray(value)) return { error: `${label} must be a JSON array.` };
+  if (!Array.isArray(value)) return { error: t("{label} must be a JSON array.", { label }) };
   return { value };
 }
 

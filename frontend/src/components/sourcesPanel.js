@@ -1,4 +1,5 @@
 import { el, clear, field, help } from "./el.js";
+import { t } from "./i18n.js";
 
 // The Sources tab: a portals manager. A portal is a source of record (a news
 // outlet, by its domain/homepage/feeds) the newsroom is allowed to draw from.
@@ -33,7 +34,7 @@ export function SourcesPanel({ api, onChanged } = {}) {
   const feedTypeInput = el("input", { type: "text", id: "sp-feed-type", value: "auto" });
   const languageInput = el("input", { type: "text", id: "sp-language", value: "es" });
   const enabledCheck = el("input", { type: "checkbox", id: "sp-enabled", checked: true });
-  const submit = el("button", { type: "submit" }, "Add source");
+  const submit = el("button", { type: "submit" }, t("Add source"));
   const createStatus = el("p", { class: "form-status", role: "status", "aria-live": "polite" });
 
   const createRefs = {
@@ -47,28 +48,28 @@ export function SourcesPanel({ api, onChanged } = {}) {
   };
 
   const form = el("form", { class: "source-form" }, [
-    field("Domain", domainInput, "sp-domain"),
-    field("Description", descInput, "sp-desc"),
-    helpField("Ownership group", ownershipInput, "sp-ownership", OWNERSHIP_HELP),
-    field("Homepage", homepageInput, "sp-homepage"),
-    field("Feed URLs (comma separated)", feedsInput, "sp-feeds"),
-    field("Feed type", feedTypeInput, "sp-feed-type"),
-    field("Language", languageInput, "sp-language"),
-    checkField("Enabled", enabledCheck, "sp-enabled"),
+    field(t("Domain"), domainInput, "sp-domain"),
+    field(t("Description"), descInput, "sp-desc"),
+    helpField(t("Ownership group"), ownershipInput, "sp-ownership", t(OWNERSHIP_HELP)),
+    field(t("Homepage"), homepageInput, "sp-homepage"),
+    field(t("Feed URLs (comma separated)"), feedsInput, "sp-feeds"),
+    field(t("Feed type"), feedTypeInput, "sp-feed-type"),
+    field(t("Language"), languageInput, "sp-language"),
+    checkField(t("Enabled"), enabledCheck, "sp-enabled"),
     submit,
     createStatus,
   ]);
   form.addEventListener("submit", onCreate);
 
   const createPanel = el("section", { class: "panel" }, [
-    el("div", { class: "panel-head" }, [el("h2", {}, "Add source"), help(SOURCE_HELP)]),
+    el("div", { class: "panel-head" }, [el("h2", {}, t("Add source")), help(t(SOURCE_HELP))]),
     form,
   ]);
 
   // --- List (table) ------------------------------------------------------
   const listEl = el("div", { class: "source-list" });
   const listPanel = el("section", { class: "panel" }, [
-    el("div", { class: "panel-head" }, [el("h2", {}, "Sources")]),
+    el("div", { class: "panel-head" }, [el("h2", {}, t("Sources"))]),
     listEl,
   ]);
 
@@ -81,23 +82,23 @@ export function SourcesPanel({ api, onChanged } = {}) {
     if (!domain) {
       domainInput.setAttribute("aria-invalid", "true");
       domainInput.focus();
-      setStatus(createStatus, "error", "Domain is required.");
+      setStatus(createStatus, "error", t("Domain is required."));
       return;
     }
     const body = collectEditable(createRefs);
     body.domain = domain;
 
     setBusy(submit, form, true);
-    setStatus(createStatus, "pending", "Adding source...");
+    setStatus(createStatus, "pending", t("Adding source..."));
     try {
       await api.createPortal(body);
       form.reset();
       domainInput.setAttribute("aria-invalid", "false");
-      setStatus(createStatus, "done", `Added ${domain}.`);
+      setStatus(createStatus, "done", t("Added {domain}.", { domain }));
       await reload();
       if (onChanged) onChanged();
     } catch (err) {
-      setStatus(createStatus, "error", `Could not add source (${err.code}): ${err.message}`);
+      setStatus(createStatus, "error", t("Could not add source ({code}): {msg}", { code: err.code, msg: err.message }));
     } finally {
       setBusy(submit, form, false);
     }
@@ -105,13 +106,13 @@ export function SourcesPanel({ api, onChanged } = {}) {
 
   async function reload() {
     clear(listEl);
-    listEl.append(el("p", { class: "muted" }, "Loading sources..."));
+    listEl.append(el("p", { class: "muted" }, t("Loading sources...")));
     try {
       const [data, authorsByPortal] = await Promise.all([api.listPortals(), loadAuthorsByPortal()]);
       const portals = (data && data.portals) || [];
       clear(listEl);
       if (!portals.length) {
-        listEl.append(el("p", { class: "muted" }, "No sources yet."));
+        listEl.append(el("p", { class: "muted" }, t("No sources yet.")));
         return;
       }
       const tbody = el("tbody", {});
@@ -122,17 +123,17 @@ export function SourcesPanel({ api, onChanged } = {}) {
       listEl.append(
         el("table", { class: "source-table" }, [
           el("thead", {}, el("tr", {}, [
-            el("th", {}, "Portal"),
-            el("th", {}, "Actions"),
-            el("th", {}, "Assigned to"),
-            el("th", {}, "Description"),
+            el("th", {}, t("Portal")),
+            el("th", {}, t("Actions")),
+            el("th", {}, t("Assigned to")),
+            el("th", {}, t("Description")),
           ])),
           tbody,
         ]),
       );
     } catch (err) {
       clear(listEl);
-      listEl.append(el("p", { class: "error", role: "alert" }, `Could not load sources: ${err.message}`));
+      listEl.append(el("p", { class: "error", role: "alert" }, t("Could not load sources: {msg}", { msg: err.message })));
     }
   }
 
@@ -160,7 +161,7 @@ export function SourcesPanel({ api, onChanged } = {}) {
   // so a failed toggle/delete/edit surfaces under the row's actions.
   function rows(portal, authors) {
     const enabled = !!portal.enabled;
-    const pill = el("span", { class: "status", dataset: { state: enabled ? "online" : "offline" } }, enabled ? "online" : "offline");
+    const pill = el("span", { class: "status", dataset: { state: enabled ? "online" : "offline" } }, enabled ? t("online") : t("offline"));
     // The flex layouts live on inner divs, never on the <td> itself: a flex <td>
     // drops out of the table's column grid and the cells stop aligning.
     const portalCell = el("td", {}, el("div", { class: "source-portal" }, [
@@ -171,25 +172,25 @@ export function SourcesPanel({ api, onChanged } = {}) {
 
     const cardStatus = el("p", { class: "form-status", role: "status", "aria-live": "polite" });
 
-    const toggleBtn = el("button", { type: "button" }, enabled ? "Disable" : "Enable");
+    const toggleBtn = el("button", { type: "button" }, enabled ? t("Disable") : t("Enable"));
     toggleBtn.addEventListener("click", () =>
       act(toggleBtn, () => (enabled ? api.disablePortal(portal.id) : api.enablePortal(portal.id)), cardStatus));
 
     // Two-click delete instead of window.confirm (a no-op under jsdom): the first
     // click arms the button, the second performs the delete.
     let armed = false;
-    const deleteBtn = el("button", { type: "button", class: "secondary" }, "Delete");
+    const deleteBtn = el("button", { type: "button", class: "secondary" }, t("Delete"));
     deleteBtn.addEventListener("click", () => {
       if (!armed) {
         armed = true;
-        deleteBtn.textContent = "Confirm";
+        deleteBtn.textContent = t("Confirm");
         deleteBtn.dataset.confirm = "true";
         return;
       }
       act(deleteBtn, () => api.deletePortal(portal.id), cardStatus);
     });
 
-    const editBtn = el("button", { type: "button", class: "secondary" }, "Edit");
+    const editBtn = el("button", { type: "button", class: "secondary" }, t("Edit"));
     const actionsCell = el("td", {}, [
       el("div", { class: "source-actions" }, [toggleBtn, editBtn, deleteBtn]),
       cardStatus,
@@ -204,7 +205,7 @@ export function SourcesPanel({ api, onChanged } = {}) {
         { class: "source-authors" },
         authors.length
           ? authors.map((a) => el("span", { class: "author-chip", dataset: { section: a.beat } }, a.name))
-          : [el("span", { class: "source-authors-none" }, "No authors assigned")],
+          : [el("span", { class: "source-authors-none" }, t("No authors assigned"))],
       ),
     );
 
@@ -246,17 +247,17 @@ export function SourcesPanel({ api, onChanged } = {}) {
     enabled.checked = !!portal.enabled;
     const refs = { homepage, description, ownership, feeds, feedType, language, enabled };
 
-    const save = el("button", { type: "submit" }, "Save");
-    const cancel = el("button", { type: "button", class: "secondary" }, "Cancel");
+    const save = el("button", { type: "submit" }, t("Save"));
+    const cancel = el("button", { type: "button", class: "secondary" }, t("Cancel"));
 
     const editForm = el("form", { class: "source-edit" }, [
-      field("Description", description, `se-${id}-desc`),
-      helpField("Ownership group", ownership, `se-${id}-ownership`, OWNERSHIP_HELP),
-      field("Homepage", homepage, `se-${id}-homepage`),
-      field("Feed URLs (comma separated)", feeds, `se-${id}-feeds`),
-      field("Feed type", feedType, `se-${id}-feed-type`),
-      field("Language", language, `se-${id}-language`),
-      checkField("Enabled", enabled, `se-${id}-enabled`),
+      field(t("Description"), description, `se-${id}-desc`),
+      helpField(t("Ownership group"), ownership, `se-${id}-ownership`, t(OWNERSHIP_HELP)),
+      field(t("Homepage"), homepage, `se-${id}-homepage`),
+      field(t("Feed URLs (comma separated)"), feeds, `se-${id}-feeds`),
+      field(t("Feed type"), feedType, `se-${id}-feed-type`),
+      field(t("Language"), language, `se-${id}-language`),
+      checkField(t("Enabled"), enabled, `se-${id}-enabled`),
       el("div", { class: "source-actions" }, [save, cancel]),
     ]);
     cancel.addEventListener("click", () => onClose());
@@ -264,14 +265,14 @@ export function SourcesPanel({ api, onChanged } = {}) {
       event.preventDefault();
       const body = collectEditable(refs, { allowClear: true });
       save.disabled = true;
-      setStatus(cardStatus, "pending", "Saving...");
+      setStatus(cardStatus, "pending", t("Saving..."));
       try {
         await api.patchPortal(id, body);
         await reload();
         if (onChanged) onChanged();
       } catch (err) {
         save.disabled = false;
-        setStatus(cardStatus, "error", `Could not save (${err.code}): ${err.message}`);
+        setStatus(cardStatus, "error", t("Could not save ({code}): {msg}", { code: err.code, msg: err.message }));
       }
     });
     return editForm;
@@ -288,7 +289,7 @@ export function SourcesPanel({ api, onChanged } = {}) {
       if (onChanged) onChanged();
     } catch (err) {
       button.disabled = false;
-      setStatus(statusNode, "error", `Action failed (${err.code}): ${err.message}`);
+      setStatus(statusNode, "error", t("Action failed ({code}): {msg}", { code: err.code, msg: err.message }));
     }
   }
 

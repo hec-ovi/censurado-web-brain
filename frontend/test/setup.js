@@ -15,3 +15,13 @@ if (!globalThis.__JSDOM_INSTALLED__) {
   if (savedFetch && globalThis.fetch !== savedFetch) globalThis.fetch = savedFetch;
   globalThis.__JSDOM_INSTALLED__ = true;
 }
+
+// Pin the UI locale to English for every test. The served product defaults to
+// Spanish (i18n.js DEFAULT = "es"), but t() is identity under "en", so every
+// existing English assertion holds byte-for-byte. Set it unconditionally on each
+// import so a test file that ran a switch cannot leak "es" into the next file.
+try {
+  globalThis.localStorage.setItem("admin-lang", "en");
+} catch {
+  /* localStorage can be unavailable in hardened environments. */
+}

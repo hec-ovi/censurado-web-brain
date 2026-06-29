@@ -1,4 +1,5 @@
 import { el, clear, field, help } from "./el.js";
+import { t } from "./i18n.js";
 
 // The Editorial tab: the house-style config editor. The style guide is VERSIONED
 // (every edit publishes a new immutable version and activates it), so this panel
@@ -73,22 +74,22 @@ export function EditorialPanel({ api } = {}) {
     const rules = el("textarea", { id: "ed-style-rules", rows: "4" });
     const structure = el("textarea", { id: "ed-style-structure", rows: "4" });
     const createdBy = el("input", { type: "text", id: "ed-style-created-by", autocomplete: "off" });
-    const publish = el("button", { type: "submit" }, "Publish new version");
+    const publish = el("button", { type: "submit" }, t("Publish new version"));
     const status = el("p", { class: "form-status", role: "status", "aria-live": "polite" });
 
     const form = el("form", { class: "editorial-style" }, [
-      field("Voice", voice, "ed-style-voice"),
-      field("Exemplars (JSON array)", exemplars, "ed-style-exemplars"),
-      field("Rules (JSON array)", rules, "ed-style-rules"),
-      field("Structure (JSON object)", structure, "ed-style-structure"),
-      field("Published by (optional)", createdBy, "ed-style-created-by"),
+      field(t("Voice"), voice, "ed-style-voice"),
+      field(t("Exemplars (JSON array)"), exemplars, "ed-style-exemplars"),
+      field(t("Rules (JSON array)"), rules, "ed-style-rules"),
+      field(t("Structure (JSON object)"), structure, "ed-style-structure"),
+      field(t("Published by (optional)"), createdBy, "ed-style-created-by"),
       publish,
       status,
     ]);
     form.addEventListener("submit", onPublish);
 
     const panel = el("section", { class: "panel" }, [
-      el("div", { class: "panel-head" }, [el("h2", {}, "Style"), help(STYLE_HELP)]),
+      el("div", { class: "panel-head" }, [el("h2", {}, t("Style")), help(t(STYLE_HELP))]),
       versionNote,
       form,
     ]);
@@ -103,7 +104,7 @@ export function EditorialPanel({ api } = {}) {
         structure.value = JSON.stringify(s.structure || {}, null, 2);
         versionNote.dataset.state = "online";
         versionNote.className = "muted";
-        versionNote.textContent = `Active version ${s.version}.`;
+        versionNote.textContent = t("Active version {v}.", { v: s.version });
         publish.disabled = false; // clean read: safe to publish
       } catch (err) {
         if (err.status === 404) {
@@ -116,7 +117,7 @@ export function EditorialPanel({ api } = {}) {
           structure.value = "{}";
           versionNote.dataset.state = "offline";
           versionNote.className = "muted";
-          versionNote.textContent = "No active style yet. Publish one below to get started.";
+          versionNote.textContent = t("No active style yet. Publish one below to get started.");
           publish.disabled = false; // nothing to carry forward: safe to publish
         } else {
           // A genuine read failure (not a clean 404): we cannot see the active
@@ -125,7 +126,7 @@ export function EditorialPanel({ api } = {}) {
           loaded = null;
           versionNote.dataset.state = "";
           versionNote.className = "error";
-          versionNote.textContent = `Could not load style: ${err.message}. Reload before publishing.`;
+          versionNote.textContent = t("Could not load style: {msg}. Reload before publishing.", { msg: err.message });
           publish.disabled = true;
         }
       }
@@ -135,11 +136,11 @@ export function EditorialPanel({ api } = {}) {
       event.preventDefault();
       if (publish.disabled) return; // style read failed; refuse to overwrite blind
       // Parse the three JSON fields first; a bad field aborts before any POST.
-      const ex = parseJson(exemplars.value, "Exemplars", "array");
+      const ex = parseJson(exemplars.value, t("Exemplars"), "array");
       if (ex.error) return setStatus(status, "error", ex.error);
-      const ru = parseJson(rules.value, "Rules", "array");
+      const ru = parseJson(rules.value, t("Rules"), "array");
       if (ru.error) return setStatus(status, "error", ru.error);
-      const st = parseJson(structure.value, "Structure", "object");
+      const st = parseJson(structure.value, t("Structure"), "object");
       if (st.error) return setStatus(status, "error", st.error);
 
       const body = {
@@ -156,13 +157,13 @@ export function EditorialPanel({ api } = {}) {
       };
 
       setBusy(publish, form, true);
-      setStatus(status, "pending", "Publishing...");
+      setStatus(status, "pending", t("Publishing..."));
       try {
         await api.postStyle(body);
         await reload();
-        setStatus(status, "done", "Published a new version.");
+        setStatus(status, "done", t("Published a new version."));
       } catch (err) {
-        setStatus(status, "error", `Could not publish (${err.code}): ${err.message}`);
+        setStatus(status, "error", t("Could not publish ({code}): {msg}", { code: err.code, msg: err.message }));
       } finally {
         setBusy(publish, form, false);
       }
@@ -173,21 +174,21 @@ export function EditorialPanel({ api } = {}) {
 
   // ---- 2. LEXICON -------------------------------------------------------
   function buildLexicon() {
-    const banned = el("textarea", { id: "ed-lex-banned", rows: "4", placeholder: "one term per line" });
+    const banned = el("textarea", { id: "ed-lex-banned", rows: "4", placeholder: t("one term per line") });
     const swaps = el("textarea", { id: "ed-lex-swaps", rows: "4" });
-    const save = el("button", { type: "submit" }, "Save lexicon");
+    const save = el("button", { type: "submit" }, t("Save lexicon"));
     const status = el("p", { class: "form-status", role: "status", "aria-live": "polite" });
 
     const form = el("form", { class: "editorial-lexicon" }, [
-      field("Banned terms (one per line)", banned, "ed-lex-banned"),
-      field("Preferred swaps (JSON object)", swaps, "ed-lex-swaps"),
+      field(t("Banned terms (one per line)"), banned, "ed-lex-banned"),
+      field(t("Preferred swaps (JSON object)"), swaps, "ed-lex-swaps"),
       save,
       status,
     ]);
     form.addEventListener("submit", onSave);
 
     const panel = el("section", { class: "panel" }, [
-      el("div", { class: "panel-head" }, [el("h2", {}, "Lexicon"), help(LEXICON_HELP)]),
+      el("div", { class: "panel-head" }, [el("h2", {}, t("Lexicon")), help(t(LEXICON_HELP))]),
       form,
     ]);
 
@@ -201,27 +202,27 @@ export function EditorialPanel({ api } = {}) {
         if (err.status === 404) {
           banned.value = "";
           swaps.value = "{}";
-          setStatus(status, "", "Publish a style first to edit the lexicon.");
+          setStatus(status, "", t("Publish a style first to edit the lexicon."));
         } else {
-          setStatus(status, "error", `Could not load lexicon: ${err.message}`);
+          setStatus(status, "error", t("Could not load lexicon: {msg}", { msg: err.message }));
         }
       }
     }
 
     async function onSave(event) {
       event.preventDefault();
-      const swapsParsed = parseJson(swaps.value, "Preferred swaps", "object");
+      const swapsParsed = parseJson(swaps.value, t("Preferred swaps"), "object");
       if (swapsParsed.error) return setStatus(status, "error", swapsParsed.error);
       const banned_terms = splitLines(banned.value);
 
       setBusy(save, form, true);
-      setStatus(status, "pending", "Saving...");
+      setStatus(status, "pending", t("Saving..."));
       try {
         await api.putLexicon({ banned_terms, preferred_swaps: swapsParsed.value });
         await reload();
-        setStatus(status, "done", "Lexicon saved.");
+        setStatus(status, "done", t("Lexicon saved."));
       } catch (err) {
-        setStatus(status, "error", `Could not save lexicon (${err.code}): ${err.message}`);
+        setStatus(status, "error", t("Could not save lexicon ({code}): {msg}", { code: err.code, msg: err.message }));
       } finally {
         setBusy(save, form, false);
       }
@@ -232,23 +233,23 @@ export function EditorialPanel({ api } = {}) {
 
   // ---- 3. SOURCING ------------------------------------------------------
   function buildSourcing() {
-    const minSources = el("input", { type: "number", id: "ed-src-min", min: "0", step: "1", placeholder: "off" });
+    const minSources = el("input", { type: "number", id: "ed-src-min", min: "0", step: "1", placeholder: t("off") });
     const requireAttr = el("input", { type: "checkbox", id: "ed-src-attr" });
     const noFab = el("input", { type: "checkbox", id: "ed-src-nofab" });
-    const save = el("button", { type: "submit" }, "Save sourcing");
+    const save = el("button", { type: "submit" }, t("Save sourcing"));
     const status = el("p", { class: "form-status", role: "status", "aria-live": "polite" });
 
     const form = el("form", { class: "editorial-sourcing" }, [
-      field("Minimum sources (blank = gate off)", minSources, "ed-src-min"),
-      field("Require attribution", requireAttr, "ed-src-attr"),
-      field("No fabricated quotes", noFab, "ed-src-nofab"),
+      field(t("Minimum sources (blank = gate off)"), minSources, "ed-src-min"),
+      field(t("Require attribution"), requireAttr, "ed-src-attr"),
+      field(t("No fabricated quotes"), noFab, "ed-src-nofab"),
       save,
       status,
     ]);
     form.addEventListener("submit", onSave);
 
     const panel = el("section", { class: "panel" }, [
-      el("div", { class: "panel-head" }, [el("h2", {}, "Sourcing"), help(SOURCING_HELP)]),
+      el("div", { class: "panel-head" }, [el("h2", {}, t("Sourcing")), help(t(SOURCING_HELP))]),
       form,
     ]);
 
@@ -264,9 +265,9 @@ export function EditorialPanel({ api } = {}) {
           minSources.value = "";
           requireAttr.checked = false;
           noFab.checked = false;
-          setStatus(status, "", "Publish a style first to edit sourcing.");
+          setStatus(status, "", t("Publish a style first to edit sourcing."));
         } else {
-          setStatus(status, "error", `Could not load sourcing: ${err.message}`);
+          setStatus(status, "error", t("Could not load sourcing: {msg}", { msg: err.message }));
         }
       }
     }
@@ -280,13 +281,13 @@ export function EditorialPanel({ api } = {}) {
       if (raw !== "") {
         const n = Number.parseInt(raw, 10);
         if (!Number.isInteger(n) || n < 0) {
-          return setStatus(status, "error", "Minimum sources must be a whole number, or blank to turn the gate off.");
+          return setStatus(status, "error", t("Minimum sources must be a whole number, or blank to turn the gate off."));
         }
         min = n;
       }
 
       setBusy(save, form, true);
-      setStatus(status, "pending", "Saving...");
+      setStatus(status, "pending", t("Saving..."));
       try {
         await api.putSourcing({
           min_sources: min,
@@ -294,9 +295,9 @@ export function EditorialPanel({ api } = {}) {
           no_fabricated_quotes: noFab.checked,
         });
         await reload();
-        setStatus(status, "done", "Sourcing saved.");
+        setStatus(status, "done", t("Sourcing saved."));
       } catch (err) {
-        setStatus(status, "error", `Could not save sourcing (${err.code}): ${err.message}`);
+        setStatus(status, "error", t("Could not save sourcing ({code}): {msg}", { code: err.code, msg: err.message }));
       } finally {
         setBusy(save, form, false);
       }
@@ -318,7 +319,7 @@ export function EditorialPanel({ api } = {}) {
     const city = el("input", { type: "text", id: "ed-loc-city", autocomplete: "off" });
     const latlong = el("input", { type: "text", id: "ed-loc-latlong", autocomplete: "off" });
     const derived = el("div", { class: "editorial-derived" });
-    const save = el("button", { type: "submit" }, "Save location");
+    const save = el("button", { type: "submit" }, t("Save location"));
     const status = el("p", { class: "form-status", role: "status", "aria-live": "polite" });
 
     // The editable fields, paired with the key the PUT expects.
@@ -332,20 +333,20 @@ export function EditorialPanel({ api } = {}) {
     ];
 
     const form = el("form", { class: "editorial-location" }, [
-      field("Region", region, "ed-loc-region"),
-      field("UI language", uiLang, "ed-loc-ui-lang"),
-      field("Language", language, "ed-loc-language"),
-      field("GDELT country", gdelt, "ed-loc-gdelt"),
-      field("City", city, "ed-loc-city"),
-      field("Lat/long", latlong, "ed-loc-latlong"),
-      el("div", { class: "field" }, [el("span", { class: "field-label" }, "Derived (read-only)"), derived]),
+      field(t("Region"), region, "ed-loc-region"),
+      field(t("UI language"), uiLang, "ed-loc-ui-lang"),
+      field(t("Language"), language, "ed-loc-language"),
+      field(t("GDELT country"), gdelt, "ed-loc-gdelt"),
+      field(t("City"), city, "ed-loc-city"),
+      field(t("Lat/long"), latlong, "ed-loc-latlong"),
+      el("div", { class: "field" }, [el("span", { class: "field-label" }, t("Derived (read-only)")), derived]),
       save,
       status,
     ]);
     form.addEventListener("submit", onSave);
 
     const panel = el("section", { class: "panel" }, [
-      el("div", { class: "panel-head" }, [el("h2", {}, "Location"), help(LOCATION_HELP)]),
+      el("div", { class: "panel-head" }, [el("h2", {}, t("Location")), help(t(LOCATION_HELP))]),
       form,
     ]);
 
@@ -358,7 +359,7 @@ export function EditorialPanel({ api } = {}) {
         derived.append(readOnlyRow("gl", loc.gl), readOnlyRow("hl", loc.hl), readOnlyRow("ceid", loc.ceid));
         setStatus(status, "", "");
       } catch (err) {
-        setStatus(status, "error", `Could not load location: ${err.message}`);
+        setStatus(status, "error", t("Could not load location: {msg}", { msg: err.message }));
       }
     }
 
@@ -372,18 +373,18 @@ export function EditorialPanel({ api } = {}) {
         if (value !== before) body[key] = value;
       }
       if (!Object.keys(body).length) {
-        setStatus(status, "done", "No changes to save.");
+        setStatus(status, "done", t("No changes to save."));
         return;
       }
 
       setBusy(save, form, true);
-      setStatus(status, "pending", "Saving...");
+      setStatus(status, "pending", t("Saving..."));
       try {
         await api.putLocation(body);
         await reload();
-        setStatus(status, "done", "Location saved.");
+        setStatus(status, "done", t("Location saved."));
       } catch (err) {
-        setStatus(status, "error", `Could not save location (${err.code}): ${err.message}`);
+        setStatus(status, "error", t("Could not save location ({code}): {msg}", { code: err.code, msg: err.message }));
       } finally {
         setBusy(save, form, false);
       }
@@ -396,25 +397,25 @@ export function EditorialPanel({ api } = {}) {
   function buildVersions() {
     const listEl = el("div", { class: "editorial-versions" });
     const panel = el("section", { class: "panel" }, [
-      el("div", { class: "panel-head" }, [el("h2", {}, "Versions"), help(VERSIONS_HELP)]),
+      el("div", { class: "panel-head" }, [el("h2", {}, t("Versions")), help(t(VERSIONS_HELP))]),
       listEl,
     ]);
 
     async function load() {
       clear(listEl);
-      listEl.append(el("p", { class: "muted" }, "Loading versions..."));
+      listEl.append(el("p", { class: "muted" }, t("Loading versions...")));
       try {
         const data = await api.getStyleVersions({ limit: 100, offset: 0 });
         const list = (data && data.versions) || [];
         clear(listEl);
         if (!list.length) {
-          listEl.append(el("p", { class: "muted" }, "No versions yet."));
+          listEl.append(el("p", { class: "muted" }, t("No versions yet.")));
           return;
         }
         for (const v of list) listEl.append(row(v));
       } catch (err) {
         clear(listEl);
-        listEl.append(el("p", { class: "error", role: "alert" }, `Could not load versions: ${err.message}`));
+        listEl.append(el("p", { class: "error", role: "alert" }, t("Could not load versions: {msg}", { msg: err.message })));
       }
     }
 
@@ -425,28 +426,28 @@ export function EditorialPanel({ api } = {}) {
       const pill = el(
         "span",
         { class: "status", dataset: { state: active ? "online" : "offline" } },
-        active ? "active" : "inactive",
+        active ? t("active") : t("inactive"),
       );
       const meta = el("div", { class: "version-meta" }, [
         el("span", { class: "version-num" }, `v${v.version}`),
         pill,
-        el("span", { class: "muted" }, v.created_by || "unknown"),
+        el("span", { class: "muted" }, v.created_by || t("unknown")),
         el("span", { class: "muted" }, v.created_at || ""),
       ]);
       const rowStatus = el("p", { class: "form-status", role: "status", "aria-live": "polite" });
       const children = [meta];
 
       if (!active) {
-        const promote = el("button", { type: "button", class: "secondary" }, "Promote");
+        const promote = el("button", { type: "button", class: "secondary" }, t("Promote"));
         promote.addEventListener("click", async () => {
           promote.disabled = true;
-          setStatus(rowStatus, "pending", "Promoting...");
+          setStatus(rowStatus, "pending", t("Promoting..."));
           try {
             await api.promoteStyleVersion(v.version);
             await reload();
           } catch (err) {
             promote.disabled = false;
-            setStatus(rowStatus, "error", `Could not promote (${err.code}): ${err.message}`);
+            setStatus(rowStatus, "error", t("Could not promote ({code}): {msg}", { code: err.code, msg: err.message }));
           }
         });
         children.push(promote);
@@ -480,11 +481,11 @@ function parseJson(text, label, kind) {
   try {
     value = JSON.parse(trimmed);
   } catch {
-    return { error: `${label} must be valid JSON.` };
+    return { error: t("{label} must be valid JSON.", { label }) };
   }
-  if (kind === "array" && !Array.isArray(value)) return { error: `${label} must be a JSON array.` };
+  if (kind === "array" && !Array.isArray(value)) return { error: t("{label} must be a JSON array.", { label }) };
   if (kind === "object" && (value === null || typeof value !== "object" || Array.isArray(value))) {
-    return { error: `${label} must be a JSON object.` };
+    return { error: t("{label} must be a JSON object.", { label }) };
   }
   return { value };
 }

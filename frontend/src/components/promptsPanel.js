@@ -1,4 +1,5 @@
 import { el, clear, field, help } from "./el.js";
+import { t } from "./i18n.js";
 
 // The Prompts tab: the prompt-template editor. Each template is the stage
 // instructions the brain runs (a journalist research step, an editor pass, ...),
@@ -33,7 +34,7 @@ export function PromptsPanel({ api } = {}) {
   let currentKey = "";
 
   // --- Key selector ------------------------------------------------------
-  const select = el("select", { id: "pp-key", "aria-label": "Prompt template" });
+  const select = el("select", { id: "pp-key", "aria-label": t("Prompt template") });
   const selectNote = el("p", { class: "muted", role: "status", "aria-live": "polite" });
   select.addEventListener("change", () => {
     currentKey = select.value;
@@ -41,8 +42,8 @@ export function PromptsPanel({ api } = {}) {
   });
 
   const selectPanel = el("section", { class: "panel" }, [
-    el("div", { class: "panel-head" }, [el("h2", {}, "Prompt templates")]),
-    field("Template", select, "pp-key"),
+    el("div", { class: "panel-head" }, [el("h2", {}, t("Prompt templates"))]),
+    field(t("Template"), select, "pp-key"),
     selectNote,
   ]);
 
@@ -51,19 +52,19 @@ export function PromptsPanel({ api } = {}) {
   // No maxlength / no length cap: a prompt body can be arbitrarily long.
   const body = el("textarea", { id: "pp-body", rows: "16" });
   const createdBy = el("input", { type: "text", id: "pp-created-by", autocomplete: "off" });
-  const publish = el("button", { type: "submit" }, "Publish new version");
+  const publish = el("button", { type: "submit" }, t("Publish new version"));
   const editorStatus = el("p", { class: "form-status", role: "status", "aria-live": "polite" });
 
   const editorForm = el("form", { class: "prompts-editor" }, [
-    field("Body", body, "pp-body"),
-    field("Published by (optional)", createdBy, "pp-created-by"),
+    field(t("Body"), body, "pp-body"),
+    field(t("Published by (optional)"), createdBy, "pp-created-by"),
     publish,
     editorStatus,
   ]);
   editorForm.addEventListener("submit", onPublish);
 
   const editorPanel = el("section", { class: "panel" }, [
-    el("div", { class: "panel-head" }, [el("h2", {}, "Editor"), help(EDITOR_HELP)]),
+    el("div", { class: "panel-head" }, [el("h2", {}, t("Editor")), help(t(EDITOR_HELP))]),
     activeNote,
     editorForm,
   ]);
@@ -71,7 +72,7 @@ export function PromptsPanel({ api } = {}) {
   // --- Versions ----------------------------------------------------------
   const versionsList = el("div", { class: "prompts-versions" });
   const versionsPanel = el("section", { class: "panel" }, [
-    el("div", { class: "panel-head" }, [el("h2", {}, "Versions"), help(VERSIONS_HELP)]),
+    el("div", { class: "panel-head" }, [el("h2", {}, t("Versions")), help(t(VERSIONS_HELP))]),
     versionsList,
   ]);
 
@@ -83,13 +84,13 @@ export function PromptsPanel({ api } = {}) {
     try {
       const data = await api.listPrompts();
       const templates = (data && data.templates) || [];
-      const keys = templates.map((t) => t.key);
+      const keys = templates.map((tpl) => tpl.key);
       clear(select);
       if (!keys.length) {
         currentKey = "";
         selectNote.dataset.state = "offline";
         selectNote.className = "muted";
-        selectNote.textContent = "No prompt templates.";
+        selectNote.textContent = t("No prompt templates.");
         clearEditor();
         clear(versionsList);
         return;
@@ -105,7 +106,7 @@ export function PromptsPanel({ api } = {}) {
       selectNote.dataset.state = "";
       selectNote.className = "error";
       selectNote.setAttribute("role", "alert");
-      selectNote.textContent = `Could not load templates: ${err.message}`;
+      selectNote.textContent = t("Could not load templates: {msg}", { msg: err.message });
     }
   }
 
@@ -123,18 +124,18 @@ export function PromptsPanel({ api } = {}) {
     publish.disabled = true;
     setStatus(editorStatus, "", "");
     try {
-      const t = await api.getPrompt(key);
+      const tpl = await api.getPrompt(key);
       if (key !== currentKey) return; // a newer selection won; drop this stale result
-      body.value = t.body || "";
+      body.value = tpl.body || "";
       activeNote.dataset.state = "online";
       activeNote.className = "muted";
-      activeNote.textContent = `Active version ${t.version} for ${t.key}.`;
+      activeNote.textContent = t("Active version {v} for {key}.", { v: tpl.version, key: tpl.key });
     } catch (err) {
       if (key !== currentKey) return;
       body.value = "";
       activeNote.dataset.state = "";
       activeNote.className = "error";
-      activeNote.textContent = `Could not load template: ${err.message}`;
+      activeNote.textContent = t("Could not load template: {msg}", { msg: err.message });
     } finally {
       if (key === currentKey) publish.disabled = false;
     }
@@ -144,7 +145,7 @@ export function PromptsPanel({ api } = {}) {
     body.value = "";
     activeNote.dataset.state = "offline";
     activeNote.className = "muted";
-    activeNote.textContent = "No template selected.";
+    activeNote.textContent = t("No template selected.");
     setStatus(editorStatus, "", "");
   }
 
@@ -154,7 +155,7 @@ export function PromptsPanel({ api } = {}) {
     // The brain rejects a blank body (422 invalid_prompt); block it here so no
     // pointless POST goes out, and tell the operator inline.
     if (!body.value.trim()) {
-      setStatus(editorStatus, "error", "Body cannot be empty.");
+      setStatus(editorStatus, "error", t("Body cannot be empty."));
       return;
     }
 
@@ -166,13 +167,13 @@ export function PromptsPanel({ api } = {}) {
     };
 
     setBusy(publish, editorForm, true);
-    setStatus(editorStatus, "pending", "Publishing...");
+    setStatus(editorStatus, "pending", t("Publishing..."));
     try {
       await api.publishPrompt(payload);
       await loadKey();
-      setStatus(editorStatus, "done", "Published a new version.");
+      setStatus(editorStatus, "done", t("Published a new version."));
     } catch (err) {
-      setStatus(editorStatus, "error", `Could not publish (${err.code}): ${err.message}`);
+      setStatus(editorStatus, "error", t("Could not publish ({code}): {msg}", { code: err.code, msg: err.message }));
     } finally {
       setBusy(publish, editorForm, false);
     }
@@ -180,19 +181,19 @@ export function PromptsPanel({ api } = {}) {
 
   async function loadVersions() {
     clear(versionsList);
-    versionsList.append(el("p", { class: "muted" }, "Loading versions..."));
+    versionsList.append(el("p", { class: "muted" }, t("Loading versions...")));
     try {
       const data = await api.getPromptVersions({ key: currentKey });
       const list = (data && data.versions) || [];
       clear(versionsList);
       if (!list.length) {
-        versionsList.append(el("p", { class: "muted" }, "No versions yet."));
+        versionsList.append(el("p", { class: "muted" }, t("No versions yet.")));
         return;
       }
       for (const v of list) versionsList.append(versionRow(v));
     } catch (err) {
       clear(versionsList);
-      versionsList.append(el("p", { class: "error", role: "alert" }, `Could not load versions: ${err.message}`));
+      versionsList.append(el("p", { class: "error", role: "alert" }, t("Could not load versions: {msg}", { msg: err.message })));
     }
   }
 
@@ -203,28 +204,28 @@ export function PromptsPanel({ api } = {}) {
     const pill = el(
       "span",
       { class: "status", dataset: { state: active ? "online" : "offline" } },
-      active ? "active" : "inactive",
+      active ? t("active") : t("inactive"),
     );
     const meta = el("div", { class: "version-meta" }, [
       el("span", { class: "version-num" }, `v${v.version}`),
       pill,
-      el("span", { class: "muted" }, v.created_by || "unknown"),
+      el("span", { class: "muted" }, v.created_by || t("unknown")),
       el("span", { class: "muted" }, v.created_at || ""),
     ]);
     const rowStatus = el("p", { class: "form-status", role: "status", "aria-live": "polite" });
     const children = [meta];
 
     if (!active) {
-      const promote = el("button", { type: "button", class: "secondary" }, "Promote");
+      const promote = el("button", { type: "button", class: "secondary" }, t("Promote"));
       promote.addEventListener("click", async () => {
         promote.disabled = true;
-        setStatus(rowStatus, "pending", "Promoting...");
+        setStatus(rowStatus, "pending", t("Promoting..."));
         try {
           await api.promotePromptVersion(v.version);
           await loadKey();
         } catch (err) {
           promote.disabled = false;
-          setStatus(rowStatus, "error", `Could not promote (${err.code}): ${err.message}`);
+          setStatus(rowStatus, "error", t("Could not promote ({code}): {msg}", { code: err.code, msg: err.message }));
         }
       });
       children.push(promote);

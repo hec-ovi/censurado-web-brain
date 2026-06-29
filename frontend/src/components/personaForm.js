@@ -1,4 +1,5 @@
 import { el, field } from "./el.js";
+import { t } from "./i18n.js";
 import { pollUntil } from "../poll.js";
 
 // The harness's closed section vocabulary, mirrored from the brain's
@@ -18,14 +19,14 @@ export function PersonaForm({ api, onCreated, poll = pollUntil, pollOpts } = {})
   const beatSelect = el("select", { id: "pf-beat" }, SECTIONS.map((s) => el("option", { value: s }, s)));
   const seedInput = el("textarea", { id: "pf-seed", rows: "3" });
   const sourcesInput = el("input", { type: "text", id: "pf-sources", placeholder: "example.com, another.org" });
-  const submit = el("button", { type: "submit" }, "Synthesize persona");
+  const submit = el("button", { type: "submit" }, t("Synthesize persona"));
   const status = el("p", { class: "form-status", role: "status", "aria-live": "polite" });
 
   const form = el("form", { class: "persona-form" }, [
-    field("Display name", nameInput, "pf-name"),
-    field("Beat", beatSelect, "pf-beat"),
-    field("Seed description", seedInput, "pf-seed"),
-    field("Preferred sources (comma separated)", sourcesInput, "pf-sources"),
+    field(t("Display name"), nameInput, "pf-name"),
+    field(t("Beat"), beatSelect, "pf-beat"),
+    field(t("Seed description"), seedInput, "pf-seed"),
+    field(t("Preferred sources (comma separated)"), sourcesInput, "pf-sources"),
     submit,
     status,
   ]);
@@ -43,36 +44,36 @@ export function PersonaForm({ api, onCreated, poll = pollUntil, pollOpts } = {})
       if (!display_name) nameInput.setAttribute("aria-invalid", "true");
       if (!seed) seedInput.setAttribute("aria-invalid", "true");
       (!display_name ? nameInput : seedInput).focus();
-      setStatus("error", "Display name and seed are required.");
+      setStatus("error", t("Display name and seed are required."));
       return;
     }
     const sources = splitList(sourcesInput.value);
 
     setBusy(true);
-    setStatus("pending", "Submitting...");
+    setStatus("pending", t("Submitting..."));
     let personaId = "";
     try {
       const job = await api.createPersona({ display_name, beat: beatSelect.value, seed, sources });
       personaId = job.persona_id || "";
-      setStatus("pending", `Synthesizing "${personaId}"...`);
+      setStatus("pending", t('Synthesizing "{id}"...', { id: personaId }));
       const done = await poll(
         () => api.getJob(job.job_id),
         (j) => j.status === "done" || j.status === "failed",
         pollOpts,
       );
       if (done.status === "done") {
-        setStatus("done", `Created ${done.persona_id}.`);
+        setStatus("done", t("Created {id}.", { id: done.persona_id }));
         form.reset();
         if (onCreated) onCreated(done.persona_id);
       } else {
-        setStatus("error", `Synthesis failed: ${done.error || "unknown error"}.`);
+        setStatus("error", t("Synthesis failed: {err}.", { err: done.error || t("unknown error") }));
       }
     } catch (err) {
       if (err.code === "poll_timeout") {
-        const which = personaId ? ` "${personaId}"` : "";
-        setStatus("pending", `Still synthesizing${which}. This is taking longer than usual; reload later to check.`);
+        const which = personaId ? t(' "{id}"', { id: personaId }) : "";
+        setStatus("pending", t("Still synthesizing{which}. This is taking longer than usual; reload later to check.", { which }));
       } else {
-        setStatus("error", `Could not create persona: ${err.message}`);
+        setStatus("error", t("Could not create persona: {msg}", { msg: err.message }));
       }
     } finally {
       setBusy(false);

@@ -321,6 +321,50 @@ textarea:focus {
   outline: 3px solid color-mix(in srgb, var(--accent) 22%, transparent);
 }
 
+/* Language switch: same segmented look as the theme switch, two segments. */
+.lang-switch {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(48px, 1fr));
+  border: 1px solid var(--line);
+  border-radius: 0;
+  background: var(--surface);
+}
+
+.lang-option {
+  min-height: 36px;
+  border: 0;
+  border-right: 1px solid var(--line);
+  background: transparent;
+  color: var(--muted);
+  font-size: 0.82rem;
+  font-weight: 720;
+  padding: 0 10px;
+}
+
+.lang-option:last-child {
+  border-right: 0;
+}
+
+.lang-option[aria-pressed="true"] {
+  background: var(--accent);
+  color: #ffffff;
+}
+
+.lang-option:hover {
+  background: color-mix(in srgb, var(--accent) 12%, var(--surface));
+  color: var(--text);
+}
+
+.lang-option[aria-pressed="true"]:hover {
+  background: var(--accent-strong);
+  color: #ffffff;
+}
+
+.lang-option:focus {
+  border-color: var(--accent);
+  outline: 3px solid color-mix(in srgb, var(--accent) 22%, transparent);
+}
+
 .app-main {
   width: min(100%, 1280px);
   margin: 0 auto;
@@ -922,7 +966,8 @@ input[type="radio"] {
   }
 
   .topbar-actions,
-  .theme-switch {
+  .theme-switch,
+  .lang-switch {
     width: 100%;
   }
 

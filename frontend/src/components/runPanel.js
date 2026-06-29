@@ -1,4 +1,5 @@
 import { el, clear, field, help, isSafeImageSrc } from "./el.js";
+import { t } from "./i18n.js";
 import { pollUntil } from "../poll.js";
 
 // The manager-mode vocabulary for a batch run: managed runs the full manager
@@ -47,10 +48,10 @@ export function RunPanel({ api, poll = pollUntil, pollOpts } = {}) {
   const triggerSelect = el(
     "select",
     { id: "rp-trigger" },
-    TRIGGERS.map((t) => el("option", { value: t.value }, t.label)),
+    TRIGGERS.map((trg) => el("option", { value: trg.value }, t(trg.label))),
   );
   const triggerFields = el("div", { class: "trigger-fields" });
-  const submit = el("button", { type: "submit" }, "Start run");
+  const submit = el("button", { type: "submit" }, t("Start run"));
   const status = el("p", { class: "form-status", role: "status", "aria-live": "polite" });
   const resultEl = el("div", { class: "run-result" });
 
@@ -59,7 +60,7 @@ export function RunPanel({ api, poll = pollUntil, pollOpts } = {}) {
   let current = null;
 
   const form = el("form", { class: "run-form" }, [
-    field("Trigger", triggerSelect, "rp-trigger"),
+    field(t("Trigger"), triggerSelect, "rp-trigger"),
     triggerFields,
     submit,
     status,
@@ -72,10 +73,12 @@ export function RunPanel({ api, poll = pollUntil, pollOpts } = {}) {
 
   const triggerPanel = el("section", { class: "panel" }, [
     el("div", { class: "panel-head" }, [
-      el("h2", {}, "Trigger a run"),
+      el("h2", {}, t("Trigger a run")),
       help(
-        "Three ways to commission articles: full manager runs the whole newsroom, author batch scopes the " +
-          "manager to the authors you pick, single article writes one piece directly from a link.",
+        t(
+          "Three ways to commission articles: full manager runs the whole newsroom, author batch scopes the " +
+            "manager to the authors you pick, single article writes one piece directly from a link.",
+        ),
       ),
     ]),
     form,
@@ -83,11 +86,11 @@ export function RunPanel({ api, poll = pollUntil, pollOpts } = {}) {
   ]);
 
   // --- History panel -----------------------------------------------------
-  const historyFilter = el("select", { id: "rp-history-filter", "aria-label": "Filter runs by status" }, [
-    el("option", { value: "" }, "All statuses"),
+  const historyFilter = el("select", { id: "rp-history-filter", "aria-label": t("Filter runs by status") }, [
+    el("option", { value: "" }, t("All statuses")),
     ...HISTORY_STATUSES.map((s) => el("option", { value: s }, s)),
   ]);
-  const refreshBtn = el("button", { type: "button", class: "secondary" }, "Refresh");
+  const refreshBtn = el("button", { type: "button", class: "secondary" }, t("Refresh"));
   const historyList = el("div", { class: "run-history" });
   const historyDetail = el("div", { class: "history-detail" });
 
@@ -96,7 +99,7 @@ export function RunPanel({ api, poll = pollUntil, pollOpts } = {}) {
 
   const historyPanel = el("section", { class: "panel" }, [
     el("div", { class: "panel-head" }, [
-      el("h2", {}, "Run history"),
+      el("h2", {}, t("Run history")),
       el("div", { class: "history-controls" }, [historyFilter, refreshBtn]),
     ]),
     historyList,
@@ -142,12 +145,12 @@ export function RunPanel({ api, poll = pollUntil, pollOpts } = {}) {
   }
 
   function buildFull() {
-    const nInput = el("input", { type: "number", id: "rp-full-n", min: "0", step: "1", placeholder: "default" });
+    const nInput = el("input", { type: "number", id: "rp-full-n", min: "0", step: "1", placeholder: t("default") });
     const images = checkbox("rp-full-images", true);
     const node = el("div", {}, [
-      triggerHelpLine(FULL_SUMMARY, FULL_HELP),
-      field("Count (n)", nInput, "rp-full-n"),
-      field("Auto-generate images", images, "rp-full-images"),
+      triggerHelpLine(t(FULL_SUMMARY), t(FULL_HELP)),
+      field(t("Count (n)"), nInput, "rp-full-n"),
+      field(t("Auto-generate images"), images, "rp-full-images"),
     ]);
     return { type: "full", node, nInput, images };
   }
@@ -155,17 +158,17 @@ export function RunPanel({ api, poll = pollUntil, pollOpts } = {}) {
   function buildBatch() {
     const sub = el("select", { id: "rp-batch-mode" }, MODES.map((m) => el("option", { value: m }, m)));
     sub.value = "managed";
-    const nInput = el("input", { type: "number", id: "rp-batch-n", min: "0", step: "1", placeholder: "default" });
+    const nInput = el("input", { type: "number", id: "rp-batch-n", min: "0", step: "1", placeholder: t("default") });
     const images = checkbox("rp-batch-images", true);
 
     const checksWrap = el("div", { class: "author-checks" });
     const boxes = [];
     if (personasState === "loading") {
-      checksWrap.append(el("p", { class: "muted" }, "Loading authors..."));
+      checksWrap.append(el("p", { class: "muted" }, t("Loading authors...")));
     } else if (personasState === "error") {
-      checksWrap.append(el("p", { class: "error", role: "alert" }, `Could not load authors: ${personasError}`));
+      checksWrap.append(el("p", { class: "error", role: "alert" }, t("Could not load authors: {msg}", { msg: personasError })));
     } else if (!personas.length) {
-      checksWrap.append(el("p", { class: "muted" }, "No authors yet. Create one in the Authors tab."));
+      checksWrap.append(el("p", { class: "muted" }, t("No authors yet. Create one in the Authors tab.")));
     } else {
       for (const p of personas) {
         const box = el("input", { type: "checkbox", id: `rp-batch-author-${p.id}` });
@@ -175,42 +178,42 @@ export function RunPanel({ api, poll = pollUntil, pollOpts } = {}) {
     }
 
     const node = el("div", {}, [
-      triggerHelpLine(BATCH_SUMMARY, BATCH_HELP),
-      el("div", { class: "field" }, [el("span", { class: "field-label" }, "Authors"), checksWrap]),
-      field("Manager mode", sub, "rp-batch-mode"),
-      field("Count (n)", nInput, "rp-batch-n"),
-      field("Auto-generate images", images, "rp-batch-images"),
+      triggerHelpLine(t(BATCH_SUMMARY), t(BATCH_HELP)),
+      el("div", { class: "field" }, [el("span", { class: "field-label" }, t("Authors")), checksWrap]),
+      field(t("Manager mode"), sub, "rp-batch-mode"),
+      field(t("Count (n)"), nInput, "rp-batch-n"),
+      field(t("Auto-generate images"), images, "rp-batch-images"),
     ]);
     return { type: "batch", node, sub, nInput, images, checkedIds: () => boxes.filter((b) => b.box.checked).map((b) => b.id) };
   }
 
   function buildSingle() {
     const persona = el("select", { id: "rp-single-persona" }, [
-      el("option", { value: "" }, "Select an author..."),
+      el("option", { value: "" }, t("Select an author...")),
       ...personas.map((p) => el("option", { value: p.id }, p.display_name)),
     ]);
     const brief = el("textarea", { id: "rp-single-brief", rows: "3" });
-    const links = el("textarea", { id: "rp-single-links", rows: "3", placeholder: "one URL per line, or comma separated" });
-    const focus = el("input", { type: "text", id: "rp-single-focus", placeholder: "optional angle" });
+    const links = el("textarea", { id: "rp-single-links", rows: "3", placeholder: t("one URL per line, or comma separated") });
+    const focus = el("input", { type: "text", id: "rp-single-focus", placeholder: t("optional angle") });
     const images = checkbox("rp-single-images", true);
 
     const authorNote =
       personasState === "loading"
-        ? el("p", { class: "muted" }, "Loading authors...")
+        ? el("p", { class: "muted" }, t("Loading authors..."))
         : personasState === "error"
-          ? el("p", { class: "error", role: "alert" }, `Could not load authors: ${personasError}`)
+          ? el("p", { class: "error", role: "alert" }, t("Could not load authors: {msg}", { msg: personasError }))
           : personasState === "ready" && !personas.length
-            ? el("p", { class: "muted" }, "No authors yet. Create one in the Authors tab.")
+            ? el("p", { class: "muted" }, t("No authors yet. Create one in the Authors tab."))
             : null;
 
     const node = el("div", {}, [
-      triggerHelpLine(SINGLE_SUMMARY, SINGLE_HELP),
-      field("Author", persona, "rp-single-persona"),
+      triggerHelpLine(t(SINGLE_SUMMARY), t(SINGLE_HELP)),
+      field(t("Author"), persona, "rp-single-persona"),
       authorNote,
-      field("Brief", brief, "rp-single-brief"),
-      field("Links", links, "rp-single-links"),
-      field("Focus", focus, "rp-single-focus"),
-      field("Auto-generate images", images, "rp-single-images"),
+      field(t("Brief"), brief, "rp-single-brief"),
+      field(t("Links"), links, "rp-single-links"),
+      field(t("Focus"), focus, "rp-single-focus"),
+      field(t("Auto-generate images"), images, "rp-single-images"),
     ]);
     return { type: "single", node, persona, brief, links, focus, images };
   }
@@ -234,7 +237,7 @@ export function RunPanel({ api, poll = pollUntil, pollOpts } = {}) {
   function submitBatch() {
     const ids = current.checkedIds();
     if (!ids.length) {
-      setStatus("error", "Pick at least one author for the batch.");
+      setStatus("error", t("Pick at least one author for the batch."));
       return undefined;
     }
     const req = { mode: current.sub.value, persona_ids: ids };
@@ -249,11 +252,11 @@ export function RunPanel({ api, poll = pollUntil, pollOpts } = {}) {
     const links = splitList(current.links.value);
     const focus = current.focus.value.trim();
     if (!persona_id) {
-      setStatus("error", "Pick an author for the article.");
+      setStatus("error", t("Pick an author for the article."));
       return undefined;
     }
     if (!brief && !links.length) {
-      setStatus("error", "Give a brief or at least one link.");
+      setStatus("error", t("Give a brief or at least one link."));
       return undefined;
     }
     const body = { persona_id, images: current.images.checked };
@@ -269,7 +272,7 @@ export function RunPanel({ api, poll = pollUntil, pollOpts } = {}) {
   // the run was created so the new run shows up.
   async function runAndPoll(createFn) {
     setBusy(true);
-    setStatus("pending", "Starting run...");
+    setStatus("pending", t("Starting run..."));
     clear(resultEl);
     let runId = "";
     let created = false;
@@ -277,20 +280,20 @@ export function RunPanel({ api, poll = pollUntil, pollOpts } = {}) {
       const res = await createFn();
       created = true;
       runId = res.run_id || "";
-      setStatus("pending", `Run ${runId} ${res.status}...`);
+      setStatus("pending", t("Run {id} {status}...", { id: runId, status: res.status }));
       try {
         const final = await poll(() => api.getRun(runId), (r) => TERMINAL.has(r.status), pollOpts);
-        setStatus(final.status === "failed" ? "error" : "done", `Run ${final.status}.`);
+        setStatus(final.status === "failed" ? "error" : "done", t("Run {status}.", { status: final.status }));
         renderRun(final);
       } catch (pollErr) {
         if (pollErr.code === "poll_timeout") {
-          setStatus("pending", `Run ${runId} is still running; check history.`);
+          setStatus("pending", t("Run {id} is still running; check history.", { id: runId }));
         } else {
           throw pollErr;
         }
       }
     } catch (err) {
-      setStatus("error", `Could not start run: ${err.message}`);
+      setStatus("error", t("Could not start run: {msg}", { msg: err.message }));
     } finally {
       setBusy(false);
       if (created) await reloadHistory();
@@ -300,19 +303,19 @@ export function RunPanel({ api, poll = pollUntil, pollOpts } = {}) {
   // --- History ------------------------------------------------------------
   async function reloadHistory() {
     clear(historyList);
-    historyList.append(el("p", { class: "muted" }, "Loading runs..."));
+    historyList.append(el("p", { class: "muted" }, t("Loading runs...")));
     try {
       const data = await api.listRuns({ status: historyFilter.value || undefined });
       const runs = (data && data.runs) || [];
       clear(historyList);
       if (!runs.length) {
-        historyList.append(el("p", { class: "muted" }, "No runs yet."));
+        historyList.append(el("p", { class: "muted" }, t("No runs yet.")));
         return;
       }
       historyList.append(historyTable(runs));
     } catch (err) {
       clear(historyList);
-      historyList.append(el("p", { class: "error", role: "alert" }, `Could not load runs: ${err.message}`));
+      historyList.append(el("p", { class: "error", role: "alert" }, t("Could not load runs: {msg}", { msg: err.message })));
     }
   }
 
@@ -329,17 +332,17 @@ export function RunPanel({ api, poll = pollUntil, pollOpts } = {}) {
       ]),
     );
     return el("table", { class: "history-table" }, [
-      el("caption", { class: "visually-hidden" }, "Run history"),
+      el("caption", { class: "visually-hidden" }, t("Run history")),
       el(
         "thead",
         {},
         el("tr", {}, [
-          el("th", {}, "Run"),
-          el("th", {}, "Mode"),
-          el("th", {}, "Status"),
-          el("th", {}, "Requested"),
-          el("th", {}, "Created"),
-          el("th", {}, "Finished"),
+          el("th", {}, t("Run")),
+          el("th", {}, t("Mode")),
+          el("th", {}, t("Status")),
+          el("th", {}, t("Requested")),
+          el("th", {}, t("Created")),
+          el("th", {}, t("Finished")),
           el("th", {}, ""),
         ]),
       ),
@@ -348,17 +351,17 @@ export function RunPanel({ api, poll = pollUntil, pollOpts } = {}) {
   }
 
   function viewButton(runId) {
-    const btn = el("button", { type: "button", class: "secondary" }, "View");
+    const btn = el("button", { type: "button", class: "secondary" }, t("View"));
     btn.addEventListener("click", async () => {
       btn.disabled = true;
       clear(historyDetail);
-      historyDetail.append(el("p", { class: "muted" }, "Loading run..."));
+      historyDetail.append(el("p", { class: "muted" }, t("Loading run...")));
       try {
         const run = await api.getRun(runId);
         renderRun(run, historyDetail);
       } catch (err) {
         clear(historyDetail);
-        historyDetail.append(el("p", { class: "error", role: "alert" }, `Could not load run: ${err.message}`));
+        historyDetail.append(el("p", { class: "error", role: "alert" }, t("Could not load run: {msg}", { msg: err.message })));
       } finally {
         btn.disabled = false;
       }
@@ -371,7 +374,7 @@ export function RunPanel({ api, poll = pollUntil, pollOpts } = {}) {
     clear(target);
     const assignments = (run && run.assignments) || [];
     if (!assignments.length) {
-      target.append(el("p", { class: "muted" }, "No assignments produced."));
+      target.append(el("p", { class: "muted" }, t("No assignments produced.")));
       return;
     }
     const rows = assignments.map((a) =>
@@ -385,16 +388,16 @@ export function RunPanel({ api, poll = pollUntil, pollOpts } = {}) {
     );
     target.append(
       el("table", { class: "assignments" }, [
-        el("caption", { class: "visually-hidden" }, "Run assignment outcomes"),
+        el("caption", { class: "visually-hidden" }, t("Run assignment outcomes")),
         el(
           "thead",
           {},
           el("tr", {}, [
-            el("th", {}, "Persona"),
-            el("th", {}, "Section"),
-            el("th", {}, "Status"),
-            el("th", {}, "Result"),
-            el("th", {}, "Image"),
+            el("th", {}, t("Persona")),
+            el("th", {}, t("Section")),
+            el("th", {}, t("Status")),
+            el("th", {}, t("Result")),
+            el("th", {}, t("Image")),
           ]),
         ),
         el("tbody", {}, rows),
@@ -409,7 +412,7 @@ export function RunPanel({ api, poll = pollUntil, pollOpts } = {}) {
     return el("img", {
       class: "hero-thumb",
       src: a.image_url,
-      alt: `Hero image for ${a.persona_id}'s article`,
+      alt: t("Hero image for {id}'s article", { id: a.persona_id }),
       loading: "lazy",
     });
   }
