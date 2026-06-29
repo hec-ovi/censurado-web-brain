@@ -669,6 +669,72 @@ def _topics_main(
     return _EXIT["done_with_errors"] if summary["failed"] else _EXIT["done"]
 
 
+# An embeds-recheck seam bundle, injected by tests so the verb is driven end to end
+# without a network: list the corpus, recheck each article's snapshots, apply the changes.
+# In production each defaults to the real implementation over the live APIs.
+EmbedsList = Callable[[], list]
+EmbedsApply = Callable[[list, bool], tuple]
+
+
+def _embeds_main(
+    argv: list[str],
+    *,
+    list_slugs: EmbedsList | None = None,
+    apply: EmbedsApply | None = None,
+) -> int:
+    """``censurado-brain embeds recheck [--apply]``: re-validate every stored tweet/youtube
+    snapshot and refresh its availability flag. A deleted tweet flips to ``erased`` (its
+    captured text is kept), a pulled video flips ``available`` to false, so the site then
+    renders the "eliminado" states. Default is a DRY-RUN that counts what would change and
+    writes nothing; ``--apply`` writes the changed articles back over the operator edit lane
+    (``PUT /articles``, admin:write). The two seams are injectable so a test drives the verb
+    without a network."""
+    if not argv or argv[0] != "recheck":
+        _emit({"error": "usage: embeds recheck [--apply]"})
+        return _EXIT["failed"]
+    parser = argparse.ArgumentParser(prog="censurado-brain embeds recheck")
+    parser.add_argument(
+        "--apply", action="store_true",
+        help="write back the changed articles (default: dry-run, only count what would change)",
+    )
+    args = parser.parse_args(argv[1:])
+
+    from newsroom.embeds import apply_rechecks, fetch_article_slugs
+
+    settings = load_settings()
+    base = str(settings.publish_base_url).rstrip("/")
+    read_token = settings.operator_token
+    edit_token = settings.admin_token or settings.operator_token
+
+    list_slugs = list_slugs or (lambda: fetch_article_slugs(base, read_token))
+    apply = apply or (
+        lambda slugs, do: apply_rechecks(
+            slugs, base_url=base, read_token=read_token, edit_token=edit_token, apply=do
+        )
+    )
+
+    try:
+        slugs = list_slugs()
+    except Exception as exc:  # a read failure is a clean usage error, not a crash
+        _emit({"error": f"failed to read the corpus: {exc}"})
+        return _EXIT["failed"]
+
+    try:
+        changed, applied, failed = apply(slugs, args.apply)
+    except Exception as exc:
+        _emit({"error": f"recheck failed: {exc}"})
+        return _EXIT["failed"]
+
+    _emit({
+        "scanned": len(slugs),
+        "changed": changed,
+        "applied": applied,
+        "failed": failed,
+        "dry_run": not args.apply,
+    })
+    return _EXIT["done_with_errors"] if failed else _EXIT["done"]
+
+
 def _open_persona_store() -> PersonaStore:
     """Open the brain DB the API uses and wrap it in a ``PersonaStore``. The CLI author
     verbs are their own process (a separate connection from a live brain); WAL + the busy
@@ -1375,6 +1441,11 @@ def main(
         # Agentic topic cleanse: cluster the corpus tag set into a canonical set and
         # remap changed articles. A subcommand so the bare --mode run path is unchanged.
         return _topics_main(argv[1:])
+    if argv and argv[0] == "embeds":
+        # Re-check stored tweet/youtube snapshots and refresh their availability flags
+        # (deleted tweet -> erased, pulled video -> unavailable). A subcommand so the bare
+        # --mode run path is unchanged.
+        return _embeds_main(argv[1:])
     args = _parser().parse_args(argv)
     settings = load_settings()
     deps = (build_deps or build_deps_from_env)(settings)
