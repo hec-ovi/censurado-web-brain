@@ -52,14 +52,19 @@ from newsroom.runner import (
     RunDeps,
     RunScope,
     build_run_deps,
+    execute_batch,
     execute_direct,
     execute_run,
+    start_batch,
     start_direct,
     start_run,
 )
 from newsroom.runs import Run
 
 __all__ = ["create_app", "Job"]
+
+# The discovery freshness windows a batch sweep accepts (the websearch backend's grain).
+_BATCH_TIMEFRAMES = ("any", "day", "week", "month", "year")
 
 try:  # the installed distribution version, surfaced in the OpenAPI/Swagger metadata
     API_VERSION = _pkg_version("censurado-web-brain")
@@ -109,6 +114,20 @@ class DirectBriefRequest(BaseModel):
     links: list[str] = []
     focus: str | None = None
     url: str | None = None
+    images: bool | None = None
+
+
+class BatchRequest(BaseModel):
+    """The POST /runs/batch request body (run mode 4): a batch sweep, the manager fanned
+    ONCE PER AUTHOR over each author's own source-scoped, time-filtered discovery search.
+    ``persona_ids`` narrows the desks (omit for every active author); ``timeframe`` is the
+    discovery freshness window (``any|day|week|month|year``, omit for the server's
+    ``batch_timeframe``); ``max_total`` caps the whole batch (omit for the natural
+    ``batch_per_author x desks`` bound); ``images`` overrides the art-director step."""
+
+    persona_ids: list[str] | None = None
+    timeframe: str | None = None
+    max_total: int | None = None
     images: bool | None = None
 
 
@@ -257,6 +276,18 @@ def _run_direct_in_background(
             run=run, links=links, persona_id=persona_id, deps=deps, brief=brief, focus=focus,
             images=images,
         )
+    except Exception:
+        pass
+
+
+def _run_batch_in_background(
+    deps: RunDeps, run: Run, scope: RunScope, *, timeframe: str | None, max_total: int | None,
+) -> None:
+    """Background worker for the batch sweep, mirroring ``_run_in_background``.
+    ``execute_batch`` records the run ``failed`` on any error (including a missing
+    discovery seam), so a fault here is persisted (pollable over GET /runs/{id}), not lost."""
+    try:
+        execute_batch(run=run, scope=scope, deps=deps, timeframe=timeframe, max_total=max_total)
     except Exception:
         pass
 
@@ -499,6 +530,32 @@ def create_app(
             _run_direct_in_background, deps, run,
             links=links, persona_id=body.persona_id, brief=brief, focus=body.focus,
             images=body.images,
+        )
+        return JSONResponse(
+            status_code=202,
+            content={"run_id": run.id, "mode": run.mode, "status": run.status},
+            headers={"Location": f"/runs/{run.id}"},
+        )
+
+    @app.post("/runs/batch", status_code=202, response_model=RunAcceptedOut, tags=["runs"])
+    async def create_batch(
+        body: BatchRequest, background_tasks: BackgroundTasks, request: Request
+    ):
+        """Run mode 4: a batch sweep. The manager runs ONCE PER AUTHOR over that author's
+        own source-scoped, time-filtered discovery search, so each desk lists topics from
+        only the outlets it reads; the merged manifest publishes through the same
+        per-article pipeline as every other run. Creates a ``batch`` run, executes OFF the
+        request, and returns 202 + a poll Location, exactly like POST /runs."""
+        deps: RunDeps = request.app.state.run_deps
+        if body.timeframe is not None and body.timeframe not in _BATCH_TIMEFRAMES:
+            return _problem(
+                422, "validation_failed",
+                detail=f"timeframe must be one of {_BATCH_TIMEFRAMES}",
+            )
+        run, scope = start_batch(deps=deps, persona_ids=body.persona_ids, images=body.images)
+        background_tasks.add_task(
+            _run_batch_in_background, deps, run, scope,
+            timeframe=body.timeframe, max_total=body.max_total,
         )
         return JSONResponse(
             status_code=202,
