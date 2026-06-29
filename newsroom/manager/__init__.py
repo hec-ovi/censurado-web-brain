@@ -20,6 +20,7 @@ from newsroom.manager.coverage import (
     fingerprint,
     similarity,
 )
+from newsroom.manager.batch import plan_batch
 from newsroom.manager.dispatch import DispatchResult, dispatch_run
 from newsroom.manager.manager import run_manager
 from newsroom.manager.preflight import ResolvedRoles, resolve_roles
@@ -27,6 +28,7 @@ from newsroom.manager.types import AssignmentSpec, Candidate, Manifest, Triage
 
 __all__ = [
     "run_manager",
+    "plan_batch",
     "dispatch_run",
     "DispatchResult",
     "resolve_roles",
