@@ -84,6 +84,24 @@ def test_absent_subtitle_and_summary_leave_keys_off(fake):
     assert "description" not in article.metadata
 
 
+def test_article_specific_keywords_land_in_metadata_deduped(fake):
+    # The model's article-specific SEO keywords are stamped into metadata.keywords, blanks
+    # and duplicates dropped (the generator folds them into <meta name="keywords">).
+    fake.state.script_chat(json.dumps({
+        "title": "T", "body": "B",
+        "keywords": ["Javier Milei", "dolar", "  ", "dolar", "Banco Central"],
+    }))
+    article = _finalize(fake)
+    assert article.metadata["keywords"] == ["Javier Milei", "dolar", "Banco Central"]
+
+
+def test_absent_keywords_leave_the_key_off(fake):
+    # A model that returns no keywords must not fail and must not stamp an empty list.
+    fake.state.script_chat(json.dumps({"title": "T", "body": "B"}))
+    article = _finalize(fake)
+    assert "keywords" not in article.metadata
+
+
 def test_provenance_namespace_is_stamped(fake):
     fake.state.script_chat(json.dumps({"title": "T", "body": "B"}))
     article = _finalize(fake)

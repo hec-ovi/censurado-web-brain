@@ -66,11 +66,17 @@ class FinalizedDraft(BaseModel):
     summary: str = Field(default="", max_length=1000)
     body: str = Field(min_length=1)  # no maximum: bodies are never truncated
     topics: list[str] = Field(default_factory=list)
+    # Article-SPECIFIC search keywords (named people/places/organizations and the
+    # distinctive concepts of THIS piece), distinct from the broad `topics`. Optional
+    # with an empty default so a model that omits them does not burn the finalize retry;
+    # the pipeline stamps them into metadata.keywords, which the public generator folds
+    # into the article's <meta name="keywords"> alongside its topic facets.
+    keywords: list[str] = Field(default_factory=list)
     slug: str | None = Field(default=None, min_length=1, max_length=200, pattern=_SLUG_PATTERN)
 
-    @field_validator("topics")
+    @field_validator("topics", "keywords")
     @classmethod
-    def _unique_topics(cls, value: list[str]) -> list[str]:
+    def _unique_terms(cls, value: list[str]) -> list[str]:
         return _dedupe_preserving_order(value)
 
 

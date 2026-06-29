@@ -66,5 +66,11 @@ Return the article's content fields:
 - `body`: the COMPLETE article body in Markdown, exactly as finished. Do not
   truncate, summarize, or drop any part of it. There is no length limit on the body.
 - `topics`: a list of short topic tags for the article (may be empty).
+- `keywords`: the search terms specific to THIS article, what a reader would type to
+  find exactly this story. Include the named people, places, and organizations the
+  article actually names, plus the distinctive concepts central to it. Draw every one
+  from the article's own text; leave out generic filler and anything the body does not
+  mention. These are narrower and more specific than `topics`; an article with no
+  distinctive named entities may return an empty list.
 - `slug`: optional; lowercase words joined by hyphens, derived from the title. Omit
   it to let it be derived server-side.

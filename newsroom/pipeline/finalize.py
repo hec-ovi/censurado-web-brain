@@ -90,6 +90,13 @@ def finalize_article(
         metadata["subtitle"] = draft.subtitle.strip()
     if draft.summary.strip():
         metadata["description"] = draft.summary.strip()
+    # Article-specific SEO keywords (already deduped by the model contract). Stamped only
+    # when present, like subtitle/description: the public generator folds metadata.keywords
+    # into the article's <meta name="keywords"> alongside its topic facets. Outside the
+    # content hash, so it never shifts idempotency.
+    keywords = [k.strip() for k in draft.keywords if k.strip()]
+    if keywords:
+        metadata["keywords"] = keywords
     return PublishArticleInput(
         title=draft.title,
         body=draft.body,
