@@ -40,6 +40,7 @@ from newsroom.runner import (
     RunDeps,
     execute_run,
     plan_run,
+    run_batch,
     run_express,
     run_managed,
     run_manual,
@@ -605,3 +606,139 @@ def test_create_app_unifies_the_lock_across_both_surfaces(fake, tmp_path):
     app2 = create_app(settings=settings, store=deps.persona_store, run_deps=deps)
     assert app2.state.run_deps.lock is not None
     assert app2.state.lock is app2.state.run_deps.lock
+
+
+# ----- mode 4: a batch sweep end to end (the manager fanned once per author) -----
+
+
+def _discover_double(per_author_hits):
+    """A discover-factory double for execute_batch: records every (persona_id, freshness)
+    swept and returns a search yielding that author's canned candidates."""
+
+    swept: list[tuple[str, str | None]] = []
+
+    def factory(persona, *, freshness=None):
+        swept.append((persona.id, freshness))
+
+        def search(_query):
+            return list(per_author_hits.get(persona.id, []))
+
+        return search
+
+    factory.swept = swept
+    return factory
+
+
+def test_batch_run_drafts_one_article_per_author(fake, tmp_path):
+    # batch_per_author=1: each desk contributes ONE article from its OWN discovery.
+    settings = _settings(fake, tmp_path, batch_per_author=1, batch_timeframe="day")
+    deps = _deps(fake, settings, personas=[_ada(), _bea()])
+    deps.discover_news = _discover_double({
+        "ada": [Candidate(headline="ada story", section="tech", url="https://news.test/ada")],
+        "bea": [Candidate(headline="bea story", section="world", url="https://news.test/bea")],
+    })
+
+    # Each desk's manager emits one assignment (consumed in persona order: ada, then bea),
+    # then each article runs its pipeline (rules-degraded eval + a clean body) and finalizes.
+    fake.state.script_chat(_assign("ada", headline="Ada story"))
+    fake.state.script_chat(_assign("bea", headline="Bea story"))
+    for _ in range(2):
+        for body in ("an outline", "a clean draft", "an enriched body", "a respin 1", "a respin 2"):
+            fake.state.script_chat(body)
+        fake.state.script_chat(_finalize_ok("A Title", "A body."))
+
+    report = run_batch(deps=deps)
+
+    assert report.mode == "batch"
+    assert report.status == "done"
+    # Both desks contributed (no cross-author dedup); both published.
+    assert {a.persona_id for a in report.manifest.assignments} == {"ada", "bea"}
+    assert [o.status for o in report.outcomes].count("ready") == 2
+    assert sorted(p.ok for p in report.published) == [True, True]
+    # The batch swept each author's OWN discovery, carrying the configured timeframe.
+    assert sorted(s[0] for s in deps.discover_news.swept) == ["ada", "bea"]
+    assert all(s[1] == "day" for s in deps.discover_news.swept)
+    # The run record closed clean as a 'batch' run.
+    run_row = deps.store.get_run(report.run_id)
+    assert run_row.mode == "batch" and run_row.status == "done" and run_row.finished_at
+
+
+def test_batch_run_with_no_personas_is_a_clean_noop(fake, tmp_path):
+    settings = _settings(fake, tmp_path)
+    deps = _deps(fake, settings, personas=[_ada()])
+    deps.discover_news = _discover_double({})
+
+    # An empty persona subset: finish clean WITHOUT running any manager (zero inference).
+    report = run_batch(deps=deps, persona_ids=["nobody"])
+
+    assert report.status == "done"
+    assert report.manifest.assignments == []
+    assert deps.discover_news.swept == []  # no desk was swept
+
+
+def test_batch_run_without_a_discovery_seam_fails_the_run(fake, tmp_path):
+    settings = _settings(fake, tmp_path)
+    deps = _deps(fake, settings, personas=[_ada()])  # deps.discover_news stays None
+
+    with pytest.raises(ValueError, match="discover_news"):
+        run_batch(deps=deps)
+
+    # The run record was created then marked failed, not left a zombie 'running'.
+    ids = _all_run_ids(deps)
+    assert len(ids) == 1
+    assert deps.store.get_run(ids[0]).status == "failed"
+
+
+# ----- the CLI `batch` verb runs the same path end to end -----
+
+
+def test_cli_batch_runs_a_per_author_sweep(fake, tmp_path, capsys):
+    from newsroom.cli import main
+    from newsroom.runner import build_run_deps
+
+    settings = _settings(fake, tmp_path, batch_per_author=1)
+
+    def build_deps(_s: Settings) -> RunDeps:
+        # The TEST settings (fake URLs + tmp_path DB), not the CLI's load_settings().
+        conn = open_db(settings.persona_db_path, check_same_thread=False)
+        persona_store = PersonaStore(conn)
+        persona_store.create(_ada())
+        # build_run_deps auto-wires discover_news from a real ResearchTool; the manager
+        # assigns immediately (scripted below), so its search() is never invoked and the
+        # batch never reaches the network.
+        return build_run_deps(
+            settings, conn=conn, lock=threading.Lock(), persona_store=persona_store,
+            make_ledger=_ready_ledger,
+        )
+
+    fake.state.script_chat(_assign("ada", headline="Ada story"))
+    for body in ("an outline", "a clean draft", "an enriched body", "a respin 1", "a respin 2"):
+        fake.state.script_chat(body)
+    fake.state.script_chat(_finalize_ok("Ada Story", "The body."))
+
+    code = main(["batch", "--persona", "ada", "--timeframe", "day"], build_deps=build_deps)
+
+    assert code == 0
+    summary = json.loads(capsys.readouterr().out.strip().splitlines()[-1])
+    assert summary["mode"] == "batch"
+    assert summary["status"] == "done"
+    assert summary["published"] == 1
+
+
+def test_cli_batch_failure_reports_a_clean_summary(fake, tmp_path, capsys):
+    from newsroom.cli import main
+
+    settings = _settings(fake, tmp_path)
+
+    def build_deps(_s: Settings) -> RunDeps:
+        # Deps WITHOUT a discovery seam (discover_news stays None): execute_batch fails
+        # the run, and the CLI prints a parseable failed summary rather than a traceback.
+        deps = _deps(fake, settings, personas=[_ada()])
+        deps.discover_news = None
+        return deps
+
+    code = main(["batch"], build_deps=build_deps)
+
+    assert code == 1  # _EXIT["failed"]
+    summary = json.loads(capsys.readouterr().out.strip().splitlines()[-1])
+    assert summary["status"] == "failed" and "discover_news" in summary["error"]

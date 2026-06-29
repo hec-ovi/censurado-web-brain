@@ -63,6 +63,7 @@ from newsroom.runner import (
     RunReport,
     build_run_deps,
     execute_run,
+    run_batch,
     run_direct,
     start_run,
 )
@@ -228,6 +229,61 @@ def _direct_main(argv: list[str], *, build_deps: DepsBuilder | None = None) -> i
         )
     except Exception as exc:
         _emit({"run_id": None, "mode": "direct", "status": "failed", "error": str(exc)})
+        return _EXIT["failed"]
+
+    _emit(_summary(report))
+    return _EXIT.get(report.status, _EXIT["failed"])
+
+
+def _batch_main(argv: list[str], *, build_deps: DepsBuilder | None = None) -> int:
+    """``censurado-brain batch [--persona ID ...] [--timeframe day] [--max N] [--images]``:
+    run mode 4, a BATCH sweep. The manager runs ONCE PER AUTHOR over that author's OWN
+    source-scoped, time-filtered discovery search, so each desk lists topics from only the
+    outlets it reads; the per-author manifests are merged and published through the same
+    per-article pipeline as every other run.
+
+    ``--persona`` is repeatable to narrow the desks (default: every active author);
+    ``--timeframe`` is the discovery freshness window (``any|day|week|month|year``, default
+    the server's ``batch_timeframe``); ``--max`` caps the whole batch (default: the natural
+    ``batch_per_author x desks`` bound). Prints a JSON summary and returns the run's exit
+    code (the same map as every other run verb)."""
+    parser = argparse.ArgumentParser(
+        prog="censurado-brain batch",
+        description="Run a batch sweep: the manager fanned once per author over per-author sources.",
+    )
+    parser.add_argument(
+        "--persona", action="append", default=None, metavar="ID",
+        help="restrict the sweep to this author id (repeatable; default: all active authors)",
+    )
+    parser.add_argument(
+        "--timeframe", default=None, choices=("any", "day", "week", "month", "year"),
+        help="the discovery freshness window (default: the server's batch_timeframe)",
+    )
+    parser.add_argument(
+        "--max", type=int, default=None, metavar="N",
+        help="cap the total articles across all desks (default: batch_per_author x desks)",
+    )
+    parser.add_argument(
+        "--images", action=argparse.BooleanOptionalAction, default=None,
+        help="generate hero images for the batch (default: the server setting)",
+    )
+    args = parser.parse_args(argv)
+
+    persona_ids: list[str] = []
+    for raw in args.persona or []:
+        cleaned = (raw or "").strip()
+        if cleaned and cleaned not in persona_ids:
+            persona_ids.append(cleaned)
+
+    settings = load_settings()
+    deps = (build_deps or build_deps_from_env)(settings)
+    try:
+        report = run_batch(
+            deps=deps, persona_ids=persona_ids or None, timeframe=args.timeframe,
+            max_total=args.max, images=args.images,
+        )
+    except Exception as exc:
+        _emit({"run_id": None, "mode": "batch", "status": "failed", "error": str(exc)})
         return _EXIT["failed"]
 
     _emit(_summary(report))
@@ -1406,6 +1462,11 @@ def main(
         # Run mode 3: write one article from a link, bypassing the manager. A subcommand
         # so the bare --mode invocation (the periodic trigger) is unchanged.
         return _direct_main(argv[1:], build_deps=build_deps)
+    if argv and argv[0] == "batch":
+        # Run mode 4: a batch sweep, the manager fanned once per author over per-author
+        # sources. A subcommand so the bare --mode run path (the periodic trigger) is
+        # unchanged.
+        return _batch_main(argv[1:], build_deps=build_deps)
     if argv and argv[0] == "mirror-authors":
         # The one-time author backfill: push local personas to the platform registry.
         # A subcommand so the bare --mode run path stays untouched.

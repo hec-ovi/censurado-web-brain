@@ -31,7 +31,7 @@ from pathlib import Path
 
 from newsroom.config import Settings
 from newsroom.editorial import PromptStore, StyleStore, style_for_draft, style_for_eval
-from newsroom.manager import dispatch_run, run_manager
+from newsroom.manager import dispatch_run, plan_batch, run_manager
 from newsroom.manager.coverage import CoverageStore, recent_coverage_text
 from newsroom.manager.dispatch import LedgerBuilder
 from newsroom.manager.manager import NewsSearch
@@ -60,6 +60,9 @@ __all__ = [
     "start_direct",
     "execute_direct",
     "run_direct",
+    "start_batch",
+    "execute_batch",
+    "run_batch",
 ]
 
 # The entire trigger surface: the automation layer picks exactly one of these.
@@ -298,6 +301,91 @@ def _publish_ready(dispatch, deps: RunDeps) -> list[PublishOutcome]:
     return published
 
 
+def _dispatch_publish_finish(
+    run: Run,
+    *,
+    manifest: Manifest,
+    personas: list[Persona],
+    coverage,
+    style_guide,
+    scope: RunScope,
+    deps: RunDeps,
+    prompt_overrides: dict[str, str],
+) -> RunReport:
+    """The shared run tail: gate the art-director image step, fan out via ``dispatch_run``
+    (the SOLE fan-out point), publish the ready articles, and finish the run.
+
+    A managed run (``execute_run``) and a batch (``execute_batch``) compute their manifest
+    differently, one global manager vs the manager fanned once per author, then hand it
+    here so the dispatch -> publish -> finish path is byte-for-byte identical. The caller
+    owns the surrounding try/except (mark the run ``failed`` and re-raise); this helper is
+    the happy path only."""
+    store = deps.store
+    settings = deps.settings
+    guard = deps.lock if deps.lock is not None else nullcontext()
+
+    # The art-director image step runs iff it is both available (injected) and enabled
+    # for this run: the per-run flag wins, falling back to the global settings default.
+    # Resolving it here (not in the pipeline) keeps the runner the single gate and the
+    # pipeline trigger-blind about the on/off decision.
+    images_enabled = (
+        scope.generate_images
+        if scope.generate_images is not None
+        else settings.auto_generate_image
+    )
+    illustrate = deps.illustrate if (images_enabled and deps.illustrate is not None) else None
+
+    # The operator's editorial inputs threaded into every article: the active house
+    # style (rendered for drafter and evaluator) and a digest of recent coverage so
+    # the writer does not repeat published stories. Empty fields render the prompt
+    # tokens away, so an unconfigured newsroom behaves exactly as before.
+    editorial = EditorialContext(
+        house_style_draft=style_for_draft(style_guide),
+        house_style_eval=style_for_eval(style_guide),
+        style_lexicon=(style_guide.lexicon if style_guide is not None else {}),
+        recent_coverage=recent_coverage_text(coverage),
+        related_coverage=coverage,  # structured, so the widget step can emit a related card
+        min_independent_sources=(style_guide.sourcing.get("min_sources", 0) if style_guide is not None else 0),
+        ownership_of=deps.ownership_of,
+    )
+
+    dispatch = dispatch_run(
+        run_id=run.id,
+        manifest=manifest,
+        persona_index={p.id: p for p in personas},
+        store=store,
+        make_ledger=deps.make_ledger,
+        drafter_cfg=deps.roles.drafter,
+        evaluator_cfg=deps.roles.evaluator,
+        finalize_cfg=deps.roles.finalize,
+        prompts_dir=deps.prompts_dir,
+        overrides=prompt_overrides,
+        budget_factory=_budget_factory(settings),
+        max_sweeps=settings.max_sweeps,
+        concurrency=settings.fanout_concurrency,
+        lock=deps.lock,
+        illustrate=illustrate,
+        editorial=editorial,
+    )
+
+    published = _publish_ready(dispatch, deps)
+
+    # A finalized article that failed to publish makes the run done_with_errors (its
+    # assignment is marked publish_failed), so a green "done" never hides a silently
+    # unpublished article.
+    status = "done" if all(p.ok for p in published) else "done_with_errors"
+    with guard:
+        store.finish_run(run.id, status=status)
+    return RunReport(
+        run_id=run.id,
+        mode=run.mode,
+        status=status,
+        manifest=manifest,
+        outcomes=dispatch.outcomes,
+        published=published,
+    )
+
+
 def execute_run(*, run: Run, scope: RunScope, deps: RunDeps) -> RunReport:
     """Run one already-created run to completion and publish its articles.
 
@@ -349,65 +437,15 @@ def execute_run(*, run: Run, scope: RunScope, deps: RunDeps) -> RunReport:
             followup_threshold=settings.coverage_followup_threshold,
         )
 
-        # The art-director image step runs iff it is both available (injected) and
-        # enabled for this run: the per-run flag wins, falling back to the global
-        # settings default. Resolving it here (not in the pipeline) keeps execute_run
-        # the single gate and the pipeline trigger-blind about the on/off decision.
-        images_enabled = (
-            scope.generate_images
-            if scope.generate_images is not None
-            else settings.auto_generate_image
-        )
-        illustrate = deps.illustrate if (images_enabled and deps.illustrate is not None) else None
-
-        # The operator's editorial inputs threaded into every article: the active house
-        # style (rendered for drafter and evaluator) and a digest of recent coverage so
-        # the writer does not repeat published stories. Empty fields render the prompt
-        # tokens away, so an unconfigured newsroom behaves exactly as before.
-        editorial = EditorialContext(
-            house_style_draft=style_for_draft(style_guide),
-            house_style_eval=style_for_eval(style_guide),
-            style_lexicon=(style_guide.lexicon if style_guide is not None else {}),
-            recent_coverage=recent_coverage_text(coverage),
-            related_coverage=coverage,  # structured, so the widget step can emit a related card
-            min_independent_sources=(style_guide.sourcing.get("min_sources", 0) if style_guide is not None else 0),
-            ownership_of=deps.ownership_of,
-        )
-
-        dispatch = dispatch_run(
-            run_id=run.id,
+        return _dispatch_publish_finish(
+            run,
             manifest=manifest,
-            persona_index={p.id: p for p in personas},
-            store=store,
-            make_ledger=deps.make_ledger,
-            drafter_cfg=deps.roles.drafter,
-            evaluator_cfg=deps.roles.evaluator,
-            finalize_cfg=deps.roles.finalize,
-            prompts_dir=deps.prompts_dir,
-            overrides=prompt_overrides,
-            budget_factory=_budget_factory(settings),
-            max_sweeps=settings.max_sweeps,
-            concurrency=settings.fanout_concurrency,
-            lock=deps.lock,
-            illustrate=illustrate,
-            editorial=editorial,
-        )
-
-        published = _publish_ready(dispatch, deps)
-
-        # A finalized article that failed to publish makes the run done_with_errors
-        # (its assignment is marked publish_failed), so a green "done" never hides a
-        # silently unpublished article.
-        status = "done" if all(p.ok for p in published) else "done_with_errors"
-        with guard:
-            store.finish_run(run.id, status=status)
-        return RunReport(
-            run_id=run.id,
-            mode=run.mode,
-            status=status,
-            manifest=manifest,
-            outcomes=dispatch.outcomes,
-            published=published,
+            personas=personas,
+            coverage=coverage,
+            style_guide=style_guide,
+            scope=scope,
+            deps=deps,
+            prompt_overrides=prompt_overrides,
         )
     except Exception:
         # Best-effort cleanup: record the run as failed, but never let the cleanup
@@ -669,3 +707,111 @@ def run_direct(
         run=run, links=links, persona_id=persona_id, deps=deps, brief=brief, focus=focus,
         images=images,
     )
+
+
+# ----- batch sweep: the manager fanned once per author over per-author sources -----
+
+
+def start_batch(
+    *, deps: RunDeps, persona_ids: list[str] | None = None, images: bool | None = None,
+) -> tuple[Run, RunScope]:
+    """Create the ``batch`` run record WITHOUT executing it (the async/HTTP path), mirroring
+    ``start_run``. A batch has no single fan-out ``n``: each author contributes up to
+    ``settings.batch_per_author`` and the optional overall cap is an ``execute_batch``
+    argument, so the scope here carries only the persona subset and the image override (its
+    ``n`` is unused by the batch path)."""
+    ids = tuple(persona_ids) if persona_ids else None
+    scope = RunScope(n=0, persona_ids=ids, generate_images=images)
+    guard = deps.lock if deps.lock is not None else nullcontext()
+    with guard:
+        run = deps.store.create_run(mode="batch", n_requested=None)
+    return run, scope
+
+
+def execute_batch(
+    *, run: Run, scope: RunScope, deps: RunDeps, timeframe: str | None = None,
+    max_total: int | None = None,
+) -> RunReport:
+    """Run mode 4: a BATCH sweep. The manager is fanned ONCE PER AUTHOR over each author's
+    own source-scoped, time-filtered discovery search (``plan_batch``), instead of one
+    global ``run_manager`` over the open web. Everything AFTER the manifest, the image gate,
+    the per-article fan-out, publish, and finish, is the IDENTICAL shared tail a managed run
+    uses (``_dispatch_publish_finish``), so a batch article is built and published exactly
+    like any other, and ``dispatch_run`` stays the sole fan-out point.
+
+    ``timeframe`` overrides ``settings.batch_timeframe`` (the discovery freshness window);
+    ``max_total`` caps the whole batch (``None`` leaves the natural ``batch_per_author *
+    len(personas)`` bound). Requires ``deps.discover_news`` (the per-author discovery
+    factory); a managed run never sets it, so the batch path validates it explicitly rather
+    than failing deep in the loop."""
+    store = deps.store
+    settings = deps.settings
+    guard = deps.lock if deps.lock is not None else nullcontext()
+    try:
+        if deps.discover_news is None:
+            # A wiring error (a managed run's deps reused for a batch): fail the run
+            # record cleanly via the except below rather than leaving a zombie 'running'.
+            raise ValueError(
+                "execute_batch requires deps.discover_news (the per-author discovery factory)"
+            )
+        with guard:
+            personas = _select_personas(deps.persona_store, scope.persona_ids)
+            coverage = deps.coverage_store.recent(limit=settings.coverage_lookback)
+            style_guide = deps.style_store.active() if deps.style_store is not None else None
+
+        # No personas (an empty subset): finish clean WITHOUT running any manager, so a
+        # no-op batch spends zero inference (mirrors execute_run's empty-scope short-circuit).
+        if not personas:
+            with guard:
+                store.finish_run(run.id, status="done")
+            return RunReport(
+                run_id=run.id, mode=run.mode, status="done", manifest=Manifest(assignments=[])
+            )
+
+        prompt_overrides = _resolve_prompt_overrides(deps)
+
+        manifest = plan_batch(
+            personas=personas,
+            coverage=coverage,
+            discover=deps.discover_news,
+            cfg=deps.roles.manager,
+            prompts_dir=deps.prompts_dir,
+            overrides=prompt_overrides,
+            per_author=settings.batch_per_author,
+            timeframe_freshness=timeframe or settings.batch_timeframe,
+            max_steps=settings.max_manager_steps,
+            circuit_breaker=settings.manager_circuit_breaker,
+            duplicate_threshold=settings.coverage_duplicate_threshold,
+            followup_threshold=settings.coverage_followup_threshold,
+            max_total=max_total,
+        )
+
+        return _dispatch_publish_finish(
+            run,
+            manifest=manifest,
+            personas=personas,
+            coverage=coverage,
+            style_guide=style_guide,
+            scope=scope,
+            deps=deps,
+            prompt_overrides=prompt_overrides,
+        )
+    except Exception:
+        try:
+            with guard:
+                store.finish_run(run.id, status="failed")
+        except Exception:
+            pass
+        raise
+
+
+def run_batch(
+    *, deps: RunDeps, persona_ids: list[str] | None = None, images: bool | None = None,
+    timeframe: str | None = None, max_total: int | None = None,
+) -> RunReport:
+    """Synchronous batch run: create the record and execute it on this thread (the CLI
+    path; the HTTP surface uses ``start_batch`` + a background ``execute_batch`` instead).
+    ``persona_ids`` narrows the desks (default: all), ``timeframe`` the discovery window,
+    ``max_total`` the overall article ceiling."""
+    run, scope = start_batch(deps=deps, persona_ids=persona_ids, images=images)
+    return execute_batch(run=run, scope=scope, deps=deps, timeframe=timeframe, max_total=max_total)
