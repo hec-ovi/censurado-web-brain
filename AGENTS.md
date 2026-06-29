@@ -43,12 +43,19 @@ Two invariants hold everywhere, enforced by tests:
 ## Run flow (the outer workflow)
 
 `resolve roles -> manager triage -> fan-out dispatch -> per-article pipeline -> publish`.
-The brain is trigger-blind: the only thing a trigger picks is a `mode`
+The brain is trigger-blind: the only thing a managed trigger picks is a `mode`
 (`manual|express|managed`), resolved once into a `RunScope`; the execution path never
-branches on mode again.
+branches on mode again. Two side entry points reuse the same dispatch+publish tail
+(`_dispatch_publish_finish`) with a different front: `execute_direct` (write one article
+from an operator brief, bypassing the manager, corroboration forced off) and
+`execute_batch` (`plan_batch` runs the manager ONCE PER AUTHOR over each author's own
+source-scoped, time-filtered discovery search, then merges the per-author manifests).
 - → `newsroom/runner/run.py` (`plan_run`, `start_run`, `execute_run`, `RunScope`,
-  `RunDeps`, `RunReport`). `execute_run` is the single path; a source-guard test keeps it
-  mode-blind.
+  `RunDeps`, `RunReport`; `execute_direct`/`run_direct`, `execute_batch`/`run_batch`,
+  `_dispatch_publish_finish`). `execute_run` is the single managed path; a source-guard
+  test keeps it mode-blind.
+- → `newsroom/manager/batch.py` (`plan_batch`: per-author manager fan, round-robin
+  interleave, no cross-author dedup, overall clamp).
 - → `newsroom/runner/deps.py` (`build_run_deps`, `roles_for_settings`) assembles the real
   seams from settings; tests inject in-process doubles for the network seams
   (`search_news`, `make_ledger`, `illustrate`) so a run never leaves the box.
@@ -105,8 +112,15 @@ respin x2 -> finalize -> art-direct`. Three simultaneous guards bound the sweep 
 fact-check the author re-spins its own article in its own voice (`respin_passes`,
 default 2) against an anti-slop / redundancy / staged-format rubric, preserving every
 grounded fact and citation; finalize then lifts `title + subtitle + summary + body +
-topics + slug` and stamps the dek/summary into `metadata.subtitle`/`metadata.description`.
-A shared `ArticleBudget`
+topics + slug + keywords` and stamps the dek/summary into
+`metadata.subtitle`/`metadata.description` and the article-specific SEO terms into
+`metadata.keywords`. After finalize (before the content hash) a widget step
+(`attach_widgets`) inspects the grounded ledger: for each cited tweet/youtube it captures
+a keyless snapshot and emits an inline body marker (`{{tweet:id}}` / `{{video:id}}`, only
+when a real snapshot/available video exists), storing the snapshot in
+`metadata.tweets[]`/`metadata.media_checks{}` (outside the hash); and it emits ONE
+`{{relacionado:slug}}` for the best prior-coverage match. The Go generator renders these
+markers statically. A shared `ArticleBudget`
 (token + wall-clock) is debited by every stage and DROPS the assignment on exhaustion
 (never truncates). The persona is re-injected warm on each draft; enrich/fact-check run
 persona-blind; the art director runs persona-AWARE so the image matches the byline. The
@@ -116,7 +130,8 @@ hash, so idempotency is unaffected) and never drops a finalized article.
 - → `newsroom/pipeline/evaluate.py` (`evaluate_draft`, `Evaluation`)
 - → `newsroom/pipeline/factcheck.py` (`fact_check`, `citation_verify`, `CitationResult`)
 - → `newsroom/pipeline/article.py` (`_respin`, the voiced 2-pass self-revision) + `prompts/journalist/respin.md`
-- → `newsroom/pipeline/finalize.py` (`finalize_article`, pydantic-ai structured output: title/subtitle/summary/body/topics/slug)
+- → `newsroom/pipeline/finalize.py` (`finalize_article`, pydantic-ai structured output: title/subtitle/summary/body/topics/slug/keywords)
+- → `newsroom/pipeline/widgets.py` (`attach_widgets`: ledger -> tweet/video/related markers + snapshots; never raises) and `newsroom/embeds/` (keyless capture: fxtwitter, youtube oEmbed, the recheck sweep)
 - → `newsroom/pipeline/artdirect.py` (`art_direct`, `ArtDirection`)
 - → `newsroom/pipeline/budget.py` (`ArticleBudget`) and `context.py` (`persona_block`, `ledger_text`)
 
@@ -172,12 +187,15 @@ no schema change.
 - → `newsroom/contracts/sections.py` (`SECTION_ENUM`, `is_valid_section`)
 
 ### Brain HTTP surface
-The FastAPI app. `POST /personas` and `POST /runs` return `202 + poll` and run the model
-work off the request (background thread, one shared-connection lock). `POST /runs` accepts
-`{mode, n?, persona_ids?, images?}`; `GET /runs/{id}` surfaces each assignment incl.
-`image_url`.
-- → `newsroom/brain/app.py` (`create_app`, `RunRequest`, routes)
-- → `newsroom/cli.py` (`censurado-brain --mode ... [--images/--no-images]`, the automation entry point)
+The FastAPI app. `POST /personas`, `POST /runs`, `POST /articles/from-link`, and
+`POST /runs/batch` all return `202 + poll` and run the model work off the request
+(background thread, one shared-connection lock). `POST /runs` accepts
+`{mode, n?, persona_ids?, images?}`; `POST /articles/from-link` takes a brief +
+0..N links + focus (direct mode); `POST /runs/batch` takes
+`{persona_ids?, timeframe?, max_total?, images?}` (the per-author sweep); `GET /runs/{id}`
+surfaces each assignment incl. `image_url`.
+- → `newsroom/brain/app.py` (`create_app`, `RunRequest`, `DirectBriefRequest`, `BatchRequest`, routes)
+- → `newsroom/cli.py` (`censurado-brain --mode ...` automation entry; `direct` / `batch` / `embeds recheck` verbs, `[--images/--no-images]`)
 - → `newsroom/config.py` (`Settings`: all `NEWSROOM_*` env, incl. the imagery knobs; no length setting by policy)
 
 ### Frontend (the author-manager console)
