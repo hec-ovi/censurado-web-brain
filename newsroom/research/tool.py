@@ -58,12 +58,15 @@ class ResearchTool:
         sites: list[str] | None = None,
         country: str | None = None,
         language: str | None = None,
+        freshness: str | None = None,
     ) -> list[SearchResult]:
         """Run one time-filtered search, optionally SCOPED to a set of source
         domains and a place. ``sites`` confines results to those domains; ``country``
-        and ``language`` scope the place. All are optional, so the unscoped call is
-        byte-for-byte the previous behavior. Returns mapped hits, or [] on an error
-        Envelope (the reason is appended to ``warnings``).
+        and ``language`` scope the place. ``freshness`` overrides the instance time
+        filter for THIS call only (e.g. a batch sweep narrowing the default ``month``
+        to ``day`` for today's news); when None the instance default is used. All are
+        optional, so the unscoped call is byte-for-byte the previous behavior. Returns
+        mapped hits, or [] on an error Envelope (the reason is appended to ``warnings``).
 
         The backend's ``site`` field takes a SINGLE host, so one domain uses it
         directly (the engine adds a ``site:`` operator) while several are folded into
@@ -86,7 +89,7 @@ class ResearchTool:
             AgentSearchRequest(
                 query=scoped_query,
                 max_results=self._max_results,
-                freshness=self._freshness,
+                freshness=freshness or self._freshness,
                 site=site,
                 country=country or None,
                 language=language or None,

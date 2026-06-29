@@ -20,7 +20,8 @@ from newsroom.inference.provider import DIALECTS, ProviderConfig
 from newsroom.manager.types import AssignmentSpec
 from newsroom.personas import Persona
 from newsroom.pipeline import ArticleBudget
-from newsroom.runner.deps import _candidate_search, _research_ledger
+from newsroom.research import SearchResult
+from newsroom.runner.deps import _author_discovery, _candidate_search, _research_ledger
 
 
 class _RecordingTool:
@@ -141,3 +142,59 @@ def test_research_is_unscoped_with_no_sources_no_portals_no_location(fake):
     call = tool.calls[-1]
     assert call["sites"] == []
     assert call["country"] is None and call["language"] is None
+
+
+# ----- batch discovery: each author lists topics from its OWN sources, time-filtered -----
+
+
+class _DiscoveryTool:
+    """A ResearchTool stand-in for the batch discovery factory: records each search's
+    scoping (including the per-call ``freshness``) and returns canned hits so the mapped
+    Candidates can be inspected."""
+
+    def __init__(self, hits=None) -> None:
+        self.calls: list[dict] = []
+        self._hits = hits or []
+
+    def search(self, query, *, sites=None, country=None, language=None, freshness=None):
+        self.calls.append({"query": query, "sites": sites, "country": country,
+                           "language": language, "freshness": freshness})
+        return list(self._hits)
+
+
+def test_author_discovery_scopes_to_author_sources_place_and_freshness():
+    conn = open_db(":memory:")
+    PortalStore(conn).create(Portal(domain="portal-fallback.test"))  # must NOT be used
+    LocationStore(conn).set(region="AR", ui_lang="es-419", language="es")
+    tool = _DiscoveryTool(hits=[SearchResult(url="https://clarin.com/a", snippet="s", title="Titular")])
+    factory = _author_discovery(tool, LocationStore(conn), PortalStore(conn))
+
+    search = factory(_persona(["clarin.com", "https://www.lanacion.com.ar/x"]), freshness="day")
+    cands = search("milei ajuste")
+
+    call = tool.calls[-1]
+    assert "clarin.com" in call["sites"] and "lanacion.com.ar" in call["sites"]
+    assert "portal-fallback.test" not in call["sites"]  # the author's OWN pool wins
+    assert call["freshness"] == "day"  # the batch timeframe reaches the backend
+    assert call["country"] == "AR" and call["language"] == "es"
+    # The hit maps to a Candidate (title -> headline; url + snippet carried).
+    assert cands[0].headline == "Titular" and cands[0].url == "https://clarin.com/a"
+
+
+def test_author_discovery_falls_back_to_enabled_portals_without_author_sources():
+    conn = open_db(":memory:")
+    PortalStore(conn).create(Portal(domain="clarin.com"))
+    PortalStore(conn).create(Portal(domain="off.test", enabled=False))  # disabled -> excluded
+    tool = _DiscoveryTool()
+    factory = _author_discovery(tool, LocationStore(conn), PortalStore(conn))
+
+    factory(_persona([]), freshness="day")("q")  # author has no own pool
+
+    sites = tool.calls[-1]["sites"]
+    assert "clarin.com" in sites and "off.test" not in sites
+
+
+def test_author_discovery_headline_falls_back_to_snippet_without_a_title():
+    tool = _DiscoveryTool(hits=[SearchResult(url="https://x.test/a", snippet="solo snippet", title="")])
+    cands = _author_discovery(tool)(_persona(["x.test"]))("q")
+    assert cands[0].headline == "solo snippet"

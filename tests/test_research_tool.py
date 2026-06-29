@@ -68,6 +68,16 @@ def test_freshness_any_sends_no_time_filter():
     assert "timelimit" not in FakeDDGS.last_kwargs
 
 
+def test_per_call_freshness_overrides_the_instance_default():
+    # A batch sweep narrows the default month to "day" for THIS call only; the instance
+    # default is untouched for later calls.
+    tool = ResearchTool(agent=_agent_returning(_ROWS), freshness="month")
+    tool.search("todays news", freshness="day")
+    assert FakeDDGS.last_kwargs.get("timelimit") == "d"  # day -> "d"
+    tool.search("default call")
+    assert FakeDDGS.last_kwargs.get("timelimit") == "m"  # falls back to the month default
+
+
 def test_max_results_trims_the_returned_hits():
     many = [{"title": f"t{i}", "href": f"https://s{i}.test/x", "body": "b"} for i in range(10)]
     tool = ResearchTool(agent=_agent_returning(many), max_results=3)

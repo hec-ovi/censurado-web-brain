@@ -116,6 +116,10 @@ class RunDeps:
     # mode (``execute_direct``). None means direct mode has no primary source to seed
     # from (it falls back to corroboration only); a test injects an in-process double.
     fetch: "Callable[[str], str] | None" = None
+    # The batch sweep's per-author topic-discovery factory: ``(persona, *, freshness) ->
+    # NewsSearch`` scoped to that author's OWN sources (see ``deps._author_discovery``).
+    # None disables the batch path (a managed run never needs it); a test injects a double.
+    discover_news: "Callable[..., NewsSearch] | None" = None
     # The cross-source corroboration resolver (registrable domain -> ownership-group
     # label, "" when unknown), built ONCE from the portal registry in build_run_deps so
     # the corroboration gate stays a pure function. Defaults to "no co-ownership known",

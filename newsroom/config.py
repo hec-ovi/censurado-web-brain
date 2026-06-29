@@ -120,6 +120,14 @@ class Settings(BaseSettings):
     coverage_duplicate_threshold: float = 0.6  # >= this overlap -> DUPLICATE (drop, never republish)
     coverage_followup_threshold: float = 0.3  # >= this (and < duplicate) -> FOLLOW_UP (extend + cite)
 
+    # ----- batch sweep: per-author topic discovery from each author's OWN sources. -----
+    # The discovery time filter for a batch sweep: each author's manager searches only its
+    # own outlets, narrowed to this freshness window. The websearch backend's finest grain
+    # is "day" (today's news); sub-day windows are not available, so "last 60 minutes" is
+    # approximated by re-running the sweep often, never by a minute-level filter.
+    batch_timeframe: str = "day"  # one of any|day|week|month|year
+    batch_per_author: int = 2  # max articles one author contributes to a batch (its manager's n_max)
+
 
 def load_settings() -> Settings:
     """Build a Settings instance from the environment / .env file."""

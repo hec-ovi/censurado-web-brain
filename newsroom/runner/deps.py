@@ -137,6 +137,49 @@ def _candidate_search(
     return search
 
 
+def _author_discovery(
+    tool: ResearchTool,
+    location_store: LocationStore | None = None,
+    portal_store: PortalStore | None = None,
+    lock: threading.Lock | None = None,
+):
+    """A FACTORY for the batch's per-author TOPIC DISCOVERY search.
+
+    Given a persona (and an optional ``freshness`` window), returns the manager's
+    ``NewsSearch`` SCOPED to that author's OWN sources (``persona.sources``, falling back
+    to the enabled portals when the author has no pool), the editable place, and the time
+    filter. This is the discovery analogue of ``_research_ledger``'s grounding scope: in a
+    batch each author lists topics ONLY from the outlets it actually reads, so the
+    conspiracy desk and the tech desk surface different stories from different sources.
+
+    Unlike ``_candidate_search`` (the managed run's GLOBAL discovery), this confines the
+    search to the author's domains, so it is the seam that makes "topics per author from
+    per-author sources" real. The portal allowlist and location are operator-editable, so
+    they are read fresh per call under the shared connection lock."""
+    guard = lock if lock is not None else nullcontext()
+
+    def for_persona(persona, *, freshness: str | None = None) -> NewsSearch:
+        def search(query: str) -> list[Candidate]:
+            sites = _author_domains(persona) if persona is not None else []
+            country = language = None
+            with guard:
+                if not sites and portal_store is not None:
+                    sites = portal_store.domains()
+                if location_store is not None:
+                    loc = location_store.get()
+                    country, language = loc.region, loc.language
+            return [
+                Candidate(headline=(hit.title or hit.snippet), url=hit.url, snippet=hit.snippet)
+                for hit in tool.search(
+                    query, sites=sites, country=country, language=language, freshness=freshness
+                )
+            ]
+
+        return search
+
+    return for_persona
+
+
 def _research_ledger(
     tool: ResearchTool,
     roles: ResolvedRoles,
@@ -284,6 +327,7 @@ def build_run_deps(
         coverage_store=CoverageStore(conn),
         roles=roles,
         search_news=search_news or _candidate_search(tool, location_store, lock),
+        discover_news=_author_discovery(tool, location_store, portal_store, lock),
         make_ledger=make_ledger
         or _research_ledger(
             tool, roles, settings,
