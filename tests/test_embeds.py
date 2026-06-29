@@ -103,8 +103,32 @@ def test_capture_tweet():
     assert snap == {
         "id": "20", "handle": "jack", "name": "jack",
         "text": "just setting up my twttr", "url": "https://x.com/jack/status/20",
-        "avatar": "https://pbs.twimg.com/a.jpg", "created_at": "2006-03-21", "erased": False,
+        "avatar": "https://pbs.twimg.com/a.jpg", "created_at": "2006-03-21",
+        "created_timestamp": 1142974214, "verified": False,
+        "replies": 0, "retweets": 0, "likes": 0, "views": 0, "bookmarks": 0,
+        "erased": False,
     }
+
+
+def test_capture_tweet_metrics():
+    # fxtwitter returns the public engagement counts and the verified flag with no key;
+    # capture_tweet folds them into the snapshot the generator's card renders.
+    body = {"tweet": {
+        "id": "2071122673367941477",
+        "text": "with Chinese open source models starting to dominate",
+        "url": "https://x.com/quxiaoyin/status/2071122673367941477",
+        "created_timestamp": 1782629099,
+        "replies": 17, "retweets": 13, "likes": 269, "views": 22003, "bookmarks": 31,
+        "author": {"screen_name": "quxiaoyin", "name": "Xiaoyin Qu",
+                   "avatar_url": "https://pbs.twimg.com/p.jpg",
+                   "verification": {"verified": True, "type": "individual"}},
+    }}
+    f = route([("/quxiaoyin/status/2071122673367941477", FetchResult(200, body, True))])
+    snap = capture_tweet("https://x.com/quxiaoyin/status/2071122673367941477", fetch=f)
+    assert snap["verified"] is True
+    assert snap["created_timestamp"] == 1782629099
+    counts = (snap["replies"], snap["retweets"], snap["likes"], snap["views"], snap["bookmarks"])
+    assert counts == (17, 13, 269, 22003, 31)
 
 
 def test_capture_tweet_not_found():

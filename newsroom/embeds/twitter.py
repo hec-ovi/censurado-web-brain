@@ -69,11 +69,27 @@ def _display_date(tweet: dict) -> str:
     return str(raw) if raw else ""
 
 
+def _ts(tweet: dict) -> int:
+    """The tweet's unix creation timestamp (the generator formats the X-style date from
+    it), or 0 when absent."""
+    ts = tweet.get("created_timestamp")
+    return int(ts) if isinstance(ts, (int, float)) and ts > 0 else 0
+
+
+def _count(tweet: dict, key: str) -> int:
+    """A non-negative public engagement count (replies/retweets/likes/views/bookmarks),
+    or 0 when absent."""
+    v = tweet.get(key)
+    return int(v) if isinstance(v, (int, float)) and v >= 0 else 0
+
+
 def capture_tweet(url: str, *, fetch: Fetch | None = None, base: str = FX_BASE) -> dict | None:
     """Capture a single tweet into a self-contained snapshot, or None when the URL is
     not a tweet or the post cannot be read. The snapshot's keys match exactly what the
     generator's tweet card reads: ``id, handle, name, text, url, avatar, created_at,
-    erased``."""
+    created_timestamp, verified, replies, retweets, likes, views, bookmarks, erased``.
+    The engagement counts and the verified flag are public (fxtwitter returns them with
+    no key); the generator shows the X-style date, the view count, and the stat row."""
     fetch = fetch or default_fetch
     ref = parse_tweet_ref(url)
     if not ref:
@@ -94,6 +110,13 @@ def capture_tweet(url: str, *, fetch: Fetch | None = None, base: str = FX_BASE) 
         "url": str(tweet.get("url") or url),
         "avatar": str(author.get("avatar_url") or ""),
         "created_at": _display_date(tweet),
+        "created_timestamp": _ts(tweet),
+        "verified": bool((author.get("verification") or {}).get("verified", False)),
+        "replies": _count(tweet, "replies"),
+        "retweets": _count(tweet, "retweets"),
+        "likes": _count(tweet, "likes"),
+        "views": _count(tweet, "views"),
+        "bookmarks": _count(tweet, "bookmarks"),
         "erased": False,
     }
 
