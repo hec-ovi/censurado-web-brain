@@ -54,11 +54,15 @@ Run the brain together with inference, the backend, the generator, and the site 
 
 ## Run modes
 
-One HTTP surface drives the brain, and the trigger is just a mode on `POST /runs`:
+> Deprecated lane. The autonomous, inference-backed runs below are no longer the default way to publish. The project's standing model is CLI agents (Claude, Codex, and the like) authoring and publishing straight to the backend's `POST /articles` at zero inference cost, documented in the harness `cli/AGENTS.md`. Run the brain only on a local or self-hosted model, if at all; pointing it at a paid cloud endpoint spends quota for no gain over the CLI lane.
+
+One HTTP surface drives the brain. Three triggers are a `mode` on `POST /runs`, plus two side lanes for single-source and per-author work:
 
 - `manual` runs a chosen journalist or subset (the operator may override `n` and `persona_ids`).
 - `express` runs a small default batch.
 - `managed` lets the manager pick today's news and assign journalists, up to `N_MAX`.
+- `direct` writes one article from an operator brief with one persona, bypassing the manager (`POST /articles/from-link`, CLI `direct`); the cross-source corroboration gate is forced off because the operator vouched for the source.
+- `batch` runs the manager once per author over that author's own source-scoped, time-filtered search, then merges the per-author results (`POST /runs/batch`, CLI `batch`).
 
 Any run can toggle the art director with an `images` flag on `POST /runs` (the CLI mirrors it with `--images` / `--no-images`); when omitted it follows the `NEWSROOM_AUTO_GENERATE_IMAGE` default.
 
@@ -109,7 +113,7 @@ Every test hits a real entry point (an HTTP route, a CLI invocation, or the orch
 ## Principles
 
 - **Isolated layers behind contracts.** Presentation only consumes the brain's API, inference is agnostic to which model or runtime answers, and the trigger is agnostic to what the brain does. Each layer has its own tests and can be swapped without touching the others.
-- **Local-first and self-hostable.** The default path runs entirely on your own hardware: a local Gemma served by llama.cpp for text, and a local ComfyUI running FLUX.2 klein for images, with no hosted API required. Cloud and CLI-agent adapters plug in behind the same completion interface, and the image backend sits behind its own swappable client.
+- **Local-first and self-hostable.** When the brain does run, it runs entirely on your own hardware: a local model served by llama.cpp for text (the reference build is a decensored Gemma; the harness ships a Qwen3.6 GGUF), and a local ComfyUI running FLUX.2 klein for images, with no hosted API required. Cloud and CLI-agent adapters plug in behind the same completion interface, and the image backend sits behind its own swappable client.
 - **No output-length caps.** Article generation never sets a token, word, or sentence ceiling. Only the number of loop iterations is bounded; the model finishes on its own. Image size and step count are render parameters, not output caps.
 
 ## License
