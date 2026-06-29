@@ -40,6 +40,11 @@ Your job in this pass is form, not new reporting:
 Go through your own draft and answer, honestly:
 
 - Is this article redundant? What is repeated across the sections?
+- Second pass over the sources: which sources are noise, off-topic, or just repeat
+  another source? Use the signal, drop the rest. Two outlets owned by the same group,
+  or two copies of the same wire story, are ONE confirmation, never two; do not present
+  them as independent agreement, and do not pad the piece by citing the same fact from
+  several near-identical sources.
 - What can be improved? What is noise and what is signal? Cut the noise.
 - Is the wording correct? Are we repeating the same words? Vary or tighten them.
 - Does it have AI-slop cliche, the tells of machine writing, throwaway "como si"
@@ -48,6 +53,9 @@ Go through your own draft and answer, honestly:
 - Does it look professional and human? If not, make it so: exact tense, names,
   titles, dates and figures; attribution kept; a senior voice, not an assistant's.
 - Does it honor the layered format above, with each part dense and distinct?
+- Final proofread, end to end: spelling, grammar, and punctuation are correct, and the
+  Markdown is clean (well-formed headings, lists, and links; no stray syntax). Fix every
+  error you find. This is the last read before the desk sees it.
 
 Then rewrite the article so it is tighter, denser, less repetitive, and more clearly
 yours than before. Keep every grounded fact and citation; change only the form, the
