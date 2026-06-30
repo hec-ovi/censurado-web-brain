@@ -16,12 +16,11 @@ where
         return strings.Trim(s, "-")
     }
 
-The brain reproduces this so its batch slug de-collision (see
-``newsroom.publish.service.publish_batch_assignments``) can predict the final slug the
-platform will assign and avoid a within-batch duplicate-slug rejection that would 422
-the whole atomic batch. Any Unicode lowercasing difference between Go and Python is
-erased by the ``[^a-z0-9]+`` replacement, so the slug output is byte-equal for the
-fields a journalist writes.
+The brain reproduces this so a caller can predict the final slug the platform will assign
+(e.g. to de-collide a within-batch duplicate-slug rejection that would 422 the whole
+atomic batch). Any Unicode lowercasing difference between Go and Python is erased by the
+``[^a-z0-9]+`` replacement, so the slug output is byte-equal for the fields a journalist
+writes.
 """
 
 from __future__ import annotations
