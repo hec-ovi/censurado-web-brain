@@ -4,9 +4,9 @@ The brain API has no auth today (the ``operator_token`` is the brain->backend cr
 not a gate on the brain's own routes). But the surface must be auth-READY in a single
 place rather than in each of the dozen-plus handlers. ``newsroom.brain.app.create_app``
 wires this dependency onto ``FastAPI(dependencies=[...])``, so it runs ahead of EVERY
-operation: the inline lifecycle routes (synthesis, runs, articles-from-link, health) AND
-every included router (portals, personas, runs, editorial, status, admin), without
-touching a single handler.
+operation: the inline routes (health and the persona reads) AND every included router
+(portals, personas, editorial, prompts, status, admin), without touching a single
+handler.
 
 To turn auth ON later, change THIS function (read ``request`` for an Authorization
 header, verify it, raise ``fastapi.HTTPException(401/403)`` on failure) -- or pass a real

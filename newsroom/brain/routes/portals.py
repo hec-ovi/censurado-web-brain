@@ -9,7 +9,7 @@ without a redeploy. This router is that surface, mirroring the persona routes' s
 
 Every handler reads the shared ``PortalStore`` and the single connection lock off
 ``request.app.state`` (the store shares the one SQLite connection the rest of the
-brain uses); writes go under the lock so a console edit and a running pipeline never
+brain uses); writes go under the lock so a console edit and a concurrent request never
 race on the connection. The router holds NO SQL: it calls the store's existing
 methods (``create``/``update``/``delete``/``set_enabled``/``get``/``list``) and maps the
 store's ``ValueError``/``KeyError`` to problem responses.

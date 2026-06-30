@@ -15,7 +15,7 @@ globally-unique int the key is derived from it, so the path needs no key.
 
 Every handler reads the shared ``PromptStore`` and the single connection lock off
 ``request.app.state`` (the store shares the one SQLite connection the rest of the brain
-uses); writes go under the lock so a console edit and a running pipeline never race on the
+uses); writes go under the lock so a console edit and a concurrent request never race on the
 connection. The router holds NO SQL: it calls the store's methods and maps their
 ``KeyError`` / ``ValueError`` to problem responses (404 not_found / prompt_not_found, 422
 invalid_prompt). Auth is wired app-wide in ``create_app``, so there is none here.

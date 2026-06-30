@@ -3,9 +3,8 @@
 This exercises the REAL entry point: ``create_app`` mounted under a FastAPI
 ``TestClient``, hit over HTTP. It walks the full lifecycle of a directly-created
 persona (direct-create -> get -> patch -> delete -> 404) and the error edges
-(duplicate id, missing id, invalid beat). The direct-create route is the NON-synthesis
-path (``POST /personas/direct``); the synthesis route at ``POST /personas`` is left
-alone, so this never spends an LLM call.
+(duplicate id, missing id, invalid beat). Create is a pure persist (``POST
+/personas/direct``); the brain runs no model, so nothing here spends an LLM call.
 """
 
 from __future__ import annotations
@@ -160,3 +159,51 @@ def test_openapi_types_the_persona_management_responses(tmp_path):
     # PATCH /personas/{persona_id} advertises 200 + PersonaOut.
     patched = spec["paths"]["/personas/{persona_id}"]["patch"]["responses"]["200"]["content"]
     assert patched["application/json"]["schema"]["$ref"].endswith("/PersonaOut")
+
+
+def test_synthesized_persona_persists_and_fetches_back_intact_on_empty_db(tmp_path):
+    # The create-author contract end to end: a fresh box ships ZERO personas; the operator's
+    # CLI agent synthesizes a persona OFFLINE (the shape prompts/persona/synthesize.md
+    # produces) and POSTs it to the pure-persist route; a fetch then returns every authored
+    # field intact. No model runs in the brain at any step.
+    client = _client(tmp_path)
+
+    # A fresh DB carries nothing about who writes: zero personas in tracked code.
+    listing = client.get("/personas")
+    assert listing.status_code == 200
+    assert listing.json() == {"personas": [], "total": 0}
+
+    # The synthesized author. synthesize.md fills who_i_am/about/style/few_shots/sources; the
+    # operator supplies display_name + beat from the seed brief.
+    payload = {
+        "display_name": "Ada Lovelace",
+        "beat": "tech",
+        "who_i_am": "Soy Ada Lovelace. Cubro semiconductores y la gente que los fabrica.",
+        "about": "Ada Lovelace cubre la industria de los chips.",
+        "style": "Frases declarativas, cifras primero, sin adjetivos de relleno.",
+        "few_shots_pos": [
+            {"prompt": "Una fabrica anuncia una linea nueva", "good": "La planta sumara 2.000 obleas por mes."}
+        ],
+        "few_shots_neg": [
+            {"prompt": "Una fabrica anuncia una linea nueva", "bad": "En un giro demoledor, vuelven a sorprender."}
+        ],
+        "sources": ["example-com"],
+    }
+
+    created = client.post("/personas/direct", json=payload)
+    assert created.status_code == 201
+    assert created.json()["id"] == "ada-lovelace"
+
+    # The fetch round-trips every authored field verbatim: the persist endpoint loses nothing.
+    fetched = client.get("/personas/ada-lovelace")
+    assert fetched.status_code == 200
+    got = fetched.json()
+    for field in ("who_i_am", "about", "style", "beat", "sources", "few_shots_pos", "few_shots_neg"):
+        assert got[field] == payload[field], field
+    assert got["language"] == "español neutro"  # the create default rides through
+    assert got["active"] is True
+
+    # The box now holds exactly that one operator-created author, and nothing else.
+    after = client.get("/personas").json()
+    assert after["total"] == 1
+    assert [p["id"] for p in after["personas"]] == ["ada-lovelace"]

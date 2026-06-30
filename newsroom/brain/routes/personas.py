@@ -1,22 +1,22 @@
-"""The author (persona) MANAGEMENT API: typed, non-synthesis CRUD over personas.
+"""The author (persona) MANAGEMENT API: typed CRUD over personas, with NO model call.
 
 A persona is an author identity whose ``id`` becomes ``article.author`` at the publish
-seam. The brain already grows personas two ways: asynchronous SYNTHESIS (``POST
-/personas``, an off-request LLM job that drafts a voice from a seed brief) and the
-platform mirror (which reconciles the web author registry into local rows). What was
-missing was the plain operator surface: build a persona from explicit fields with NO
-model call, edit its mutable fields, and remove it. This router is that surface,
+seam. The brain runs no model: an operator's CLI agent synthesizes a persona's voice
+offline (following ``prompts/persona/synthesize.md``) and POSTs the finished JSON here;
+this surface only validates and stores it. Personas also arrive via the platform mirror,
+which reconciles the web author registry into local rows. This router is the operator
+surface: persist a persona from explicit fields, edit its mutable fields, and remove it,
 mirroring the source-management router's shape (typed In/Patch/Out models, a
 ``response_model`` + ``status_code`` on every route, the shared ``_problem`` body).
 
-The direct create lives at ``POST /personas/direct`` so it never collides with the
-existing synthesis route at ``POST /personas`` (synthesis stays where clients already
-poll it). Update and delete take the persona id on the path; they sit beside the inline
-``GET /personas/{persona_id}`` as distinct HTTP methods, so the read path is untouched.
+Create lives at ``POST /personas/direct`` (a pure persist). Update and delete take the
+persona id on the path; they sit beside the inline read routes (``GET /personas`` and
+``GET /personas/{persona_id}``, defined in ``create_app``) as distinct HTTP methods, so
+the read path is untouched.
 
 Every handler reads the shared ``PersonaStore`` and the single connection lock off
 ``request.app.state`` (the store shares the one SQLite connection the rest of the brain
-uses); writes go under the lock so a console edit and a running pipeline never race on
+uses); writes go under the lock so a console edit and a concurrent request never race on
 the connection. The router holds NO SQL: it calls the store's existing methods
 (``create``/``update``/``delete``/``get``) and maps the store's ``ValueError``/``KeyError``
 to problem responses (404 ``persona_not_found`` -- the resource-specific code the inline
@@ -114,13 +114,11 @@ def _out(persona: Persona) -> PersonaOut:
 
 @router.post("/personas/direct", status_code=201, response_model=PersonaOut)
 async def create_persona_direct(body: PersonaIn, request: Request):
-    """Create a persona from explicit fields, with NO synthesis job: the row is
-    persisted immediately and the stored ``PersonaOut`` returned with 201. The id is the
-    body's ``id`` when given, else derived from ``display_name``. A bad beat is rejected
-    UP FRONT with 422 ``invalid_beat`` (the SAME code the synthesis ``POST /personas``
-    returns, so a client validating beats branches on one code regardless of create path);
-    a duplicate id -> 409 ``duplicate_id``; any other store rejection (underivable id) ->
-    422 ``invalid_persona``."""
+    """Create a persona from explicit fields: the row is persisted immediately and the
+    stored ``PersonaOut`` returned with 201. The id is the body's ``id`` when given, else
+    derived from ``display_name``. A bad beat is rejected UP FRONT with 422
+    ``invalid_beat``; a duplicate id -> 409 ``duplicate_id``; any other store rejection
+    (underivable id) -> 422 ``invalid_persona``."""
     state = request.app.state
     if not is_valid_section(body.beat):
         return _problem(422, "invalid_beat", detail=f"beat must be one of {SECTION_ENUM}")
