@@ -39,25 +39,9 @@ Versioned `.md` files with `{{TOKEN}}` placeholders, no length caps. They ship i
 - → `newsroom/prompts.py` (`load_prompt`, `render`)
 - → `prompts/journalist/*.md`, `prompts/manager/triage.md`, `prompts/persona/synthesize.md`, `prompts/art_director/illustrate.md`
 
-### Coverage memory
-What has already been covered, so a sweep can skip duplicates. A store plus the triage type.
-- → `newsroom/manager/coverage.py` (`CoverageStore`), `newsroom/manager/types.py` (`Triage`)
-
-### Runs store + identity
-The runs/assignments store and the content-hash idempotency anchor the publish transport uses.
-- → `newsroom/runs/store.py` (`RunStore`, `Run`, `Assignment`)
-- → `newsroom/contracts/hashing.py` (`content_hash` over title/body/author/section; `idempotency_key`)
-- → `newsroom/db.py` (the SQLite schema)
-
-### Publish + media transport
-Raw-HTTP helpers to the platform: `publish_article` / `publish_batch` (build the payload, POST `/articles` or `/articles:batch`) and `upload_media` (raw PNG bytes to `/media`). A transport library the brain ships; the CLI agent is the primary publisher.
-- → `newsroom/publish/client.py` (`publish_article`, `publish_batch`, `build_payload`)
-- → `newsroom/publish/media.py` (`upload_media`, `MediaAsset`)
-
-### Imagery (the ComfyUI client)
-Drives a local ComfyUI running FLUX.2 klein: `ComfyClient` hides the submit/poll/fetch protocol; `graph.py` fills a checked-in template by node id. Used by an operator or a script, not auto-triggered.
-- → `newsroom/imagery/comfy_client.py` (`ComfyClient`, `ComfyError`)
-- → `newsroom/imagery/graph.py` (`build_graph`, `TEMPLATES`) + `templates/flux2_klein_t2i.json`
+### Database
+The brain-owned SQLite: connection + schema (personas, editorial config, the versioned style/prompt tables). The persona content hash that derives slugs lives in `contracts/hashing.py`.
+- → `newsroom/db.py` (`SCHEMA`, `open_db`)
 
 ### Mirror + cleanse
 `mirror` reconciles the platform author registry into the local personas on bootstrap (best-effort: a down platform is a no-op, so it never empties the newsroom). `cleanse` remaps topic tags from a map file.
@@ -70,11 +54,11 @@ The article and batch shapes are pinned copies of the platform schemas, governed
 - → `newsroom/contracts/vendored/v1/*.schema.json` (do not hand-edit)
 
 ### Frontend (the operator console)
-Buildless vanilla ES modules served by nginx; talks to the brain only over `/api` (nginx strips the prefix), and previews hero images proxied via `/media/`.
+Buildless vanilla ES modules served by nginx; talks to the brain only over `/api` (nginx strips the prefix).
 - → `frontend/src/` (`api.js`, `components/`), `frontend/nginx.conf`
 
 ### Tests + the shared fake
-Every test drives a real entry point through to its side effect against one in-repo fake that stands in for the platform (`/articles`, `/articles:batch`, `/media`) and ComfyUI (`/prompt`, `/history`, `/view`).
+Every test drives a real entry point through to its side effect against one in-repo fake that stands in for the platform publish seam (`/articles`, `/articles:batch`) and the chat backend (carrying the no-output-cap guard).
 - → `testkit/fake_server.py`, `testkit/assertions.py` (the no-cap guard)
 - → `tests/`
 

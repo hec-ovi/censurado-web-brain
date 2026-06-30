@@ -47,9 +47,9 @@ test("a problem+json error becomes an Error carrying code and status", async () 
 });
 
 test("a body-less error still throws with an http_<status> code", async () => {
-  server.use(http.get(`${ORIGIN}/api/runs/r9`, () => new HttpResponse(null, { status: 502 })));
+  server.use(http.get(`${ORIGIN}/api/personas/r9`, () => new HttpResponse(null, { status: 502 })));
   await assert.rejects(
-    () => api.getRun("r9"),
+    () => api.getPersona("r9"),
     (err) => {
       assert.equal(err.status, 502);
       assert.equal(err.code, "http_502");

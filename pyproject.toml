@@ -24,8 +24,8 @@ dev = [
 ]
 
 [project.scripts]
-# The automation entry point: run the newsroom once and exit. An external periodic
-# trigger invokes this with a --mode (the entire trigger surface). See newsroom.cli.
+# The brain's management CLI: command-line parity of the config-plane HTTP API
+# (authors, sources, prompts, editorial style). See newsroom.cli.
 censurado-brain = "newsroom.cli:main"
 
 [build-system]
@@ -39,10 +39,6 @@ packages = [
     "newsroom.brain",
     "newsroom.personas",
     "newsroom.editorial",
-    "newsroom.runs",
-    "newsroom.manager",
-    "newsroom.publish",
-    "newsroom.imagery",
     "newsroom.mirror",
     "newsroom.cleanse",
     "testkit",
@@ -50,7 +46,6 @@ packages = [
 
 [tool.setuptools.package-data]
 "newsroom.contracts" = ["vendored/v1/*.json", "vendored/v1/*.md"]
-"newsroom.imagery" = ["templates/*.json"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

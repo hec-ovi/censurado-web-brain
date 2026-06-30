@@ -1,9 +1,8 @@
 """Harness configuration.
 
 One settings object, environment-driven (prefix ``NEWSROOM_``), read once at
-startup. It carries the brain's HTTP surface, its stores and prompt assets, the
-publish seam credentials, and the ComfyUI image-render parameters. Image
-width/height/steps are render parameters, not output-length caps.
+startup. It carries the brain's HTTP surface, its stores and prompt assets, and the
+publish seam credentials.
 """
 
 from __future__ import annotations
@@ -82,21 +81,6 @@ class Settings(BaseSettings):
     # append-only operator_token cannot reach). Falls back to operator_token when unset,
     # so a deployment that mints one key with all scopes needs no extra config.
     admin_token: str = Field(default="", repr=False)
-
-    # ----- Imagery seam (ComfyUI image generation). -----
-    # The operator's CLI agent decides what to illustrate (the art direction); ComfyUI
-    # renders it on the local box and the PNG is uploaded to the platform's media endpoint.
-    # There is NO output-length cap here; image width/height/steps are render parameters,
-    # not generation-length caps.
-    comfyui_base_url: str = "http://127.0.0.1:8188"  # the local ComfyUI server (FLUX.2 klein)
-    image_workflow: str = "flux2_klein"  # named workflow template family under newsroom/imagery/templates
-    image_width: int = 1024
-    image_height: int = 1024
-    image_steps: int = 4  # klein is a distilled few-step model
-    reference_image_limit: int = 2  # max source reference images fed to the FLUX.2 reference workflow
-    # Where generated images are uploaded (POST /media). Defaults to publish_base_url
-    # (same host as the article publish seam) when left blank.
-    media_base_url: str = ""
 
 
 def load_settings() -> Settings:

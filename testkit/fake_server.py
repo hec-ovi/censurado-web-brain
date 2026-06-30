@@ -30,15 +30,13 @@ the fake fails for the same reason the real handler would.
 
 from __future__ import annotations
 
-import base64
-import hashlib
 import json
 import threading
 from dataclasses import dataclass, field
 from datetime import datetime
 
 from fastapi import FastAPI, Request
-from fastapi.responses import JSONResponse, Response
+from fastapi.responses import JSONResponse
 from starlette.concurrency import run_in_threadpool
 
 from newsroom.contracts.hashing import content_hash
@@ -49,13 +47,6 @@ from testkit.assertions import length_cap_keys_in
 
 SCOPE_WRITE = "articles:write"
 SCOPE_PUBLISH_ANY = "articles:publish-any"
-
-# A minimal valid 1x1 PNG, returned by the fake ComfyUI /view when a test does not
-# script specific image bytes. Real bytes (not a placeholder string) so the client's
-# byte handling is exercised end to end.
-_PNG_1x1 = base64.b64decode(
-    "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg=="
-)
 
 # Allowed top-level keys, from contracts/article.schema.json (additionalProperties:false).
 _ALLOWED_ARTICLE_KEYS = frozenset(
@@ -126,21 +117,6 @@ class FakeState:
     ledger: dict[str, dict] = field(default_factory=dict)
     # content-hash dedup index: content_hash -> {id, slug, author}
     by_hash: dict[str, dict] = field(default_factory=dict)
-    # --- ComfyUI image backend (POST /prompt, GET /history, GET /view, POST /upload/image) ---
-    image_requests: list[dict] = field(default_factory=list)   # each {prompt_id, body, status}
-    upload_requests: list[dict] = field(default_factory=list)   # each {name, size}
-    media_requests: list[dict] = field(default_factory=list)    # each {size, content_type, url}
-    image_script: list[bytes] = field(default_factory=list)     # FIFO of PNG bytes /view returns
-    # prompt_id -> the SaveImage output entry the /history call reports.
-    image_outputs: dict[str, dict] = field(default_factory=dict)
-    # filename -> the PNG bytes /view returns.
-    image_bytes: dict[str, bytes] = field(default_factory=dict)
-    # When cleared, /history reports the prompt as not-yet-complete forever, so a test
-    # can prove the client's render timeout fires. Defaults open (renders complete).
-    image_ready: threading.Event = field(default_factory=threading.Event)
-    # When True, /history reports the render as failed (status_str "error"), so a test
-    # can exercise the client's execution-error branch (graph accepted, executor failed).
-    image_error: bool = False
     # A gate to simulate a slow model: when cleared, the chat handler blocks before
     # responding, so a test can prove a caller did NOT wait for the completion. It
     # defaults open (set), so every other test is unaffected. threading.Event is
@@ -151,11 +127,6 @@ class FakeState:
 
     def __post_init__(self) -> None:
         self.chat_gate.set()  # open by default; tests opt into holding
-        self.image_ready.set()  # open by default; renders complete
-
-    def script_image(self, data: bytes) -> None:
-        """Queue specific PNG bytes for the next render's /view response."""
-        self.image_script.append(data)
 
     # --- scripting / inspection helpers ---
 
@@ -551,99 +522,5 @@ def create_fake_app(state: FakeState | None = None) -> tuple[FastAPI, FakeState]
         status = 201 if any_created else 200
         state.batch_requests.append({"items": articles, "status": status, "results": results})
         return JSONResponse(status_code=status, content={"results": results})
-
-    # ----- ComfyUI image backend (the brain's imagery seam) -----
-    # The real ComfyUI server is async on the wire: submit a graph, poll history,
-    # fetch the image. The fake mirrors that ordering so the client's submit -> poll
-    # -> fetch loop is exercised exactly as against the live server.
-
-    @app.post("/prompt")
-    async def comfy_prompt(request: Request):
-        try:
-            body = json.loads(await request.body())
-        except json.JSONDecodeError:
-            return JSONResponse(status_code=400, content={"error": "invalid_json"})
-        if not isinstance(body, dict) or not body.get("prompt"):
-            return JSONResponse(status_code=400, content={"error": "no_prompt", "node_errors": {}})
-        # No output-length cap may ride in an image request either (steps/cfg are render
-        # params, not length caps, so they are not in LENGTH_CAP_KEYS and pass).
-        offenders = length_cap_keys_in(body)
-        if offenders:
-            state.image_requests.append({"body": body, "status": 422, "capped": True})
-            return JSONResponse(status_code=422, content={"error": "forbidden_length_cap", "keys": offenders})
-        state._seq += 1
-        prompt_id = f"img-fake-{state._seq}"
-        filename = f"censurado_{state._seq:05d}_.png"
-        data = state.image_script.pop(0) if state.image_script else _PNG_1x1
-        state.image_bytes[filename] = data
-        state.image_outputs[prompt_id] = {
-            "filename": filename, "subfolder": "", "type": "output"
-        }
-        state.image_requests.append({"prompt_id": prompt_id, "body": body, "status": 200})
-        return {"prompt_id": prompt_id, "number": 1, "node_errors": {}}
-
-    @app.get("/history/{prompt_id}")
-    async def comfy_history(prompt_id: str):
-        output = state.image_outputs.get(prompt_id)
-        if output is None:
-            return {}
-        if state.image_error:
-            return {prompt_id: {"status": {"status_str": "error", "completed": True,
-                                           "messages": [["execution_error", {"node": "11"}]]}}}
-        if not state.image_ready.is_set():
-            # Submitted but not finished: an entry with no outputs, so the client keeps
-            # polling (and a test with a short client timeout proves the timeout fires).
-            return {prompt_id: {"status": {"completed": False}, "outputs": {}}}
-        return {
-            prompt_id: {
-                "status": {"status_str": "success", "completed": True, "messages": []},
-                "outputs": {"13": {"images": [output]}},
-            }
-        }
-
-    @app.get("/view")
-    async def comfy_view(filename: str, subfolder: str = "", type: str = "output"):
-        data = state.image_bytes.get(filename)
-        if data is None:
-            return JSONResponse(status_code=404, content={"error": "not_found"})
-        return Response(content=data, media_type="image/png")
-
-    @app.post("/upload/image")
-    async def comfy_upload(request: Request):
-        raw = await request.body()
-        state._seq += 1
-        name = f"reference_{state._seq:05d}.png"
-        state.upload_requests.append({"name": name, "size": len(raw)})
-        return {"name": name, "subfolder": "", "type": "input"}
-
-    # ----- the platform media endpoint (POST /media): content-addressed image store -----
-
-    @app.post("/media")
-    async def media_upload(request: Request):
-        token = _bearer(request.headers.get("authorization"))
-        if not token:
-            return _problem(401, "missing_token")
-        ident = state.keys.get(token)
-        if ident is None:
-            return _problem(401, "invalid_token")
-        if not ident.has_scope(SCOPE_WRITE):
-            return _problem(403, "insufficient_scope", detail=f"requires {SCOPE_WRITE}")
-        data = await request.body()
-        if not data:
-            return _problem(400, "empty_image")
-        sha = hashlib.sha256(data).hexdigest()
-        content_type = request.headers.get("content-type", "image/png")
-        ext = {"image/png": "png", "image/jpeg": "jpg", "image/gif": "gif", "image/webp": "webp"}.get(
-            content_type, "png"
-        )
-        url = f"/media/{sha}.{ext}"
-        state.media_requests.append({"size": len(data), "content_type": content_type, "url": url})
-        return JSONResponse(
-            status_code=201,
-            content={
-                "name": f"{sha}.{ext}", "url": url, "content_type": content_type,
-                "size": len(data), "sha256": sha,
-            },
-        )
 
     return app, state

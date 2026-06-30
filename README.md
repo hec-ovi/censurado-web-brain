@@ -16,13 +16,11 @@ The backend has no concept of personas (its article schema takes only an `author
 - **Sources (portals).** The outlets each author reads, for grounding and cross-checking. Registered per deployment, linked per author.
 - **Editorial style.** A versioned house style guide (voice, exemplars, the vetoed-term lexicon) plus the workflow knobs the journalist prompts read: `sourcing.min_sources` (the independent-source floor, default 5), `structure.respin_passes` (default 2), and `structure.topic_cap` (default 12). An operator edits the active version over the API; the prior versions stay restorable.
 - **Prompt library.** 12 versioned `.md` prompts across `prompts/journalist`, `prompts/persona`, `prompts/manager`, `prompts/art_director`. The journalist set is the editorial loop end to end (`workflow.md`, then research, outline, draft, the six-dimension `evaluate.md`, respin, factcheck, finalize) and carries the style knobs as `{{MIN_SOURCES}}` / `{{RESPIN_PASSES}}` / `{{TOPIC_CAP}}` placeholders the CLI agent fills. They ship in the image and serve as-is from disk; the versioned store is an override layer an operator can edit from the console.
-- **Coverage memory.** What has already been covered, so a sweep can skip duplicates.
 
 ## How it fits the rest of the system
 
 - The brain serves authors, sources, prompts, and style over HTTP (the console's nginx reverse-proxies `/api` to it). It writes nothing to the public site.
-- A CLI agent reads an author (`GET /personas/{id}`) and the prompts (`GET /prompts/template?key=...`), writes the article itself, and publishes to the backend's `POST /articles`. The editorial bar, the run modes, and the art direction live with the agent (the harness `cli/AGENTS.md`), not here.
-- The brain ships a ComfyUI client and a publish/media transport, so an operator or a script can render a hero image and upload it, but the brain triggers no generation on its own.
+- A CLI agent reads an author (`GET /personas/{id}`) and the prompts (`GET /prompts/template?key=...`), writes the article itself, and publishes to the backend's `POST /articles`. The editorial bar and the art direction live with the agent (the harness `cli/AGENTS.md`), not here.
 - One operator token (the `articles:write` + `articles:publish-any` + `admin:write` key) is the only coupling between the brain and the backend.
 
 ## Run it
@@ -43,17 +41,13 @@ newsroom/
   brain/        the FastAPI app: authors, sources, editorial, prompts, status, bootstrap
   personas/     the persona store (own SQLite, brain-owned)
   editorial/    portals and sources, the style guide, location, the prompt store, the seeders
-  manager/      the coverage store (what has been covered) and the triage type
-  runs/         the runs and assignments store (the publish idempotency anchor)
-  publish/      the raw-HTTP publish client and the media (image) uploader
-  imagery/      the ComfyUI client and the FLUX.2 klein workflow template
   mirror/       the brain-to-backend author backfill and reconcile
   cleanse/      topic-tag cleanup
   contracts/    the vendored publish contracts, section enum, content hash, slug derivation
   cli.py        the operator CLI entry point (censurado-brain)
 frontend/       the console: buildless vanilla JS + nginx, talks to the brain over /api
 prompts/        versioned .md prompts (persona, manager, journalist, art_director)
-testkit/        the shared in-repo fake (publish + media + ComfyUI), used by the tests
+testkit/        the shared in-repo fake (publish seam + chat backend), used by the tests
 tests/          end-to-end tests that drive the real entry points
 deploy/         docker compose (brain + console) and the trigger example
 AGENTS.md       the operational map of the codebase
@@ -74,7 +68,7 @@ Every test hits a real entry point (an HTTP route or a CLI invocation) through t
 ## Principles
 
 - **Authors live only in the database.** Persona identity and the outlets an author reads are created by an operator or an agent and are never in tracked code. A fresh clone with an empty database has no authors and no sources.
-- **No model here.** The brain holds the newsroom's configuration and serves it; the writing is done by a CLI agent's own model. Image generation runs on a local ComfyUI when an operator or script asks for it.
+- **No model here.** The brain holds the newsroom's configuration and serves it. The writing is done by the CLI agent's own model, and image generation by the agent's local ComfyUI (in the harness); the brain itself runs nothing.
 - **No output-length caps.** Nothing in this repo sets a token, word, or sentence ceiling on a model.
 
 ## License

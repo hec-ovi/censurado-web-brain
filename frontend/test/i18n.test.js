@@ -28,7 +28,6 @@ function baseHandlers(extra = []) {
     http.get(`${ORIGIN}/api/health`, () => HttpResponse.json({ ok: true })),
     http.get(`${ORIGIN}/api/personas`, () => HttpResponse.json({ personas: [] })),
     http.get(`${ORIGIN}/api/portals`, () => HttpResponse.json({ portals: [], total: 0 })),
-    http.get(`${ORIGIN}/api/runs`, () => HttpResponse.json({ runs: [], total: 0 })),
     http.get(`${ORIGIN}/api/status/backend`, () =>
       HttpResponse.json({
         backend_base_url: "http://backend.local",

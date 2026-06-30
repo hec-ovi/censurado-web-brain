@@ -89,12 +89,6 @@ export const api = {
   enablePortal: (id) => post(`/portals/${enc(id)}/enable`),
   disablePortal: (id) => post(`/portals/${enc(id)}/disable`),
 
-  // Runs
-  listRuns: ({ status, limit, offset } = {}) => request("/runs" + query({ status, limit, offset })),
-  createRun: (req) => post("/runs", req),
-  createDirect: (body) => post("/articles/from-link", body),
-  getRun: (runId) => request(`/runs/${enc(runId)}`),
-
   // Editorial style and location
   getStyle: () => request("/editorial/style"),
   postStyle: (body) => post("/editorial/style", body),

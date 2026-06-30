@@ -1,12 +1,9 @@
 """The brain-owned SQLite database: connection + schema, in-process only.
 
 Nothing outside the harness reads this file. It holds ``personas`` (author
-identities), ``coverage`` (one row per published article, the "coverage memory" for
-freshness and non-repetition), and the operator-editable editorial config tables
-(``location``, ``portals``, and the versioned ``style_guide`` / ``prompt_template``
-with their active pointers). Step 2 ships the persona CRUD on top
-(``newsroom.personas.store``); ``coverage`` is recorded when an article publishes and
-read by the dedup triage.
+identities) and the operator-editable editorial config tables (``location``,
+``portals``, and the versioned ``style_guide`` / ``prompt_template`` with their
+active pointers). The persona CRUD lives on top in ``newsroom.personas.store``.
 
 ``beat`` on a persona shares the harness section vocabulary (``contracts.sections``);
 the CHECK on ``beat`` mirrors that enum so the constraint and the Python validation
@@ -46,22 +43,6 @@ CREATE TABLE IF NOT EXISTS personas (
   created_at    TEXT NOT NULL,
   updated_at    TEXT NOT NULL
 );
-
-CREATE TABLE IF NOT EXISTS coverage (
-  id            INTEGER PRIMARY KEY AUTOINCREMENT,
-  assignment_id TEXT,
-  published_id  TEXT,
-  slug          TEXT,
-  section       TEXT NOT NULL,
-  headline      TEXT NOT NULL,
-  topics        TEXT,                         -- JSON array
-  entities      TEXT,                         -- JSON array
-  fingerprint   TEXT NOT NULL,                -- JSON array of token signatures (tokens may contain spaces)
-  content_hash  TEXT,
-  published_at  TEXT NOT NULL
-);
-
-CREATE INDEX IF NOT EXISTS idx_coverage_published_at ON coverage(published_at);
 
 -- ----- Operator-editable editorial config (the console's settings panel). -----
 -- These three carry what an operator tunes at runtime without a redeploy: WHERE the

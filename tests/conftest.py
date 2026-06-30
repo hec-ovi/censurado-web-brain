@@ -52,16 +52,6 @@ class Fake:
     def articles_url(self) -> str:
         return f"{self.base_url}/articles"
 
-    @property
-    def comfy_url(self) -> str:
-        """The ComfyUI image backend root (POST /prompt, GET /history, GET /view)."""
-        return self.base_url
-
-    @property
-    def media_url(self) -> str:
-        """The platform media-upload host (POST /media). Same host as /articles."""
-        return self.base_url
-
 
 @pytest.fixture
 def fake():

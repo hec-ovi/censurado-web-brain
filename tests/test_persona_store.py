@@ -304,9 +304,9 @@ def test_core_tables_exist_and_run_tables_are_gone():
         r["name"]
         for r in conn.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchall()
     }
-    assert {"personas", "coverage", "portals", "location", "style_guide", "prompt_template"} <= names
-    # The LLM-newsroom run records are gone with the inference lane.
-    assert "runs" not in names and "assignments" not in names
+    assert {"personas", "portals", "location", "style_guide", "prompt_template"} <= names
+    # The LLM-newsroom run/coverage records are gone with the inference lane.
+    assert {"runs", "assignments", "coverage"}.isdisjoint(names)
 
 
 def test_beat_check_constraint_enforced_at_sql_level():

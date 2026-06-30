@@ -2,8 +2,8 @@
 
 The platform (censurado-web) OWNS author existence and the public profile fields
 (name, bio, avatar). The brain MIRRORS that list and keeps only the private
-identity prompt. This is the inverse of ``newsroom.publish.client``: a single GET
-against the platform read API, mapped to a small typed record. Any VALID bearer
+identity prompt. A single GET against the platform read API, mapped to a small
+typed record. Any VALID bearer
 token reads (the read API checks the token, not a scope), so the operator key is
 reused here.
 
