@@ -7,7 +7,7 @@ facts, would let a reporter write this piece accurately. Cover who and what, whe
 and where, the numbers, and the competing claims. Each sub-question must be
 answerable by a web search and should target recent, verifiable facts.
 
-Aim to cross-validate the central facts across **at least five different source
+Aim to cross-validate the central facts across **at least {{MIN_SOURCES}} different source
 articles** (the same story or closely related ones). They may come from the same
 outlet, but PREFER different platforms: a fact that holds across several independent
 outlets is far stronger than one carried by a single source. Frame your sub-questions

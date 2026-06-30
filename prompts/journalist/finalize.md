@@ -65,9 +65,11 @@ Return the article's content fields:
   not write the word "summary" into it.
 - `body`: the COMPLETE article body in Markdown, exactly as finished. Do not
   truncate, summarize, or drop any part of it. There is no length limit on the body.
-- `topics`: a list of short topic tags for the article, at most seven and the most
-  specific and optimized for the piece (may be empty). Seven precise tags beat seven
-  vague ones; three sharp ones beat seven loose ones.
+- `topics`: a list of short topic tags for the article, at most {{TOPIC_CAP}} and the most
+  specific and optimized for the piece (may be empty). The tags are the THEMES of the
+  piece plus the named ENTITIES it is about (people, organizations, places), lowercase
+  and accented where Spanish requires it. Specific beats vague: a precise tag beats a
+  loose one, and three sharp ones beat a longer list of loose ones.
 - `keywords`: the search terms specific to THIS article, what a reader would type to
   find exactly this story. Include the named people, places, and organizations the
   article actually names, plus the distinctive concepts central to it. Draw every one

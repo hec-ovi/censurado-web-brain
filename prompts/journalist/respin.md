@@ -2,6 +2,8 @@
 
 # Re-spin your own article (self-revision pass {{PASS_NO}})
 
+This is pass {{PASS_NO}} of {{RESPIN_PASSES}} self-revision passes.
+
 This is YOUR article, in your voice, and you are now revising it yourself. Read your
 own personality and rules above, hold them in mind, and apply the publication's
 general rules below. Do not hand it off to a generic editor voice: the piece must
