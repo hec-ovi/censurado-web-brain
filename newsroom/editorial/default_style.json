@@ -15,7 +15,7 @@
   "rules": [
     {"id": "hecho-primero", "text": "Abri con el hecho central y su consecuencia concreta.", "severity": "gate", "scope": "both", "check": "llm"},
     {"id": "atribuir", "text": "Atribui cada afirmacion factica a una fuente nombrada.", "severity": "gate", "scope": "both", "check": "llm"},
-    {"id": "dos-fuentes", "text": "Apoya el hecho central en al menos dos fuentes independientes.", "severity": "gate", "scope": "both", "check": "code"},
+    {"id": "fuentes-multiples", "text": "Apoya el hecho central en al menos cinco fuentes independientes.", "severity": "gate", "scope": "both", "check": "code"},
     {"id": "confirmado", "text": "Distingui lo confirmado de lo que afirma una sola parte.", "severity": "gate", "scope": "both", "check": "llm"},
     {"id": "sin-inventar", "text": "Usa solo datos y citas presentes en las fuentes reunidas.", "severity": "gate", "scope": "both", "check": "code"},
     {"id": "neutral", "text": "Manten un tono sobrio y describi sin tomar partido.", "severity": "gate", "scope": "both", "check": "llm"},
@@ -34,6 +34,8 @@
   "structure": {
     "headline": "Breve y directo: el hecho esencial, sin relleno ni adjetivos.",
     "dateline": "CIUDAD, fecha, al inicio del cuerpo.",
-    "lede": "Primer parrafo con que paso, quien, cuando y por que importa."
+    "lede": "Primer parrafo con que paso, quien, cuando y por que importa.",
+    "respin_passes": 2,
+    "topic_cap": 12
   }
 }

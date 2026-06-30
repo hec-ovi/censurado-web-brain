@@ -141,6 +141,52 @@ def test_publish_wrong_typed_body_is_validation_envelope_422(tmp_path):
     assert resp.json()["code"] == "validation_failed"
 
 
+# ----- structure knobs: the default-style defaults + the PUT round-trip -----
+
+
+def test_default_style_structure_knobs_round_trip(tmp_path):
+    # Publishing the tracked DEFAULT_STYLE and reading it back through the API carries the
+    # numeric structure knobs (respin_passes, topic_cap) and the corroboration floor
+    # (sourcing.min_sources) unchanged: the structure field is a free dict, so the knobs
+    # round-trip with no schema change.
+    from newsroom.editorial.seeds import DEFAULT_STYLE
+
+    client = _client(tmp_path)
+    published = client.post(
+        "/editorial/style",
+        json={
+            "voice": DEFAULT_STYLE.voice,
+            "exemplars": DEFAULT_STYLE.exemplars,
+            "rules": DEFAULT_STYLE.rules,
+            "lexicon": DEFAULT_STYLE.lexicon,
+            "sourcing": DEFAULT_STYLE.sourcing,
+            "structure": DEFAULT_STYLE.structure,
+        },
+    )
+    assert published.status_code == 201
+
+    got = client.get("/editorial/style").json()
+    assert got["structure"]["respin_passes"] == 2
+    assert got["structure"]["topic_cap"] == 12
+    assert got["sourcing"]["min_sources"] == 5
+
+
+def test_structure_respin_passes_put_persists(tmp_path):
+    # A fresh publish with structure.respin_passes=3 round-trips through GET, so an operator
+    # can retune the knob over HTTP without a code change.
+    client = _client(tmp_path)
+    client.post("/editorial/style", json=_guide())
+
+    bumped = _guide(voice="bumped", structure={"respin_passes": 3, "topic_cap": 12})
+    resp = client.post("/editorial/style", json=bumped)
+    assert resp.status_code == 201
+
+    got = client.get("/editorial/style").json()
+    assert got["voice"] == "bumped"
+    assert got["structure"]["respin_passes"] == 3
+    assert got["structure"]["topic_cap"] == 12
+
+
 # ----- lexicon + sourcing sub-resources (derive a new active version) -----
 
 

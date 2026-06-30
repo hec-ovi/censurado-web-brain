@@ -147,7 +147,7 @@ def test_default_style_is_coherent_and_uncapped():
     assert DEFAULT_STYLE.sourcing["min_sources"] == 5
 
     texts = " ".join(
-        [DEFAULT_STYLE.voice, *(r["text"] for r in DEFAULT_STYLE.rules), *DEFAULT_STYLE.structure.values()]
+        [DEFAULT_STYLE.voice, *(r["text"] for r in DEFAULT_STYLE.rules), *(str(v) for v in DEFAULT_STYLE.structure.values())]
     ).lower()
     # No "en N palabras" / "N words" style length cap phrasing.
     import re
