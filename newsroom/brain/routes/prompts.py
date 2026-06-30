@@ -23,6 +23,8 @@ invalid_prompt). Auth is wired app-wide in ``create_app``, so there is none here
 
 from __future__ import annotations
 
+from pathlib import Path
+
 from fastapi import APIRouter, Request
 from pydantic import BaseModel
 
@@ -102,16 +104,43 @@ async def list_prompts(request: Request):
     return PromptListOut(templates=templates, total=len(templates))
 
 
+def _read_shipped_prompt(prompts_dir: Path | str, key: str) -> str | None:
+    """Read a shipped prompt ``key`` (``<role>/<name>.md``) from the on-disk prompt library,
+    or ``None`` if it is absent. The shipped ``prompts/*.md`` are agnostic workflow content
+    that travels with the brain, so they back the read path even before any seeder runs.
+    Guards path traversal: the key must be a ``.md`` file that resolves to inside
+    ``prompts_dir`` (a key with ``..`` or pointing elsewhere is treated as absent, never a
+    file read), so this never serves a file outside the library."""
+    if not key.endswith(".md"):
+        return None
+    root = Path(prompts_dir).resolve()
+    candidate = root.joinpath(*key.split("/")).resolve()
+    if not candidate.is_relative_to(root):
+        return None
+    try:
+        return candidate.read_text(encoding="utf-8")
+    except OSError:
+        return None
+
+
 @router.get("/prompts/template", status_code=200, response_model=PromptOut)
 async def get_active_prompt(request: Request, key: str):
-    """The ACTIVE version of one prompt ``key``. 404 ``prompt_not_found`` when the key has
-    no active version (an unknown key, or one never published)."""
+    """The ACTIVE version of one prompt ``key``. Prefers the versioned store (an operator's
+    published edit), and when the store has no active version for the key it falls back to the
+    on-disk prompt library shipped with the brain (``settings.prompts_dir``). So the shipped
+    prompts serve on a fresh box with no seeding step, and the versioned store stays a pure
+    OVERRIDE layer on top of them. 404 ``prompt_not_found`` only when NEITHER the store nor the
+    on-disk library has the key. The on-disk fallback is reported as ``version`` 0, ``created_by``
+    ``"disk"`` so a client can tell a shipped default from a stored version."""
     state = request.app.state
     with state.lock:
         template = state.prompt_store.active(key)
-    if template is None:
+    if template is not None:
+        return _prompt_out(template)
+    body = _read_shipped_prompt(state.settings.prompts_dir, key)
+    if body is None:
         return _problem(404, "prompt_not_found", detail=f"no active prompt for key {key!r}")
-    return _prompt_out(template)
+    return PromptOut(key=key, version=0, body=body, created_by="disk", created_at="", is_active=True)
 
 
 @router.get("/prompts/versions", status_code=200, response_model=PromptVersionsOut)

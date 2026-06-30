@@ -207,3 +207,55 @@ def test_seed_prompts_body_matches_the_real_file():
     body = PromptStore(conn).active("persona/synthesize.md").body
     on_disk = (load_settings().prompts_dir / "persona" / "synthesize.md").read_text(encoding="utf-8")
     assert body == on_disk
+
+
+# ----- on-disk fallback (the shipped prompts serve before any seeder runs) -----
+
+
+def _client_with_prompt_lib(tmp_path):
+    """A client whose prompts_dir is a CONTROLLED on-disk library: one shipped prompt under
+    it, plus a secret .md OUTSIDE it to prove the traversal guard. The store starts empty."""
+    lib = tmp_path / "prompts"
+    (lib / "journalist").mkdir(parents=True)
+    (lib / "journalist" / "draft.md").write_text("DISK DRAFT BODY", encoding="utf-8")
+    (tmp_path / "secret.md").write_text("SECRET OUTSIDE THE LIBRARY", encoding="utf-8")
+    settings = Settings(persona_db_path=tmp_path / "brain.db", prompts_dir=lib)
+    return TestClient(create_app(settings=settings))
+
+
+def test_get_template_falls_back_to_on_disk_when_store_is_empty(tmp_path):
+    # The store has no version for the key, but the prompt ships on disk: serve it, marked v0.
+    client = _client_with_prompt_lib(tmp_path)
+    resp = client.get("/prompts/template", params={"key": "journalist/draft.md"})
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["body"] == "DISK DRAFT BODY"
+    assert body["version"] == 0
+    assert body["created_by"] == "disk"
+    assert body["is_active"] is True
+
+
+def test_store_version_overrides_the_on_disk_fallback(tmp_path):
+    # Publishing a version makes the store win: the disk default is the override target, not
+    # the other way round.
+    client = _client_with_prompt_lib(tmp_path)
+    client.post("/prompts/template", json={"key": "journalist/draft.md", "body": "OPERATOR EDIT"})
+    active = client.get("/prompts/template", params={"key": "journalist/draft.md"}).json()
+    assert active["body"] == "OPERATOR EDIT"
+    assert active["version"] >= 1
+    assert active["created_by"] != "disk"
+
+
+def test_unknown_key_is_404_even_with_the_disk_fallback(tmp_path):
+    client = _client_with_prompt_lib(tmp_path)
+    resp = client.get("/prompts/template", params={"key": "journalist/does-not-exist.md"})
+    assert resp.status_code == 404
+    assert resp.json()["code"] == "prompt_not_found"
+
+
+def test_disk_fallback_refuses_path_traversal(tmp_path):
+    # A key escaping prompts_dir must never read a file outside the library.
+    client = _client_with_prompt_lib(tmp_path)
+    resp = client.get("/prompts/template", params={"key": "../secret.md"})
+    assert resp.status_code == 404
+    assert "SECRET" not in resp.text
