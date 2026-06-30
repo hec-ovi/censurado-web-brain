@@ -1,8 +1,11 @@
 """The one-command bootstrap: seed the editorial config (idempotent) + mirror authors.
 
-Seeding is find-or-create, so a re-run never clobbers an operator's edits; the platform
-author registry is mirrored into the local personas after the seed (best-effort: a down
-platform is a skipped no-op, never an emptied newsroom).
+Seeding is find-or-create, so a re-run never clobbers an operator's edits. The shipped
+defaults carry NO authors or sources (``DEFAULT_PERSONAS``/``DEFAULT_PORTALS`` are
+empty), so a plain bootstrap seeds only the author-agnostic config (location, style,
+prompts); these tests pass explicit synthetic personas to exercise the persona and
+mirror paths. The platform author registry is mirrored into the local personas after
+the seed (best-effort: a down platform is a skipped no-op, never an emptied newsroom).
 """
 
 from __future__ import annotations
@@ -17,9 +20,20 @@ from newsroom.cli import main
 from newsroom.db import open_db
 from newsroom.editorial import LocationStore, PortalStore, StyleStore
 from newsroom.mirror import WebAuthor
-from newsroom.personas import PersonaStore
+from newsroom.personas import Persona, PersonaStore
 
-_DEFAULT_IDS = {"lara-arianna", "borge-luis-jorge", "glorieta-sadeta", "vector-omni"}
+# Synthetic authors that drive the seed + mirror paths; the shipped defaults are empty.
+_SEED_PERSONAS = (
+    Persona(id="ada-lovelace", display_name="Ada Lovelace", beat="politics",
+            who_i_am="Sos Ada Lovelace, cronista politica.", style="Declarativas claras."),
+    Persona(id="ida-rivers", display_name="Ida Rivers", beat="economics",
+            who_i_am="Sos Ida Rivers, cronista de economia.", style="Cifras primero."),
+    Persona(id="cory-bell", display_name="Cory Bell", beat="world",
+            who_i_am="Sos Cory Bell, cronista internacional.", style="Contexto breve."),
+    Persona(id="noor-vega", display_name="Noor Vega", beat="tech",
+            who_i_am="Sos Noor Vega, cronista de tecnologia.", style="Concreto y verificable."),
+)
+_SEED_IDS = {p.id for p in _SEED_PERSONAS}
 
 
 def _settings(tmp_path, **over) -> Settings:
@@ -28,29 +42,38 @@ def _settings(tmp_path, **over) -> Settings:
     return Settings(**base)
 
 
-def test_bootstrap_seed_only_populates_a_fresh_box(tmp_path):
+def test_bootstrap_seeds_agnostic_config_but_no_authors_by_default(tmp_path):
     result = bootstrap(_settings(tmp_path))
 
     seeded = result["seeded"]
     assert seeded["location_created"] is True and seeded["style_created"] is True
-    assert set(seeded["personas_created"]) == _DEFAULT_IDS
-    assert "clarin-com" in seeded["portals_created"]
+    # The shipped defaults invent no authors or sources.
+    assert seeded["personas_created"] == []
+    assert seeded["portals_created"] == []
 
-    # The rows really landed on disk.
+    # The agnostic rows really landed; personas/portals stay empty.
     conn = open_db(tmp_path / "brain.db", check_same_thread=False)
     assert LocationStore(conn).get().region == "AR"
-    assert {p.id for p in PersonaStore(conn).list()} >= _DEFAULT_IDS
     assert StyleStore(conn).active().version == 1
-    assert "clarin.com" in PortalStore(conn).domains()
+    assert PersonaStore(conn).list() == []
+    assert PortalStore(conn).list() == []
+
+
+def test_bootstrap_seeds_explicit_personas(tmp_path):
+    result = bootstrap(_settings(tmp_path), personas=_SEED_PERSONAS, portals=())
+
+    assert set(result["seeded"]["personas_created"]) == _SEED_IDS
+    conn = open_db(tmp_path / "brain.db", check_same_thread=False)
+    assert {p.id for p in PersonaStore(conn).list()} == _SEED_IDS
 
 
 def test_bootstrap_is_idempotent(tmp_path):
     settings = _settings(tmp_path)
-    bootstrap(settings)
-    second = bootstrap(settings)
+    bootstrap(settings, personas=_SEED_PERSONAS)
+    second = bootstrap(settings, personas=_SEED_PERSONAS)
 
     assert second["seeded"]["personas_created"] == []
-    assert set(second["seeded"]["personas_skipped"]) == _DEFAULT_IDS
+    assert set(second["seeded"]["personas_skipped"]) == _SEED_IDS
     assert second["seeded"]["location_created"] is False
     assert second["seeded"]["style_created"] is False
     # No duplicate personas after two bootstraps.
@@ -58,67 +81,57 @@ def test_bootstrap_is_idempotent(tmp_path):
     assert len({p.id for p in PersonaStore(conn).list()}) == len(PersonaStore(conn).list())
 
 
-def test_bootstrap_forwards_seed_overrides(tmp_path):
-    result = bootstrap(_settings(tmp_path), personas=(), portals=())
-
-    assert result["seeded"]["personas_created"] == []
-    assert result["seeded"]["portals_created"] == []
-    # Location and style are still seeded by the same call.
-    assert result["seeded"]["location_created"] is True
-    assert result["seeded"]["style_created"] is True
-
-
 # ----- the platform author mirror runs as part of bootstrap -----
 
 
 def test_bootstrap_reconciles_personas_from_web(tmp_path):
-    # Seed creates the four defaults; the platform registry then refreshes one public
+    # Seed creates the synthetic authors; the platform registry then refreshes one public
     # bio, omits one handle (soft-deactivate), and adds a web-only author (inactive
     # shell). The reconcile runs AFTER the seed and is reflected on disk.
     def fetch():
         return [
-            WebAuthor("lara-arianna", "Lara Arianna", "Bio nueva de la plataforma", "lara.png"),
-            WebAuthor("borge-luis-jorge", "Borge Luis Jorge", "", ""),
-            WebAuthor("glorieta-sadeta", "Glorieta Sadeta", "", ""),
-            # vector-omni intentionally absent -> deactivated
+            WebAuthor("ada-lovelace", "Ada Lovelace", "Bio nueva de la plataforma", "ada.png"),
+            WebAuthor("ida-rivers", "Ida Rivers", "", ""),
+            WebAuthor("cory-bell", "Cory Bell", "", ""),
+            # noor-vega intentionally absent -> deactivated
             WebAuthor("nuevo-web", "Nuevo Web", "creado en la web", ""),
         ]
 
-    result = bootstrap(_settings(tmp_path), fetch_authors=fetch)
+    result = bootstrap(_settings(tmp_path), personas=_SEED_PERSONAS, fetch_authors=fetch)
 
     rec = result["reconciled"]
     assert rec["skipped"] is False
-    assert "lara-arianna" in rec["refreshed"]
+    assert "ada-lovelace" in rec["refreshed"]
     assert rec["created"] == ["nuevo-web"]
-    assert rec["deactivated"] == ["vector-omni"]
+    assert rec["deactivated"] == ["noor-vega"]
 
     store = PersonaStore(open_db(tmp_path / "brain.db", check_same_thread=False))
     # Public field refreshed, private prompt preserved.
-    lara = store.get("lara-arianna")
-    assert lara.about == "Bio nueva de la plataforma"
-    assert lara.who_i_am.startswith("Sos Lara Arianna")
+    ada = store.get("ada-lovelace")
+    assert ada.about == "Bio nueva de la plataforma"
+    assert ada.who_i_am.startswith("Sos Ada Lovelace")
     # Dropped from the platform -> inactive, prompt kept (not deleted).
-    vector = store.get("vector-omni")
-    assert vector.active is False and vector.who_i_am != ""
+    vega = store.get("noor-vega")
+    assert vega.active is False and vega.who_i_am != ""
     # The web-only author is an inactive shell with no prompt.
     shell = store.get("nuevo-web")
     assert shell.active is False and shell.who_i_am == ""
-    # The run path sees only the active personas.
+    # The active set sees only the prompted, still-listed personas.
     active_ids = {p.id for p in store.list()}
-    assert {"lara-arianna", "borge-luis-jorge", "glorieta-sadeta"} <= active_ids
-    assert "vector-omni" not in active_ids and "nuevo-web" not in active_ids
+    assert {"ada-lovelace", "ida-rivers", "cory-bell"} <= active_ids
+    assert "noor-vega" not in active_ids and "nuevo-web" not in active_ids
 
 
 def test_bootstrap_skips_reconcile_when_the_platform_is_unreachable(tmp_path):
     def boom():
         raise httpx.ConnectError("platform down")
 
-    result = bootstrap(_settings(tmp_path), fetch_authors=boom)
+    result = bootstrap(_settings(tmp_path), personas=_SEED_PERSONAS, fetch_authors=boom)
 
     assert result["reconciled"]["skipped"] is True
-    # The newsroom was NOT emptied: all four seeded personas remain active.
+    # The newsroom was NOT emptied: all seeded personas remain active.
     store = PersonaStore(open_db(tmp_path / "brain.db", check_same_thread=False))
-    assert {p.id for p in store.list()} == _DEFAULT_IDS
+    assert {p.id for p in store.list()} == _SEED_IDS
 
 
 # ----- the CLI subcommand dispatch -----
@@ -131,11 +144,14 @@ def test_cli_bootstrap_seeds_and_exits_zero(tmp_path, monkeypatch, capsys):
 
     assert code == 0
     out = json.loads(capsys.readouterr().out)
-    assert "lara-arianna" in out["seeded"]["personas_created"]
+    # The shipped defaults carry no authors, so a plain CLI bootstrap seeds the
+    # author-agnostic config and zero personas.
+    assert out["seeded"]["personas_created"] == []
+    assert out["seeded"]["location_created"] is True
 
     # A second invocation is a clean no-op (idempotent setup).
     code2 = main(["bootstrap"])
     assert code2 == 0
     out2 = json.loads(capsys.readouterr().out)
     assert out2["seeded"]["personas_created"] == []
-    assert "lara-arianna" in out2["seeded"]["personas_skipped"]
+    assert out2["seeded"]["location_created"] is False

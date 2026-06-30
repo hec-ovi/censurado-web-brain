@@ -28,12 +28,12 @@ def test_two_connections_share_one_file(tmp_path):
     try:
         live.execute(
             "INSERT INTO portals (id, domain, created_at, updated_at) VALUES (?, ?, ?, ?)",
-            ("clarin-com", "clarin.com", "2026-06-23T00:00:00Z", "2026-06-23T00:00:00Z"),
+            ("example-com", "example.com", "2026-06-23T00:00:00Z", "2026-06-23T00:00:00Z"),
         )
         live.commit()
         assert other.execute(
-            "SELECT domain FROM portals WHERE id = 'clarin-com'"
-        ).fetchone()[0] == "clarin.com"
+            "SELECT domain FROM portals WHERE id = 'example-com'"
+        ).fetchone()[0] == "example.com"
     finally:
         live.close()
         other.close()
@@ -183,7 +183,7 @@ def test_open_db_migrates_description_column_onto_an_existing_portals_db(tmp_pat
     )
     raw.execute(
         "INSERT INTO portals (id, domain, created_at, updated_at) "
-        "VALUES ('clarin-com','clarin.com','t','t')"
+        "VALUES ('example-com','example.com','t','t')"
     )
     raw.commit()
     raw.close()
@@ -193,7 +193,7 @@ def test_open_db_migrates_description_column_onto_an_existing_portals_db(tmp_pat
         cols = {row["name"] for row in conn.execute("PRAGMA table_info(portals)")}
         assert "description" in cols
         # The store reads the migrated row, and the new column is "" rather than NULL.
-        portal = PortalStore(conn).get("clarin-com")
+        portal = PortalStore(conn).get("example-com")
         assert portal is not None and portal.description == ""
     finally:
         conn.close()

@@ -1,14 +1,17 @@
 """The default fixtures and the idempotent seeders.
 
-A fresh DB gets a working newsroom (location, portals, personas, an active style); a
-re-run creates nothing and never overwrites an operator's edits; and overrides let a
-caller seed a subset. Drives the seeders and the stores' public API only.
+The shipped defaults are EMPTY of authors and news sources: ``DEFAULT_PERSONAS`` and
+``DEFAULT_PORTALS`` are empty, so a fresh DB gets only the author-agnostic config
+(location, an active house style, the prompt library) and zero personas/portals until
+an operator adds them. Explicit ``*_seed`` overrides let a caller (or an operator's
+private seed script) populate a subset; a re-run creates nothing and never overwrites an
+edit. Drives the seeders and the stores' public API only.
 """
 
 from __future__ import annotations
 
 from newsroom.db import open_db
-from newsroom.editorial import LocationStore, PortalStore, StyleStore
+from newsroom.editorial import LocationStore, Portal, PortalStore, StyleStore
 from newsroom.editorial.seeds import (
     DEFAULT_PERSONAS,
     DEFAULT_PORTALS,
@@ -17,20 +20,57 @@ from newsroom.editorial.seeds import (
 )
 from newsroom.personas import Persona, PersonaStore
 
+# Synthetic fixtures: invented authors/domains used only to exercise the seeders. They
+# resemble no operator's real newsroom; the shipped defaults are empty.
+_PERSONAS = (
+    Persona(
+        id="ada-lovelace", display_name="Ada Lovelace", beat="politics",
+        who_i_am="Cubre el poder y las instituciones.", style="Declarativas claras.",
+        few_shots_neg=[{"prompt": "x", "bad": "y"}],
+    ),
+    Persona(
+        id="ida-rivers", display_name="Ida Rivers", beat="economics",
+        who_i_am="Traduce precios y tasas.", style="Cifras primero.",
+    ),
+)
+_PORTALS = (
+    Portal(domain="example.com", homepage="https://example.com", ownership_group="group-a"),
+    Portal(domain="news.test", homepage="https://news.test", ownership_group="group-b"),
+)
+
+
+def test_defaults_ship_empty_of_authors_and_sources():
+    # The acceptance invariant: nothing about who writes or what they read lives in code.
+    assert DEFAULT_PERSONAS == ()
+    assert DEFAULT_PORTALS == ()
+
+
+def test_seed_all_with_empty_defaults_creates_no_authors_or_sources():
+    # The shipped defaults seed location + style + prompts, but zero personas/portals.
+    conn = open_db(":memory:")
+    result = seed_all(conn)
+
+    assert result.location_created is True
+    assert result.style_created is True
+    assert result.personas_created == []
+    assert result.portals_created == []
+    assert PersonaStore(conn).list() == []
+    assert PortalStore(conn).list() == []
+
 
 def test_seed_all_populates_a_fresh_box():
     conn = open_db(":memory:")
-    result = seed_all(conn)
+    result = seed_all(conn, personas=_PERSONAS, portals=_PORTALS)
 
     assert result.location_created is True
     assert LocationStore(conn).get().region == "AR"
 
     portal_ids = [p.id for p in PortalStore(conn).list()]
-    assert "clarin-com" in portal_ids and "infobae-com" in portal_ids
-    assert len(result.portals_created) == len(DEFAULT_PORTALS)
+    assert "example-com" in portal_ids and "news-test" in portal_ids
+    assert len(result.portals_created) == len(_PORTALS)
 
     persona_ids = {p.id for p in PersonaStore(conn).list()}
-    assert {"lara-arianna", "borge-luis-jorge", "glorieta-sadeta", "vector-omni"} <= persona_ids
+    assert {"ada-lovelace", "ida-rivers"} <= persona_ids
 
     assert result.style_created is True
     active = StyleStore(conn).active()
@@ -39,8 +79,8 @@ def test_seed_all_populates_a_fresh_box():
 
 def test_seed_all_is_idempotent_on_rerun():
     conn = open_db(":memory:")
-    seed_all(conn)
-    again = seed_all(conn)
+    seed_all(conn, personas=_PERSONAS, portals=_PORTALS)
+    again = seed_all(conn, personas=_PERSONAS, portals=_PORTALS)
 
     assert again.location_created is False
     assert again.style_created is False
@@ -49,28 +89,29 @@ def test_seed_all_is_idempotent_on_rerun():
     assert set(again.portals_skipped) == {p.id for p in PortalStore(conn).list()}
     assert set(again.personas_skipped) == {p.id for p in PersonaStore(conn).list()}
     # No duplicates crept in.
-    assert len(PortalStore(conn).list()) == len(DEFAULT_PORTALS)
-    assert len(PersonaStore(conn).list()) == len(DEFAULT_PERSONAS)
+    assert len(PortalStore(conn).list()) == len(_PORTALS)
+    assert len(PersonaStore(conn).list()) == len(_PERSONAS)
 
 
 def test_seed_personas_never_overwrites_an_operator_edit():
     conn = open_db(":memory:")
-    # An operator already authored a rich lara-arianna before bootstrap re-runs.
+    # An operator already authored a rich ada-lovelace before a re-seed runs with the
+    # same id in its explicit fixtures.
     PersonaStore(conn).create(
         Persona(
-            id="lara-arianna",
-            display_name="Lara Arianna",
+            id="ada-lovelace",
+            display_name="Ada Lovelace",
             beat="politics",
-            who_i_am="Soy Lara, version del operador, mucho mas rica y personal.",
+            who_i_am="Version del operador, mucho mas rica y personal.",
             style="La voz del operador.",
         )
     )
-    result = seed_all(conn)
+    result = seed_all(conn, personas=_PERSONAS, portals=())
 
-    assert "lara-arianna" in result.personas_skipped
-    assert "lara-arianna" not in result.personas_created
-    kept = PersonaStore(conn).get("lara-arianna")
-    assert kept.who_i_am.startswith("Soy Lara, version del operador")  # untouched
+    assert "ada-lovelace" in result.personas_skipped
+    assert "ada-lovelace" not in result.personas_created
+    kept = PersonaStore(conn).get("ada-lovelace")
+    assert kept.who_i_am.startswith("Version del operador")  # untouched
 
 
 def test_seed_does_not_clobber_an_edited_location_or_style():
@@ -95,16 +136,7 @@ def test_seed_overrides_let_a_subset_be_seeded():
     assert [p.id for p in PersonaStore(conn).list()] == ["solo"]
 
 
-# ----- default content sanity -----
-
-
-def test_default_personas_cover_every_beat():
-    beats = {p.beat for p in DEFAULT_PERSONAS}
-    assert beats == {"tech", "world", "politics", "economics"}
-
-
-def test_default_personas_carry_a_negative_exemplar():
-    assert all(p.few_shots_neg for p in DEFAULT_PERSONAS)
+# ----- default house style sanity (the house style default is kept; authors/sources are not) -----
 
 
 def test_default_style_is_coherent_and_uncapped():

@@ -206,7 +206,7 @@ def _sources_main(argv: list[str], *, store: PortalStore | None = None) -> int:
 
     if verb == "get":
         parser = argparse.ArgumentParser(prog="censurado-brain sources get")
-        parser.add_argument("portal_id", help="the source id (e.g. clarin-com)")
+        parser.add_argument("portal_id", help="the source id (e.g. example-com)")
         args = parser.parse_args(rest)
         portal = store.get(args.portal_id)
         if portal is None:  # the CLI parity of GET /portals/{id}'s 404
@@ -259,7 +259,7 @@ def _sources_main(argv: list[str], *, store: PortalStore | None = None) -> int:
 
     if verb == "update":
         parser = argparse.ArgumentParser(prog="censurado-brain sources update")
-        parser.add_argument("portal_id", help="the source id (e.g. clarin-com)")
+        parser.add_argument("portal_id", help="the source id (e.g. example-com)")
         parser.add_argument("--homepage", default=None)
         parser.add_argument("--description", default=None)
         parser.add_argument("--feed-urls", default=None, help="comma-separated; replaces the list")
@@ -299,7 +299,7 @@ def _sources_main(argv: list[str], *, store: PortalStore | None = None) -> int:
 
     if verb in ("enable", "disable"):
         parser = argparse.ArgumentParser(prog=f"censurado-brain sources {verb}")
-        parser.add_argument("portal_id", help="the source id (e.g. clarin-com)")
+        parser.add_argument("portal_id", help="the source id (e.g. example-com)")
         args = parser.parse_args(rest)
         try:
             stored = store.set_enabled(args.portal_id, verb == "enable")
@@ -311,7 +311,7 @@ def _sources_main(argv: list[str], *, store: PortalStore | None = None) -> int:
 
     # verb == "remove"
     parser = argparse.ArgumentParser(prog="censurado-brain sources remove")
-    parser.add_argument("portal_id", help="the source id (e.g. clarin-com)")
+    parser.add_argument("portal_id", help="the source id (e.g. example-com)")
     args = parser.parse_args(rest)
     removed = store.delete(args.portal_id)
     _emit({"id": args.portal_id, "removed": removed})
@@ -561,7 +561,7 @@ def _authors_sources_main(
     # verb in ("add", "remove"): link/unlink one portal id.
     parser = argparse.ArgumentParser(prog=f"censurado-brain authors sources {verb}")
     parser.add_argument("persona_id", help="the persona id (e.g. ada-lovelace)")
-    parser.add_argument("portal_id", help="the source id (e.g. clarin-com)")
+    parser.add_argument("portal_id", help="the source id (e.g. example-com)")
     args = parser.parse_args(rest)
     persona = persona_store.get(args.persona_id)
     if persona is None:

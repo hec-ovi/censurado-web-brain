@@ -24,13 +24,13 @@ def store() -> PersonaStore:
 
 def _persona(**over) -> Persona:
     base = dict(
-        id="lara-arianna",
-        display_name="Lara Arianna",
+        id="ada-lovelace",
+        display_name="Ada Lovelace",
         beat="politics",
-        who_i_am="Sos Lara Arianna, cronista politica.",
+        who_i_am="Sos Ada Lovelace, cronista politica.",
         style="Declarativas claras.",
         about="Cubre el poder.",
-        avatar_path="avatars/lara.png",
+        avatar_path="avatars/ada.png",
     )
     base.update(over)
     return Persona(**base)
@@ -51,10 +51,10 @@ def test_fetch_web_authors_maps_live_rows_and_drops_deleted(monkeypatch):
             json={
                 "authors": [
                     {
-                        "handle": "lara-arianna",
-                        "name": "Lara Arianna",
+                        "handle": "ada-lovelace",
+                        "name": "Ada Lovelace",
                         "bio": "Cubre el poder.",
-                        "avatar": "avatars/lara.png",
+                        "avatar": "avatars/ada.png",
                         "deleted": False,
                     },
                     {"handle": "ghost", "name": "Ghost", "deleted": True},  # tombstoned
@@ -69,7 +69,7 @@ def test_fetch_web_authors_maps_live_rows_and_drops_deleted(monkeypatch):
     assert captured["url"] == "http://web:8080/authors"
     assert captured["headers"]["Authorization"] == "Bearer tok-123"
     assert authors == [
-        WebAuthor("lara-arianna", "Lara Arianna", "Cubre el poder.", "avatars/lara.png")
+        WebAuthor("ada-lovelace", "Ada Lovelace", "Cubre el poder.", "avatars/ada.png")
     ]
 
 
@@ -89,32 +89,32 @@ def test_empty_registry_is_a_noop(store):
     store.create(_persona())
     result = reconcile_personas(store, [])
     assert result.skipped is True
-    assert [p.id for p in store.list()] == ["lara-arianna"]  # nothing deactivated
+    assert [p.id for p in store.list()] == ["ada-lovelace"]  # nothing deactivated
 
 
 def test_refreshes_public_fields_without_touching_the_prompt(store):
     store.create(_persona(about="old bio", avatar_path="old.png"))
     result = reconcile_personas(
-        store, [WebAuthor("lara-arianna", "Lara A.", "new bio from web", "new.png")]
+        store, [WebAuthor("ada-lovelace", "Ada A.", "new bio from web", "new.png")]
     )
-    got = store.get("lara-arianna")
-    assert got.display_name == "Lara A."
+    got = store.get("ada-lovelace")
+    assert got.display_name == "Ada A."
     assert got.about == "new bio from web"
     assert got.avatar_path == "new.png"
     # The prompt is untouched.
-    assert got.who_i_am == "Sos Lara Arianna, cronista politica."
+    assert got.who_i_am == "Sos Ada Lovelace, cronista politica."
     assert got.style == "Declarativas claras."
     assert got.beat == "politics"
-    assert result.refreshed == ["lara-arianna"]
+    assert result.refreshed == ["ada-lovelace"]
 
 
 def test_empty_web_field_does_not_blank_a_good_local_value(store):
     store.create(_persona(about="good local bio", avatar_path="good.png"))
-    reconcile_personas(store, [WebAuthor("lara-arianna", name="Lara", bio="", avatar="")])
-    got = store.get("lara-arianna")
+    reconcile_personas(store, [WebAuthor("ada-lovelace", name="Ada", bio="", avatar="")])
+    got = store.get("ada-lovelace")
     assert got.about == "good local bio"  # not wiped by the empty web bio
     assert got.avatar_path == "good.png"
-    assert got.display_name == "Lara"
+    assert got.display_name == "Ada"
 
 
 def test_creates_an_inactive_shell_for_an_unknown_handle(store):
@@ -129,23 +129,23 @@ def test_creates_an_inactive_shell_for_an_unknown_handle(store):
 
 
 def test_soft_deactivates_a_handle_that_left_the_platform(store):
-    store.create(_persona(id="lara-arianna"))
-    store.create(_persona(id="borge", display_name="Borge", beat="economics"))
-    # Only lara is still on the platform.
-    result = reconcile_personas(store, [WebAuthor("lara-arianna", "Lara Arianna")])
-    borge = store.get("borge")
-    assert borge is not None  # tombstoned, NOT deleted
-    assert borge.active is False
-    assert borge.who_i_am != ""  # prompt preserved
-    assert result.deactivated == ["borge"]
-    assert [p.id for p in store.list()] == ["lara-arianna"]
+    store.create(_persona(id="ada-lovelace"))
+    store.create(_persona(id="ida", display_name="Ida", beat="economics"))
+    # Only ada is still on the platform.
+    result = reconcile_personas(store, [WebAuthor("ada-lovelace", "Ada Lovelace")])
+    ida = store.get("ida")
+    assert ida is not None  # tombstoned, NOT deleted
+    assert ida.active is False
+    assert ida.who_i_am != ""  # prompt preserved
+    assert result.deactivated == ["ida"]
+    assert [p.id for p in store.list()] == ["ada-lovelace"]
 
 
 def test_reactivates_a_returning_handle(store):
-    store.create(_persona(id="lara-arianna", active=False))  # previously deactivated
-    result = reconcile_personas(store, [WebAuthor("lara-arianna", "Lara Arianna")])
-    assert store.get("lara-arianna").active is True
-    assert result.reactivated == ["lara-arianna"]
+    store.create(_persona(id="ada-lovelace", active=False))  # previously deactivated
+    result = reconcile_personas(store, [WebAuthor("ada-lovelace", "Ada Lovelace")])
+    assert store.get("ada-lovelace").active is True
+    assert result.reactivated == ["ada-lovelace"]
 
 
 def test_an_inactive_shell_is_not_reactivated_without_a_prompt(store):

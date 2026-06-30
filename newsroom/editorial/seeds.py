@@ -1,16 +1,18 @@
-"""Default editorial fixtures and the idempotent seeders the bootstrap runs.
+"""Editorial seeders the bootstrap runs, plus their default fixtures.
 
-A fresh box has empty tables, so ``execute_run`` finds no personas and publishes
-nothing. These seeders give it a working newsroom on first run: the publication
-location (Argentina, Spanish), a starter registry of the operator's own local portals
-(clarin.com, lanacion.com, infobae.com and a few more national outlets), four author
-personas spanning the four beats, and a default house style guide.
+A fresh box has empty tables. The bootstrap seeds only the parts of the editorial
+config that are author-agnostic on their own: the publication location, the default
+house style guide, and the on-disk prompt library. It does NOT invent authors or news
+sources. ``DEFAULT_PERSONAS`` and ``DEFAULT_PORTALS`` are empty, so an empty database
+stays empty until an operator creates personas and registers portals (via the console,
+the API, or their own private seed). Author identities and the specific outlets a
+newsroom trusts are operator-owned data, never shipped in tracked code.
 
 Every seeder is FIND-OR-CREATE keyed on a stable identity (persona id, portal domain,
 the single location row, an active style version), so re-running the bootstrap is a
-no-op that never clobbers an operator's later edits. The defaults are deliberately
-overridable (the ``*_seed`` parameters) so a test can drive the same code with small
-fixtures, and an operator can prune or replace any of them from the console.
+no-op that never clobbers an operator's later edits. The defaults stay overridable (the
+``*_seed`` parameters) so a test, or an operator's private seed script, can drive the
+same code with explicit fixtures.
 """
 
 from __future__ import annotations
@@ -45,109 +47,19 @@ __all__ = [
 DEFAULT_PROMPTS_DIR: Path = Path(__file__).resolve().parents[2] / "prompts"
 
 
-# The operator's own local news portals. The three the operator named, plus a few more
-# national outlets so cross-source corroboration has signal on day one. All editable
-# from the console; ownership_group lets corroboration counting treat co-owned outlets
-# as one independent source.
-DEFAULT_PORTALS: tuple[Portal, ...] = (
-    Portal(domain="clarin.com", homepage="https://www.clarin.com", ownership_group="grupo-clarin"),
-    Portal(domain="lanacion.com.ar", homepage="https://www.lanacion.com.ar", ownership_group="grupo-la-nacion"),
-    Portal(domain="infobae.com", homepage="https://www.infobae.com", ownership_group="infobae"),
-    Portal(domain="pagina12.com.ar", homepage="https://www.pagina12.com.ar", ownership_group="grupo-octubre"),
-    Portal(domain="ambito.com", homepage="https://www.ambito.com", ownership_group="ambito"),
-    Portal(domain="perfil.com", homepage="https://www.perfil.com", ownership_group="editorial-perfil"),
-)
+# The specific outlets a newsroom trusts are operator-owned data: they live in the
+# operator's database, registered from the console/API, never shipped in tracked code.
+# The default is empty, so an empty database has zero portals. Overridable per call (the
+# ``portals`` seed parameter) for tests and an operator's private seed script.
+DEFAULT_PORTALS: tuple[Portal, ...] = ()
 
 
-# Four author personas, one per beat. These are fallback defaults: on the operator's
-# real box the rich personas already exist (find-or-create skips them), so this content
-# only ever appears on a truly empty database. First person, Spanish, with a positive
-# and a NEGATIVE exemplar (local models lean on the contrast).
-DEFAULT_PERSONAS: tuple[Persona, ...] = (
-    Persona(
-        id="lara-arianna",
-        display_name="Lara Arianna",
-        beat="politics",
-        who_i_am=(
-            "Sos Lara Arianna, cronista politica. Cubris el poder, las instituciones y "
-            "las elecciones con distancia y precision. No militas: explicas quien decide, "
-            "a costa de quien, y con que evidencia."
-        ),
-        style=(
-            "Declarativas claras, sin adjetivos de elogio ni condena. Atribuis cada "
-            "afirmacion a una fuente nombrada. Contas el dato antes que la reaccion."
-        ),
-        about="Cubre el poder, las instituciones y las elecciones.",
-        few_shots_pos=[
-            {"prompt": "una votacion", "good": "El Senado rechazo la reforma por 38 votos contra 33."},
-        ],
-        few_shots_neg=[
-            {"prompt": "una votacion", "bad": "En una jornada historica, el Senado fulmino la reforma del oficialismo."},
-        ],
-    ),
-    Persona(
-        id="borge-luis-jorge",
-        display_name="Borge Luis Jorge",
-        beat="economics",
-        who_i_am=(
-            "Sos Borge Luis Jorge, cronista de economia. Traducis precios, tasas y deuda "
-            "a consecuencias concretas para la gente. Desconfias de los pronosticos y "
-            "pedis los numeros que los sostienen."
-        ),
-        style=(
-            "Cifras primero, con su fuente y su fecha. Evitas la jerga; cuando es "
-            "inevitable, la explicas en una frase. Nunca confundis correlacion con causa."
-        ),
-        about="Cubre precios, mercados, deuda y trabajo.",
-        few_shots_pos=[
-            {"prompt": "inflacion", "good": "Los precios subieron 3,1 por ciento en mayo, segun el Indec."},
-        ],
-        few_shots_neg=[
-            {"prompt": "inflacion", "bad": "La inflacion vuelve a golpear sin piedad los bolsillos de todos."},
-        ],
-    ),
-    Persona(
-        id="glorieta-sadeta",
-        display_name="Glorieta Sadeta",
-        beat="world",
-        who_i_am=(
-            "Sos Glorieta Sadeta, cronista internacional. Conectas lo que pasa afuera con "
-            "lo que se vive aca. Cruzas fuentes de varios paises antes de afirmar nada."
-        ),
-        style=(
-            "Contexto breve para el lector local, sin asumir que conoce cada actor. "
-            "Distinguis lo confirmado de lo que una sola parte sostiene."
-        ),
-        about="Cubre la actualidad internacional y su impacto local.",
-        few_shots_pos=[
-            {"prompt": "una cumbre", "good": "Los siete paises firmaron el acuerdo; dos lo hicieron con reservas escritas."},
-        ],
-        few_shots_neg=[
-            {"prompt": "una cumbre", "bad": "El mundo entero contiene la respiracion ante la cumbre decisiva."},
-        ],
-    ),
-    Persona(
-        id="vector-omni",
-        display_name="Vector Omni",
-        beat="tech",
-        who_i_am=(
-            "Sos Vector Omni, cronista de tecnologia. Te interesa lo que una herramienta "
-            "hace y a quien afecta, no el anuncio. Probas la afirmacion contra la fuente "
-            "primaria antes de repetirla."
-        ),
-        style=(
-            "Concreto y verificable: que cambia, para quien, desde cuando. Sin "
-            "superlativos de marketing ni promesas de futuro sin respaldo."
-        ),
-        about="Cubre tecnologia, plataformas e inteligencia artificial.",
-        few_shots_pos=[
-            {"prompt": "un lanzamiento", "good": "La actualizacion cifra las copias locales y llega primero a Linux y macOS."},
-        ],
-        few_shots_neg=[
-            {"prompt": "un lanzamiento", "bad": "Una revolucion que lo cambia todo y que no te podes perder."},
-        ],
-    ),
-)
+# Author identities are operator-owned data: they live ONLY in the operator's database,
+# created on demand (the CLI ``create-author`` flow or the console), never shipped in
+# tracked code. The default is empty, so an empty database has zero personas until the
+# operator adds them. Overridable per call (the ``personas`` seed parameter) for tests
+# and an operator's private seed script.
+DEFAULT_PERSONAS: tuple[Persona, ...] = ()
 
 
 # The default house style guide (the "model of redaction + rules"). Voice prose, one

@@ -1,7 +1,7 @@
 """The source (portal) management API: typed CRUD over the operator's news sources.
 
-A portal is a local news site the publication pulls from (clarin.com, lanacion.com,
-...). The registry is the allowlist that makes discovery place-local and
+A portal is a local news site the publication pulls from (e.g. ``example.com``,
+``news.example``). The registry is the allowlist that makes discovery place-local and
 operator-owned, so an operator needs a first-class way to curate it: add a source,
 describe it, point it at its feeds, group co-owned outlets, and enable/disable it
 without a redeploy. This router is that surface, mirroring the persona routes' shape

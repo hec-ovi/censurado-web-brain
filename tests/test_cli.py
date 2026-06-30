@@ -32,34 +32,34 @@ def test_cli_sources_add_list_update_disable_remove(tmp_path, capsys):
 
     # add: a URL normalizes + derives the id, and the description rides along.
     code = main(
-        ["sources", "add", "--domain", "https://www.clarin.com/", "--description", "Diario"],
+        ["sources", "add", "--domain", "https://www.example.com/", "--description", "Diario"],
         portal_store=store,
     )
     assert code == 0
     added = json.loads(capsys.readouterr().out)
-    assert added["id"] == "clarin-com" and added["domain"] == "clarin.com"
+    assert added["id"] == "example-com" and added["domain"] == "example.com"
     assert added["description"] == "Diario" and added["enabled"] is True
 
     # list: shows the source, total is right.
     assert main(["sources", "list"], portal_store=store) == 0
     listed = json.loads(capsys.readouterr().out)
-    assert listed["total"] == 1 and listed["portals"][0]["id"] == "clarin-com"
+    assert listed["total"] == 1 and listed["portals"][0]["id"] == "example-com"
 
     # update: changes the description (and only that).
     assert main(
-        ["sources", "update", "clarin-com", "--description", "Grupo Clarin"], portal_store=store
+        ["sources", "update", "example-com", "--description", "Grupo Example"], portal_store=store
     ) == 0
     updated = json.loads(capsys.readouterr().out)
-    assert updated["description"] == "Grupo Clarin"
+    assert updated["description"] == "Grupo Example"
 
     # disable: flips enabled.
-    assert main(["sources", "disable", "clarin-com"], portal_store=store) == 0
+    assert main(["sources", "disable", "example-com"], portal_store=store) == 0
     assert json.loads(capsys.readouterr().out)["enabled"] is False
 
     # remove: deletes; a second remove reports nothing removed and exits non-zero.
-    assert main(["sources", "remove", "clarin-com"], portal_store=store) == 0
+    assert main(["sources", "remove", "example-com"], portal_store=store) == 0
     assert json.loads(capsys.readouterr().out)["removed"] is True
-    assert main(["sources", "remove", "clarin-com"], portal_store=store) == 1
+    assert main(["sources", "remove", "example-com"], portal_store=store) == 1
     assert json.loads(capsys.readouterr().out)["removed"] is False
 
 
@@ -67,9 +67,9 @@ def test_cli_sources_duplicate_domain_is_an_error(tmp_path, capsys):
     # A duplicate domain is rejected by the store and surfaced as a non-zero exit with a
     # JSON error, not a traceback.
     store = PortalStore(open_db(tmp_path / "brain.db", check_same_thread=False))
-    assert main(["sources", "add", "--domain", "clarin.com"], portal_store=store) == 0
+    assert main(["sources", "add", "--domain", "example.com"], portal_store=store) == 0
     capsys.readouterr()
-    code = main(["sources", "add", "--domain", "https://www.clarin.com/x"], portal_store=store)
+    code = main(["sources", "add", "--domain", "https://www.example.com/x"], portal_store=store)
     assert code == 1
     assert "already exists" in json.loads(capsys.readouterr().out)["error"]
 
@@ -78,11 +78,11 @@ def test_cli_sources_enable_happy_path(tmp_path, capsys):
     # `sources enable` flips a disabled source back on and prints the updated record.
     store = PortalStore(open_db(tmp_path / "brain.db", check_same_thread=False))
     assert main(
-        ["sources", "add", "--domain", "clarin.com", "--disabled"], portal_store=store
+        ["sources", "add", "--domain", "example.com", "--disabled"], portal_store=store
     ) == 0
     assert json.loads(capsys.readouterr().out)["enabled"] is False
 
-    assert main(["sources", "enable", "clarin-com"], portal_store=store) == 0
+    assert main(["sources", "enable", "example-com"], portal_store=store) == 0
     assert json.loads(capsys.readouterr().out)["enabled"] is True
 
 
@@ -109,12 +109,12 @@ def test_cli_sources_unknown_subverb_exits_1_with_usage(tmp_path, capsys):
 def test_cli_sources_get_returns_one_source(tmp_path, capsys):
     # `sources get <id>` reads a single source by id, the CLI parity of GET /portals/{id}.
     store = PortalStore(open_db(tmp_path / "brain.db", check_same_thread=False))
-    assert main(["sources", "add", "--domain", "clarin.com"], portal_store=store) == 0
+    assert main(["sources", "add", "--domain", "example.com"], portal_store=store) == 0
     capsys.readouterr()
 
-    assert main(["sources", "get", "clarin-com"], portal_store=store) == 0
+    assert main(["sources", "get", "example-com"], portal_store=store) == 0
     got = json.loads(capsys.readouterr().out)
-    assert got["id"] == "clarin-com" and got["domain"] == "clarin.com"
+    assert got["id"] == "example-com" and got["domain"] == "example.com"
 
 
 def test_cli_sources_get_unknown_id_exits_1_with_a_json_error(tmp_path, capsys):
@@ -140,14 +140,14 @@ def test_cli_authors_add_get_list_update_remove(tmp_path, capsys):
             "--who-i-am", "I cover chips.",
             "--style", "dry",
             "--about", "A bio.",
-            "--sources", "clarin-com, lanacion-com",
+            "--sources", "example-com, news-com",
         ],
         persona_store=store,
     )
     assert code == 0
     added = json.loads(capsys.readouterr().out)
     assert added["id"] == "ada-lovelace" and added["display_name"] == "Ada Lovelace"
-    assert added["about"] == "A bio." and added["sources"] == ["clarin-com", "lanacion-com"]
+    assert added["about"] == "A bio." and added["sources"] == ["example-com", "news-com"]
     assert added["active"] is True
 
     # get: reads the row back by id.
@@ -253,8 +253,8 @@ def _link_stores(tmp_path):
     persona_store.create(
         Persona(id="ada", display_name="Ada", beat="tech", who_i_am="I cover chips.", style="dry")
     )
-    portal_store.create(Portal(domain="clarin.com"))
-    portal_store.create(Portal(domain="lanacion.com"))
+    portal_store.create(Portal(domain="example.com"))
+    portal_store.create(Portal(domain="news.com"))
     return persona_store, portal_store
 
 
@@ -273,18 +273,18 @@ def test_cli_authors_sources_get_set_add_remove(tmp_path, capsys):
     }
 
     # set: replaces the pool from --sources, validated, and resolves to the portals.
-    set_out = _run(["authors", "sources", "set", "ada", "--sources", "clarin-com, lanacion-com"])
-    assert set_out["sources"] == ["clarin-com", "lanacion-com"]
-    assert [p["id"] for p in set_out["portals"]] == ["clarin-com", "lanacion-com"]
+    set_out = _run(["authors", "sources", "set", "ada", "--sources", "example-com, news-com"])
+    assert set_out["sources"] == ["example-com", "news-com"]
+    assert [p["id"] for p in set_out["portals"]] == ["example-com", "news-com"]
 
     # get reflects the set, and the persona's own `sources` field carries the same ids.
-    assert _run(["authors", "sources", "get", "ada"])["sources"] == ["clarin-com", "lanacion-com"]
-    assert persona_store.get("ada").sources == ["clarin-com", "lanacion-com"]
+    assert _run(["authors", "sources", "get", "ada"])["sources"] == ["example-com", "news-com"]
+    assert persona_store.get("ada").sources == ["example-com", "news-com"]
 
     # remove unlinks one; add links it back (idempotent, appended after the survivor).
-    assert _run(["authors", "sources", "remove", "ada", "clarin-com"])["sources"] == ["lanacion-com"]
-    assert _run(["authors", "sources", "add", "ada", "clarin-com"])["sources"] == [
-        "lanacion-com", "clarin-com"
+    assert _run(["authors", "sources", "remove", "ada", "example-com"])["sources"] == ["news-com"]
+    assert _run(["authors", "sources", "add", "ada", "example-com"])["sources"] == [
+        "news-com", "example-com"
     ]
 
 
@@ -293,7 +293,7 @@ def test_cli_authors_sources_set_unknown_id_is_an_error_and_writes_nothing(tmp_p
     # names the id, and it must not partially write the pool.
     persona_store, portal_store = _link_stores(tmp_path)
     code = main(
-        ["authors", "sources", "set", "ada", "--sources", "clarin-com,ghost-com"],
+        ["authors", "sources", "set", "ada", "--sources", "example-com,ghost-com"],
         persona_store=persona_store, portal_store=portal_store,
     )
     assert code == 1
@@ -316,7 +316,7 @@ def test_cli_authors_sources_remove_is_idempotent(tmp_path, capsys):
     # Unlinking an absent source is a success (exit 0), not an error.
     persona_store, portal_store = _link_stores(tmp_path)
     code = main(
-        ["authors", "sources", "remove", "ada", "clarin-com"],
+        ["authors", "sources", "remove", "ada", "example-com"],
         persona_store=persona_store, portal_store=portal_store,
     )
     assert code == 0
@@ -328,9 +328,9 @@ def test_cli_authors_sources_on_unknown_author_is_an_error(tmp_path, capsys):
     persona_store, portal_store = _link_stores(tmp_path)
     for argv in (
         ["authors", "sources", "get", "ghost"],
-        ["authors", "sources", "set", "ghost", "--sources", "clarin-com"],
-        ["authors", "sources", "add", "ghost", "clarin-com"],
-        ["authors", "sources", "remove", "ghost", "clarin-com"],
+        ["authors", "sources", "set", "ghost", "--sources", "example-com"],
+        ["authors", "sources", "add", "ghost", "example-com"],
+        ["authors", "sources", "remove", "ghost", "example-com"],
     ):
         assert main(argv, persona_store=persona_store, portal_store=portal_store) == 1
         assert "ghost" in json.loads(capsys.readouterr().out)["error"]

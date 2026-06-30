@@ -250,11 +250,13 @@ def test_bootstrap_seed_only_provisions_a_fresh_box(tmp_path):
     resp = client.post("/bootstrap", json={})
     assert resp.status_code == 200
     body = resp.json()
-    assert "lara-arianna" in body["seeded"]["personas_created"]
+    # The shipped defaults invent no authors; bootstrap seeds the agnostic config only.
+    assert body["seeded"]["location_created"] is True
+    assert body["seeded"]["personas_created"] == []
     # No platform token configured -> the author reconcile is a skipped no-op.
     assert body["reconciled"]["skipped"] is True
 
-    # The seeded personas are now visible over the API on the app's own connection.
+    # The persona collection is empty until an operator creates authors.
     listed = client.get("/personas").json()
-    assert listed["total"] >= 4
-    assert "lara-arianna" in [p["id"] for p in listed["personas"]]
+    assert listed["total"] == 0
+    assert listed["personas"] == []

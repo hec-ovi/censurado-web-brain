@@ -30,17 +30,17 @@ def test_source_lifecycle_create_list_get_patch_toggle_delete(tmp_path):
     created = client.post(
         "/portals",
         json={
-            "domain": "https://www.clarin.com/",
+            "domain": "https://www.example.com/",
             "description": "Diario nacional",
-            "feed_urls": ["https://clarin.com/rss"],
+            "feed_urls": ["https://example.com/rss"],
         },
     )
     assert created.status_code == 201
     body = created.json()
-    assert body["id"] == "clarin-com"
-    assert body["domain"] == "clarin.com"
+    assert body["id"] == "example-com"
+    assert body["domain"] == "example.com"
     assert body["description"] == "Diario nacional"  # the new field round-trips on create
-    assert body["feed_urls"] == ["https://clarin.com/rss"]
+    assert body["feed_urls"] == ["https://example.com/rss"]
     assert body["enabled"] is True
 
     # List: sees it, total is right, and the description survives the list read.
@@ -48,39 +48,39 @@ def test_source_lifecycle_create_list_get_patch_toggle_delete(tmp_path):
     assert listed.status_code == 200
     payload = listed.json()
     assert payload["total"] == 1
-    assert payload["portals"][0]["id"] == "clarin-com"
+    assert payload["portals"][0]["id"] == "example-com"
     assert payload["portals"][0]["description"] == "Diario nacional"
 
     # Get one.
-    got = client.get("/portals/clarin-com")
+    got = client.get("/portals/example-com")
     assert got.status_code == 200
     assert got.json()["description"] == "Diario nacional"
 
     # Patch: description + ownership_group persist; unnamed fields are untouched.
     patched = client.patch(
-        "/portals/clarin-com",
-        json={"description": "Grupo Clarin flagship", "ownership_group": "grupo-clarin"},
+        "/portals/example-com",
+        json={"description": "Grupo Example flagship", "ownership_group": "group-a"},
     )
     assert patched.status_code == 200
     pj = patched.json()
-    assert pj["description"] == "Grupo Clarin flagship"
-    assert pj["ownership_group"] == "grupo-clarin"
-    assert pj["feed_urls"] == ["https://clarin.com/rss"]  # unchanged
+    assert pj["description"] == "Grupo Example flagship"
+    assert pj["ownership_group"] == "group-a"
+    assert pj["feed_urls"] == ["https://example.com/rss"]  # unchanged
 
     # Disable then enable flips the flag.
-    assert client.post("/portals/clarin-com/disable").json()["enabled"] is False
-    assert client.post("/portals/clarin-com/enable").json()["enabled"] is True
+    assert client.post("/portals/example-com/disable").json()["enabled"] is False
+    assert client.post("/portals/example-com/enable").json()["enabled"] is True
 
     # Delete: 204, then a get is 404.
-    deleted = client.delete("/portals/clarin-com")
+    deleted = client.delete("/portals/example-com")
     assert deleted.status_code == 204
-    assert client.get("/portals/clarin-com").status_code == 404
+    assert client.get("/portals/example-com").status_code == 404
 
 
 def test_duplicate_domain_is_409(tmp_path):
     client = _client(tmp_path)
-    assert client.post("/portals", json={"domain": "clarin.com"}).status_code == 201
-    dup = client.post("/portals", json={"domain": "https://www.clarin.com/otra"})
+    assert client.post("/portals", json={"domain": "example.com"}).status_code == 201
+    dup = client.post("/portals", json={"domain": "https://www.example.com/otra"})
     assert dup.status_code == 409
     assert dup.json()["code"] == "duplicate_domain"
 
@@ -107,15 +107,15 @@ def test_create_missing_domain_is_422(tmp_path):
 
 def test_invalid_feed_type_on_create_is_422(tmp_path):
     client = _client(tmp_path)
-    resp = client.post("/portals", json={"domain": "clarin.com", "feed_type": "telepathy"})
+    resp = client.post("/portals", json={"domain": "example.com", "feed_type": "telepathy"})
     assert resp.status_code == 422
     assert resp.json()["code"] == "invalid_portal"
 
 
 def test_invalid_feed_type_on_patch_is_422(tmp_path):
     client = _client(tmp_path)
-    client.post("/portals", json={"domain": "clarin.com"})
-    resp = client.patch("/portals/clarin-com", json={"feed_type": "telepathy"})
+    client.post("/portals", json={"domain": "example.com"})
+    resp = client.patch("/portals/example-com", json={"feed_type": "telepathy"})
     assert resp.status_code == 422
     assert resp.json()["code"] == "invalid_portal"
 
@@ -154,13 +154,13 @@ def test_patch_empty_body_returns_current_state_without_bumping_updated_at(tmp_p
     # An empty PATCH is a no-op read: it returns the current portal and must NOT touch
     # updated_at (no write happened), so a console "save" with no edits is idempotent.
     client = _client(tmp_path)
-    created = client.post("/portals", json={"domain": "clarin.com"}).json()
+    created = client.post("/portals", json={"domain": "example.com"}).json()
     before = created["updated_at"]
 
-    patched = client.patch("/portals/clarin-com", json={})
+    patched = client.patch("/portals/example-com", json={})
     assert patched.status_code == 200
     pj = patched.json()
-    assert pj["id"] == "clarin-com"
+    assert pj["id"] == "example-com"
     assert pj["updated_at"] == before  # untouched: no write, no timestamp bump
 
 
@@ -186,8 +186,8 @@ def test_pagination_past_the_end_is_an_empty_window_with_full_total(tmp_path):
     # An offset/limit window past the end returns no portals but still reports the full
     # `total`, so a client paging off the end gets an empty page, not a wrong count.
     client = _client(tmp_path)
-    client.post("/portals", json={"domain": "clarin.com"})
-    client.post("/portals", json={"domain": "lanacion.com"})
+    client.post("/portals", json={"domain": "example.com"})
+    client.post("/portals", json={"domain": "news.com"})
 
     page = client.get("/portals", params={"limit": 10, "offset": 5}).json()
     assert page["portals"] == []
@@ -196,20 +196,20 @@ def test_pagination_past_the_end_is_an_empty_window_with_full_total(tmp_path):
 
 def test_enabled_filter_and_pagination(tmp_path):
     client = _client(tmp_path)
-    client.post("/portals", json={"domain": "clarin.com"})
-    client.post("/portals", json={"domain": "lanacion.com", "enabled": False})
-    client.post("/portals", json={"domain": "infobae.com"})
+    client.post("/portals", json={"domain": "example.com"})
+    client.post("/portals", json={"domain": "news.com", "enabled": False})
+    client.post("/portals", json={"domain": "blog.example"})
 
     # enabled=true filter excludes the disabled one; total reflects the filtered set.
     only_enabled = client.get("/portals", params={"enabled": True}).json()
     assert only_enabled["total"] == 2
-    assert [p["id"] for p in only_enabled["portals"]] == ["clarin-com", "infobae-com"]
+    assert [p["id"] for p in only_enabled["portals"]] == ["example-com", "blog-example"]
 
     only_disabled = client.get("/portals", params={"enabled": False}).json()
-    assert [p["id"] for p in only_disabled["portals"]] == ["lanacion-com"]
+    assert [p["id"] for p in only_disabled["portals"]] == ["news-com"]
 
     # Pagination: total stays the full count; the window honors limit/offset.
     page = client.get("/portals", params={"limit": 1, "offset": 1}).json()
     assert page["total"] == 3
     assert len(page["portals"]) == 1
-    assert page["portals"][0]["id"] == "lanacion-com"  # oldest-first order
+    assert page["portals"][0]["id"] == "news-com"  # oldest-first order

@@ -279,12 +279,12 @@ test("each source row lists the authors that read it (reverse of author->sources
         portals: [portal({ id: "p1", domain: "alpha.com" }), portal({ id: "p2", domain: "beta.com" })],
         total: 2,
       })),
-    // alpha (p1) is read by Lara AND Borge; beta (p2) only by Borge.
+    // alpha (p1) is read by Ada AND Ida; beta (p2) only by Ida.
     http.get(`${ORIGIN}/api/personas`, () =>
       HttpResponse.json({
         personas: [
-          { id: "lara", display_name: "Lara Arianna", beat: "politics", sources: ["p1"] },
-          { id: "borge", display_name: "Borge Luis Jorges", beat: "economics", sources: ["p1", "p2"] },
+          { id: "ada", display_name: "Ada Lovelace", beat: "politics", sources: ["p1"] },
+          { id: "ida", display_name: "Ida Riverss", beat: "economics", sources: ["p1", "p2"] },
         ],
       })),
   );
@@ -292,12 +292,12 @@ test("each source row lists the authors that read it (reverse of author->sources
   await panel.reload();
 
   const alpha = (await screen.findByText("alpha.com")).closest(".source-row");
-  assert.ok(within(alpha).getByText("Lara Arianna"), "alpha should list Lara");
-  assert.ok(within(alpha).getByText("Borge Luis Jorges"), "alpha should list Borge");
+  assert.ok(within(alpha).getByText("Ada Lovelace"), "alpha should list Ada");
+  assert.ok(within(alpha).getByText("Ida Riverss"), "alpha should list Ida");
 
   const beta = screen.getByText("beta.com").closest(".source-row");
-  assert.ok(within(beta).getByText("Borge Luis Jorges"), "beta should list Borge");
-  assert.equal(within(beta).queryByText("Lara Arianna"), null, "beta should NOT list Lara");
+  assert.ok(within(beta).getByText("Ida Riverss"), "beta should list Ida");
+  assert.equal(within(beta).queryByText("Ada Lovelace"), null, "beta should NOT list Ada");
 });
 
 test("a source no author reads shows the unassigned hint", async () => {
@@ -305,7 +305,7 @@ test("a source no author reads shows the unassigned hint", async () => {
     http.get(`${ORIGIN}/api/portals`, () =>
       HttpResponse.json({ portals: [portal({ id: "p9", domain: "orphan.com" })], total: 1 })),
     http.get(`${ORIGIN}/api/personas`, () =>
-      HttpResponse.json({ personas: [{ id: "lara", display_name: "Lara", beat: "politics", sources: ["other"] }] })),
+      HttpResponse.json({ personas: [{ id: "ada", display_name: "Ada", beat: "politics", sources: ["other"] }] })),
   );
   const { panel } = mount();
   await panel.reload();

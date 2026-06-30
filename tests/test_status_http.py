@@ -50,7 +50,7 @@ def test_backend_status_reachable_and_authorized(tmp_path, monkeypatch):
     # the useful signal, and the config echoed back (base URL rstripped, token present).
     monkeypatch.setattr(
         "newsroom.mirror.client.httpx.get",
-        lambda *a, **k: _authors_response("ada-lovelace", "lara-prensa"),
+        lambda *a, **k: _authors_response("ada-lovelace", "ida-rivers"),
     )
     client = _client(tmp_path, base_url="http://backend.test:8080/")  # trailing slash
 
@@ -152,7 +152,7 @@ def test_probe_backend_counts_live_authors(monkeypatch):
             200,
             json={"authors": [
                 {"handle": "ada"},
-                {"handle": "lara", "deleted": True},  # tombstoned -> not counted
+                {"handle": "ada", "deleted": True},  # tombstoned -> not counted
                 {"handle": ""},  # blank handle -> not counted
                 {"handle": "tomas"},
             ]},

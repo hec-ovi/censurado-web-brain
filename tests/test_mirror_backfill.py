@@ -47,13 +47,13 @@ def test_backfill_pushes_public_fields_and_collects_failures():
             return PushResult(handle=persona.id, ok=False, status=500, code="store_error")
         return PushResult(handle=persona.id, ok=True, status=200)
 
-    personas = [_persona("lara"), _persona("broken"), _persona("borge", beat="economics")]
+    personas = [_persona("ada"), _persona("broken"), _persona("ida", beat="economics")]
     report = backfill_web_authors(personas, push)
 
-    assert report.pushed == ["lara", "borge"]  # the loop continued past the failure
+    assert report.pushed == ["ada", "ida"]  # the loop continued past the failure
     assert report.failed == [{"handle": "broken", "code": "store_error", "detail": ""}]
     # The push only ever sees the public fields (id/name/bio/avatar), never the prompt.
-    assert ("lara", "Lara", "Bio de lara.", "avatars/lara.png") in seen
+    assert ("ada", "Ada", "Bio de ada.", "avatars/ada.png") in seen
 
 
 # ----- push client: POST /authors mapping -----
@@ -66,16 +66,16 @@ def test_push_web_author_posts_public_body_and_maps_200(monkeypatch):
         captured["url"] = url
         captured["headers"] = headers
         captured["json"] = json
-        return httpx.Response(200, json={"handle": "lara", "name": "Lara"})
+        return httpx.Response(200, json={"handle": "ada", "name": "Ada"})
 
     monkeypatch.setattr("newsroom.mirror.client.httpx.post", fake_post)
     res = push_web_author(
-        "http://web:8080/", "tok-admin", handle="lara", name="Lara", bio="Bio.", avatar="a.png"
+        "http://web:8080/", "tok-admin", handle="ada", name="Ada", bio="Bio.", avatar="a.png"
     )
 
     assert captured["url"] == "http://web:8080/authors"
     assert captured["headers"]["Authorization"] == "Bearer tok-admin"
-    assert captured["json"] == {"handle": "lara", "name": "Lara", "bio": "Bio.", "avatar": "a.png"}
+    assert captured["json"] == {"handle": "ada", "name": "Ada", "bio": "Bio.", "avatar": "a.png"}
     assert res.ok is True and res.status == 200
 
 
@@ -84,7 +84,7 @@ def test_push_web_author_maps_a_problem_response(monkeypatch):
         return httpx.Response(403, json={"code": "insufficient_scope", "detail": "requires admin:write"})
 
     monkeypatch.setattr("newsroom.mirror.client.httpx.post", fake_post)
-    res = push_web_author("http://web:8080", "tok", handle="lara")
+    res = push_web_author("http://web:8080", "tok", handle="ada")
     assert res.ok is False
     assert res.status == 403 and res.code == "insufficient_scope"
 
@@ -94,7 +94,7 @@ def test_push_web_author_returns_transport_error_on_raise(monkeypatch):
         raise httpx.ConnectError("down")
 
     monkeypatch.setattr("newsroom.mirror.client.httpx.post", fake_post)
-    res = push_web_author("http://web:8080", "tok", handle="lara")
+    res = push_web_author("http://web:8080", "tok", handle="ada")
     assert res.ok is False and res.code == "transport_error"
 
 
@@ -103,8 +103,8 @@ def test_push_web_author_returns_transport_error_on_raise(monkeypatch):
 
 def _seed_two_personas(tmp_path):
     store = PersonaStore(open_db(tmp_path / "brain.db"))
-    store.create(_persona("lara-arianna"))
-    store.create(_persona("vector-omni", beat="tech"))
+    store.create(_persona("ada-lovelace"))
+    store.create(_persona("noor-vega", beat="tech"))
 
 
 def test_cli_mirror_authors_dry_run_lists_handles_without_pushing(tmp_path, monkeypatch, capsys):
@@ -117,7 +117,7 @@ def test_cli_mirror_authors_dry_run_lists_handles_without_pushing(tmp_path, monk
     assert code == 0
     out = json.loads(capsys.readouterr().out)
     assert out["dry_run"] is True
-    assert set(out["pushed"]) == {"lara-arianna", "vector-omni"}
+    assert set(out["pushed"]) == {"ada-lovelace", "noor-vega"}
     assert out["failed"] == []
 
 
@@ -140,13 +140,13 @@ def test_mirror_authors_main_pushes_with_an_injected_push(tmp_path, monkeypatch,
 
     def push(persona: Persona) -> PushResult:
         pushed.append(persona.id)
-        ok = persona.id != "vector-omni"
+        ok = persona.id != "noor-vega"
         return PushResult(handle=persona.id, ok=ok, status=200 if ok else 500, code="" if ok else "store_error")
 
     code = _mirror_authors_main([], push=push)
 
     out = json.loads(capsys.readouterr().out)
-    assert set(pushed) == {"lara-arianna", "vector-omni"}
-    assert out["pushed"] == ["lara-arianna"]
-    assert out["failed"][0]["handle"] == "vector-omni"
+    assert set(pushed) == {"ada-lovelace", "noor-vega"}
+    assert out["pushed"] == ["ada-lovelace"]
+    assert out["failed"][0]["handle"] == "noor-vega"
     assert code == 1  # a failed push is a non-zero exit

@@ -1,13 +1,13 @@
 """The portal registry: the operator's own local news sources.
 
-A portal is a news site the publication pulls from (clarin.com, lanacion.com,
-infobae.com, ...). Discovery reads enabled portals directly (native RSS / news
+A portal is a news site the publication pulls from (e.g. ``example.com``,
+``news.example``). Discovery reads enabled portals directly (native RSS / news
 sitemaps) and scopes the websearch tool to their domains, so the registry is the
 allowlist that makes sourcing place-local and operator-owned. ``ownership_group`` lets
 corroboration counting treat co-owned outlets as one independent source.
 
 Typed CRUD mirroring ``newsroom.personas.store``: ``id`` is derived from the domain
-(``clarin.com`` -> ``clarin-com``) so re-adding the same domain is a clean duplicate
+(``example.com`` -> ``example-com``) so re-adding the same domain is a clean duplicate
 error rather than a second row. ``feed_urls`` round-trips as a Python list; ``enabled``
 round-trips as a bool. Timestamps come from an injectable ``clock``.
 """
@@ -47,8 +47,8 @@ _BOOL_FIELDS = ("enabled",)
 
 def normalize_domain(raw: str) -> str:
     """Reduce a URL or host to a bare registrable host: lowercase, no scheme, no
-    leading ``www.``, no path or trailing slash. ``https://www.Clarin.com/x`` ->
-    ``clarin.com``."""
+    leading ``www.``, no path or trailing slash. ``https://www.Example.com/x`` ->
+    ``example.com``."""
     text = raw.strip().lower()
     text = re.sub(r"^[a-z]+://", "", text)  # drop scheme
     text = text.split("/", 1)[0]  # drop path
@@ -60,7 +60,7 @@ def normalize_domain(raw: str) -> str:
 
 def portal_slug(domain: str) -> str:
     """The registry id for a domain: the normalized domain, slugified
-    (``clarin.com`` -> ``clarin-com``)."""
+    (``example.com`` -> ``example-com``)."""
     return slugify(normalize_domain(domain))
 
 

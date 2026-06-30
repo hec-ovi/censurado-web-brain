@@ -4,8 +4,8 @@ Three brain-owned, in-process stores over the editorial tables in ``newsroom.db`
 
 * ``location``  the single publication place (region, language, optional city) that
   scopes discovery and frames the manager ("you are the editor for <place>").
-* ``portals``   the operator's own local news portals (clarin.com, lanacion.com, ...),
-  the allowlist discovery pulls from and scopes search to.
+* ``portals``   the operator's own local news portals (e.g. ``example.com``,
+  ``news.example``), the allowlist discovery pulls from and scopes search to.
 * ``style``     the house style guide (the "model of redaction + rules"), kept as
   immutable versions plus an active pointer so an edit is a new version and
   promote/rollback is just moving the pointer.

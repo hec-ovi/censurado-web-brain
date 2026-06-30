@@ -78,11 +78,11 @@ CREATE TABLE IF NOT EXISTS location (
   updated_at    TEXT NOT NULL
 );
 
--- The operator's own local news portals (clarin.com, lanacion.com, ...). Discovery
+-- The operator's own local news portals (e.g. example.com, news.example). Discovery
 -- pulls these directly (native RSS / news sitemaps) and scopes web_search to them.
 CREATE TABLE IF NOT EXISTS portals (
-  id              TEXT PRIMARY KEY,            -- slug of the domain (clarin-com)
-  domain          TEXT NOT NULL UNIQUE,        -- clarin.com
+  id              TEXT PRIMARY KEY,            -- slug of the domain (example-com)
+  domain          TEXT NOT NULL UNIQUE,        -- example.com
   homepage        TEXT NOT NULL DEFAULT '',
   description     TEXT NOT NULL DEFAULT '',    -- operator's note on the source (the real
                                                -- source lists carry rich descriptions)

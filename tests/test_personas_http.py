@@ -39,14 +39,14 @@ def test_persona_lifecycle_direct_create_get_patch_delete(tmp_path):
     client = _client(tmp_path)
 
     # Direct-create: id derives from display_name, no synthesis job runs.
-    created = client.post("/personas/direct", json=_new_persona(about="A bio.", sources=["clarin-com"]))
+    created = client.post("/personas/direct", json=_new_persona(about="A bio.", sources=["example-com"]))
     assert created.status_code == 201
     body = created.json()
     assert body["id"] == "ada-lovelace"
     assert body["display_name"] == "Ada Lovelace"
     assert body["beat"] == "tech"
     assert body["about"] == "A bio."
-    assert body["sources"] == ["clarin-com"]
+    assert body["sources"] == ["example-com"]
     assert body["active"] is True
 
     # Get (the inline read route) sees the freshly-created row.
@@ -64,7 +64,7 @@ def test_persona_lifecycle_direct_create_get_patch_delete(tmp_path):
     assert pj["about"] == "An updated bio."
     assert pj["style"] == "blunt"
     assert pj["beat"] == "tech"  # unchanged
-    assert pj["sources"] == ["clarin-com"]  # unchanged
+    assert pj["sources"] == ["example-com"]  # unchanged
 
     # active can be toggled through the same patch surface.
     deactivated = client.patch("/personas/ada-lovelace", json={"active": False})

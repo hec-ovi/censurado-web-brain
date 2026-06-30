@@ -36,10 +36,10 @@ def store() -> PortalStore:
 @pytest.mark.parametrize(
     "raw,domain",
     [
-        ("https://www.clarin.com/", "clarin.com"),
-        ("http://Clarin.com/politica/x", "clarin.com"),
-        ("www.lanacion.com.ar", "lanacion.com.ar"),
-        ("infobae.com", "infobae.com"),
+        ("https://www.example.com/", "example.com"),
+        ("http://Example.com/politica/x", "example.com"),
+        ("www.news.test", "news.test"),
+        ("blog.example", "blog.example"),
     ],
 )
 def test_normalize_domain(raw, domain):
@@ -47,36 +47,36 @@ def test_normalize_domain(raw, domain):
 
 
 def test_portal_slug_is_domain_slugified():
-    assert portal_slug("https://www.clarin.com") == "clarin-com"
+    assert portal_slug("https://www.example.com") == "example-com"
 
 
 # ----- create / round-trip -----
 
 
 def test_create_normalizes_domain_and_derives_id(store: PortalStore):
-    created = store.create(Portal(domain="https://www.clarin.com/", feed_urls=["https://clarin.com/rss"]))
-    assert created.id == "clarin-com"
-    assert created.domain == "clarin.com"
-    assert created.feed_urls == ["https://clarin.com/rss"]
+    created = store.create(Portal(domain="https://www.example.com/", feed_urls=["https://example.com/rss"]))
+    assert created.id == "example-com"
+    assert created.domain == "example.com"
+    assert created.feed_urls == ["https://example.com/rss"]
     assert created.enabled is True
     assert created.created_at == created.updated_at
 
 
 def test_explicit_id_is_honored(store: PortalStore):
-    created = store.create(Portal(domain="infobae.com", id="infobae"))
-    assert created.id == "infobae"
-    assert store.get("infobae") is not None
+    created = store.create(Portal(domain="blog.example", id="blog"))
+    assert created.id == "blog"
+    assert store.get("blog") is not None
 
 
 def test_enabled_round_trips_as_bool(store: PortalStore):
-    created = store.create(Portal(domain="lanacion.com", enabled=False))
+    created = store.create(Portal(domain="news.com", enabled=False))
     got = store.get(created.id)
     assert got is not None and got.enabled is False
 
 
 def test_invalid_feed_type_is_rejected_and_nothing_inserted(store: PortalStore):
     with pytest.raises(ValueError, match="invalid feed_type"):
-        store.create(Portal(domain="clarin.com", feed_type="telepathy"))
+        store.create(Portal(domain="example.com", feed_type="telepathy"))
     assert store.list() == []
 
 
@@ -86,30 +86,30 @@ def test_blank_domain_is_rejected(store: PortalStore):
 
 
 def test_duplicate_domain_is_rejected(store: PortalStore):
-    store.create(Portal(domain="clarin.com"))
+    store.create(Portal(domain="example.com"))
     with pytest.raises(ValueError, match="already exists"):
-        store.create(Portal(domain="https://www.clarin.com/otra"))  # same registrable host
+        store.create(Portal(domain="https://www.example.com/otra"))  # same registrable host
 
 
 # ----- update / delete -----
 
 
 def test_update_changes_field_and_bumps_updated_at(store: PortalStore):
-    created = store.create(Portal(domain="clarin.com"))
-    updated = store.update(created.id, ownership_group="grupo-clarin", feed_type="native_rss")
-    assert updated.ownership_group == "grupo-clarin"
+    created = store.create(Portal(domain="example.com"))
+    updated = store.update(created.id, ownership_group="group-a", feed_type="native_rss")
+    assert updated.ownership_group == "group-a"
     assert updated.feed_type == "native_rss"
     assert updated.updated_at > created.updated_at
 
 
 def test_set_enabled_toggles(store: PortalStore):
-    created = store.create(Portal(domain="clarin.com"))
+    created = store.create(Portal(domain="example.com"))
     assert store.set_enabled(created.id, False).enabled is False
     assert store.set_enabled(created.id, True).enabled is True
 
 
 def test_update_unknown_field_is_rejected(store: PortalStore):
-    created = store.create(Portal(domain="clarin.com"))
+    created = store.create(Portal(domain="example.com"))
     with pytest.raises(ValueError, match="unknown field"):
         store.update(created.id, paywall=True)
 
@@ -120,7 +120,7 @@ def test_update_missing_portal_raises_key_error(store: PortalStore):
 
 
 def test_delete_removes_and_reports(store: PortalStore):
-    created = store.create(Portal(domain="clarin.com"))
+    created = store.create(Portal(domain="example.com"))
     assert store.delete(created.id) is True
     assert store.get(created.id) is None
     assert store.delete(created.id) is False
@@ -130,23 +130,23 @@ def test_delete_removes_and_reports(store: PortalStore):
 
 
 def test_list_oldest_first_and_filter_enabled(store: PortalStore):
-    store.create(Portal(domain="clarin.com"))
-    store.create(Portal(domain="lanacion.com", enabled=False))
-    store.create(Portal(domain="infobae.com"))
-    assert [p.id for p in store.list()] == ["clarin-com", "lanacion-com", "infobae-com"]
-    assert [p.id for p in store.list(enabled=True)] == ["clarin-com", "infobae-com"]
-    assert [p.id for p in store.list(enabled=False)] == ["lanacion-com"]
+    store.create(Portal(domain="example.com"))
+    store.create(Portal(domain="news.com", enabled=False))
+    store.create(Portal(domain="blog.example"))
+    assert [p.id for p in store.list()] == ["example-com", "news-com", "blog-example"]
+    assert [p.id for p in store.list(enabled=True)] == ["example-com", "blog-example"]
+    assert [p.id for p in store.list(enabled=False)] == ["news-com"]
 
 
 def test_domains_returns_only_enabled(store: PortalStore):
-    store.create(Portal(domain="clarin.com"))
-    store.create(Portal(domain="lanacion.com", enabled=False))
-    assert store.domains() == ["clarin.com"]
+    store.create(Portal(domain="example.com"))
+    store.create(Portal(domain="news.com", enabled=False))
+    assert store.domains() == ["example.com"]
 
 
 def test_get_by_domain(store: PortalStore):
-    store.create(Portal(domain="infobae.com"))
-    assert store.get_by_domain("https://www.infobae.com/").id == "infobae-com"
+    store.create(Portal(domain="blog.example"))
+    assert store.get_by_domain("https://www.blog.example/").id == "blog-example"
 
 
 # ----- SQL-level guarantees -----
@@ -164,9 +164,9 @@ def test_feed_type_check_enforced_at_sql_level():
 def test_domain_unique_enforced_at_sql_level():
     conn = open_db(":memory:")
     conn.execute(
-        "INSERT INTO portals (id, domain, created_at, updated_at) VALUES ('a', 'clarin.com', 't', 't')"
+        "INSERT INTO portals (id, domain, created_at, updated_at) VALUES ('a', 'example.com', 't', 't')"
     )
     with pytest.raises(sqlite3.IntegrityError):
         conn.execute(
-            "INSERT INTO portals (id, domain, created_at, updated_at) VALUES ('b', 'clarin.com', 't', 't')"
+            "INSERT INTO portals (id, domain, created_at, updated_at) VALUES ('b', 'example.com', 't', 't')"
         )
