@@ -64,21 +64,16 @@ export const ES = {
 
   // --- Persona create form ---------------------------------------------
   "New persona": "Nueva persona",
-  "Synthesize an author persona from a short seed. The new author joins the roster below.":
-    "Sintetice una persona de autor a partir de una breve semilla. El nuevo autor se suma a la lista de abajo.",
-  "Synthesize persona": "Sintetizar persona",
+  "Create an author persona from explicit fields. The new author joins the roster below.":
+    "Cree una persona de autor con campos explícitos. El nuevo autor se suma a la lista de abajo.",
+  "Create persona": "Crear persona",
   "Display name": "Nombre visible",
   Beat: "Sección",
-  "Seed description": "Descripción semilla",
-  "Preferred sources (comma separated)": "Fuentes preferidas (separadas por comas)",
-  "Display name and seed are required.": "El nombre visible y la semilla son obligatorios.",
-  "Submitting...": "Enviando...",
-  'Synthesizing "{id}"...': 'Sintetizando "{id}"...',
+  "Select a beat": "Elija una sección",
+  "Display name, beat, who I am, and style are required.":
+    "El nombre visible, la sección, el quién soy y el estilo son obligatorios.",
+  "Creating...": "Creando...",
   "Created {id}.": "Se creó {id}.",
-  "Synthesis failed: {err}.": "La síntesis falló: {err}.",
-  ' "{id}"': ' "{id}"',
-  "Still synthesizing{which}. This is taking longer than usual; reload later to check.":
-    "Sigue sintetizando{which}. Está tardando más de lo habitual; vuelva a cargar más tarde para comprobarlo.",
   "Could not create persona: {msg}": "No se pudo crear la persona: {msg}",
 
   // --- Persona list ----------------------------------------------------

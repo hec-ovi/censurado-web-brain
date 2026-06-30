@@ -12,27 +12,23 @@ import { api } from "../src/api.js";
 installDom();
 const server = installServer();
 
-// Drive the job poll with a fake clock so the pending -> done transition runs
-// with no real delay.
-const fastPoll = { attempts: 10, intervalMs: 0, wait: () => Promise.resolve() };
-
 function mount() {
   const created = [];
-  const form = PersonaForm({ api, onCreated: (id) => created.push(id), pollOpts: fastPoll });
+  const form = PersonaForm({ api, onCreated: (id) => created.push(id) });
   document.body.appendChild(form.element);
   return { created };
 }
 
 test("blocks submit and reports an error when required fields are empty", async () => {
   let posted = false;
-  server.use(http.post(`${ORIGIN}/api/personas`, () => {
+  server.use(http.post(`${ORIGIN}/api/personas/direct`, () => {
     posted = true;
-    return HttpResponse.json({}, { status: 202 });
+    return HttpResponse.json({}, { status: 201 });
   }));
   const user = userEvent.setup();
   mount();
 
-  await user.click(screen.getByRole("button", { name: /synthesize persona/i }));
+  await user.click(screen.getByRole("button", { name: /create persona/i }));
 
   assert.equal(posted, false, "no request should be sent for an invalid form");
   // The error is announced assertively (role=alert), the empty field is marked
@@ -43,25 +39,46 @@ test("blocks submit and reports an error when required fields are empty", async 
   assert.equal(document.activeElement, name);
 });
 
+test("blocks submit and flags the beat field when the beat is blank", async () => {
+  let posted = false;
+  server.use(http.post(`${ORIGIN}/api/personas/direct`, () => {
+    posted = true;
+    return HttpResponse.json({}, { status: 201 });
+  }));
+  const user = userEvent.setup();
+  mount();
+
+  // Fill everything BUT the beat (it defaults to the blank placeholder option).
+  await user.type(screen.getByLabelText(/display name/i), "Ada Reporter");
+  await user.type(screen.getByLabelText(/who i am/i), "world desk");
+  await user.type(screen.getByLabelText(/^style$/i), "dry and precise");
+  await user.click(screen.getByRole("button", { name: /create persona/i }));
+
+  assert.equal(posted, false, "a blank beat must not POST");
+  assert.match(screen.getByRole("alert").textContent, /required/i);
+  const beat = screen.getByLabelText(/^beat$/i);
+  assert.equal(beat.getAttribute("aria-invalid"), "true");
+});
+
 test("disables the submit button while a create is in flight", async () => {
   let release;
   const gate = new Promise((resolve) => {
     release = resolve;
   });
   server.use(
-    http.post(`${ORIGIN}/api/personas`, async () => {
+    http.post(`${ORIGIN}/api/personas/direct`, async () => {
       await gate;
-      return HttpResponse.json({ job_id: "jb", persona_id: "p", status: "pending" }, { status: 202 });
+      return HttpResponse.json({ id: "p", display_name: "P", beat: "world" }, { status: 201 });
     }),
-    http.get(`${ORIGIN}/api/personas/jobs/jb`, () =>
-      HttpResponse.json({ job_id: "jb", status: "done", persona_id: "p", error: "" })),
   );
   const user = userEvent.setup();
   mount();
 
   await user.type(screen.getByLabelText(/display name/i), "P");
-  await user.type(screen.getByLabelText(/seed description/i), "x");
-  const button = screen.getByRole("button", { name: /synthesize persona/i });
+  await user.selectOptions(screen.getByLabelText(/^beat$/i), "world");
+  await user.type(screen.getByLabelText(/who i am/i), "x");
+  await user.type(screen.getByLabelText(/^style$/i), "y");
+  const button = screen.getByRole("button", { name: /create persona/i });
   await user.click(button);
 
   assert.equal(button.disabled, true, "disabled while the request is in flight");
@@ -70,37 +87,15 @@ test("disables the submit button while a create is in flight", async () => {
   assert.equal(button.disabled, false, "re-enabled after completion");
 });
 
-test("reports still-synthesizing when the job poll times out", async () => {
+test("creates a persona by POSTing the explicit fields to /personas/direct", async () => {
+  let received = null;
   server.use(
-    http.post(`${ORIGIN}/api/personas`, () =>
-      HttpResponse.json({ job_id: "jt", persona_id: "slow-one", status: "pending" }, { status: 202 })),
-    http.get(`${ORIGIN}/api/personas/jobs/jt`, () =>
-      HttpResponse.json({ job_id: "jt", status: "pending", persona_id: "slow-one", error: "" })),
-  );
-  const user = userEvent.setup();
-  mount(); // fastPoll exhausts while the job stays pending -> poll_timeout
-
-  await user.type(screen.getByLabelText(/display name/i), "Slow One");
-  await user.type(screen.getByLabelText(/seed description/i), "x");
-  await user.click(screen.getByRole("button", { name: /synthesize persona/i }));
-
-  await screen.findByText(/still synthesizing "slow-one"/i);
-});
-
-test("creates a persona, polls the job to done, and reports it", async () => {
-  let jobCalls = 0;
-  server.use(
-    http.post(`${ORIGIN}/api/personas`, async ({ request }) => {
-      const body = await request.json();
-      assert.equal(body.display_name, "Ada Reporter");
-      assert.equal(body.beat, "world");
-      assert.deepEqual(body.sources, ["example.com", "another.org"]);
-      return HttpResponse.json({ job_id: "j1", persona_id: "ada-reporter", status: "pending" }, { status: 202 });
-    }),
-    http.get(`${ORIGIN}/api/personas/jobs/j1`, () => {
-      jobCalls += 1;
-      const status = jobCalls >= 2 ? "done" : "pending";
-      return HttpResponse.json({ job_id: "j1", status, persona_id: "ada-reporter", error: "" });
+    http.post(`${ORIGIN}/api/personas/direct`, async ({ request }) => {
+      received = await request.json();
+      return HttpResponse.json(
+        { id: "ada-reporter", display_name: received.display_name, beat: received.beat },
+        { status: 201 },
+      );
     }),
   );
   const user = userEvent.setup();
@@ -108,41 +103,36 @@ test("creates a persona, polls the job to done, and reports it", async () => {
 
   await user.type(screen.getByLabelText(/display name/i), "Ada Reporter");
   await user.selectOptions(screen.getByLabelText(/^beat$/i), "world");
-  await user.type(screen.getByLabelText(/seed description/i), "A dogged world-news reporter.");
-  await user.type(screen.getByLabelText(/preferred sources/i), "example.com, another.org");
-  await user.click(screen.getByRole("button", { name: /synthesize persona/i }));
+  await user.type(screen.getByLabelText(/who i am/i), "A dogged world-news reporter.");
+  await user.type(screen.getByLabelText(/^style$/i), "Plain and direct.");
+  await user.type(screen.getByLabelText(/about/i), "Veteran correspondent.");
+  await user.type(screen.getByLabelText(/avatar path/i), "/media/ada.png");
+  await user.click(screen.getByRole("button", { name: /create persona/i }));
 
   await screen.findByText(/created ada-reporter/i);
   assert.deepEqual(created, ["ada-reporter"]);
-  assert.ok(jobCalls >= 2, "the form should poll until the job is done");
-});
-
-test("surfaces a failed synthesis job", async () => {
-  server.use(
-    http.post(`${ORIGIN}/api/personas`, () =>
-      HttpResponse.json({ job_id: "j2", persona_id: "boom", status: "pending" }, { status: 202 })),
-    http.get(`${ORIGIN}/api/personas/jobs/j2`, () =>
-      HttpResponse.json({ job_id: "j2", status: "failed", persona_id: "boom", error: "model timeout" })),
-  );
-  const user = userEvent.setup();
-  mount();
-
-  await user.type(screen.getByLabelText(/display name/i), "Boom");
-  await user.type(screen.getByLabelText(/seed description/i), "x");
-  await user.click(screen.getByRole("button", { name: /synthesize persona/i }));
-
-  await screen.findByText(/synthesis failed: model timeout/i);
+  // The body carries the persona field NAMES the publish byline mapping needs.
+  assert.equal(received.display_name, "Ada Reporter");
+  assert.equal(received.beat, "world");
+  assert.equal(received.who_i_am, "A dogged world-news reporter.");
+  assert.equal(received.style, "Plain and direct.");
+  assert.equal(received.about, "Veteran correspondent.");
+  assert.equal(received.avatar_path, "/media/ada.png");
+  // No synthesis-era fields ride along.
+  assert.equal(received.seed, undefined);
 });
 
 test("shows the brain's error when the create request is rejected", async () => {
-  server.use(http.post(`${ORIGIN}/api/personas`, () =>
-    HttpResponse.json({ status: 422, code: "validation_failed", detail: "display_name yields no usable id" }, { status: 422 })));
+  server.use(http.post(`${ORIGIN}/api/personas/direct`, () =>
+    HttpResponse.json({ code: "invalid_persona", detail: "display_name yields no usable id" }, { status: 422 })));
   const user = userEvent.setup();
   mount();
 
   await user.type(screen.getByLabelText(/display name/i), "...");
-  await user.type(screen.getByLabelText(/seed description/i), "x");
-  await user.click(screen.getByRole("button", { name: /synthesize persona/i }));
+  await user.selectOptions(screen.getByLabelText(/^beat$/i), "tech");
+  await user.type(screen.getByLabelText(/who i am/i), "x");
+  await user.type(screen.getByLabelText(/^style$/i), "y");
+  await user.click(screen.getByRole("button", { name: /create persona/i }));
 
   await screen.findByText(/could not create persona: display_name yields no usable id/i);
 });

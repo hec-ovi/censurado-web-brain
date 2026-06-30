@@ -22,7 +22,6 @@ function baseHandlers(extra = []) {
     http.get(`${ORIGIN}/api/health`, () => HttpResponse.json({ ok: true })),
     http.get(`${ORIGIN}/api/personas`, () => HttpResponse.json({ personas: [] })),
     http.get(`${ORIGIN}/api/portals`, () => HttpResponse.json({ portals: [], total: 0 })),
-    http.get(`${ORIGIN}/api/runs`, () => HttpResponse.json({ runs: [], total: 0 })),
     http.get(`${ORIGIN}/api/status/backend`, () =>
       HttpResponse.json({
         backend_base_url: "http://backend.local",
@@ -94,8 +93,8 @@ function mount() {
 
 // Drive the whole app through its real entry point (mountApp) against the
 // network mock: health turns online, the roster loads on the default Authors
-// tab, and creating a persona refreshes the list. The job returns done on the
-// first poll, so no real delay.
+// tab, and creating a persona (POST /personas/direct, a synchronous persist)
+// refreshes the list.
 test("mounts the app, shows health, and refreshes the roster after a create", async () => {
   let created = false;
   server.use(
@@ -109,12 +108,9 @@ test("mounts the app, shows health, and refreshes the roster after a create", as
           : [],
       })),
     http.get(`${ORIGIN}/api/portals`, () => HttpResponse.json({ portals: [], total: 0 })),
-    http.get(`${ORIGIN}/api/runs`, () => HttpResponse.json({ runs: [], total: 0 })),
-    http.post(`${ORIGIN}/api/personas`, () =>
-      HttpResponse.json({ job_id: "j", persona_id: "ada-reporter", status: "pending" }, { status: 202 })),
-    http.get(`${ORIGIN}/api/personas/jobs/j`, () => {
+    http.post(`${ORIGIN}/api/personas/direct`, () => {
       created = true;
-      return HttpResponse.json({ job_id: "j", status: "done", persona_id: "ada-reporter", error: "" });
+      return HttpResponse.json({ id: "ada-reporter", display_name: "Ada Reporter", beat: "world" }, { status: 201 });
     }),
     ...editorialHandlers(),
     ...promptsHandlers(),
@@ -130,31 +126,27 @@ test("mounts the app, shows health, and refreshes the roster after a create", as
 
   await user.type(screen.getByLabelText(/display name/i), "Ada Reporter");
   await user.selectOptions(screen.getByLabelText(/^beat$/i), "world");
-  await user.type(screen.getByLabelText(/seed description/i), "covers the world desk");
-  await user.click(screen.getByRole("button", { name: /synthesize persona/i }));
+  await user.type(screen.getByLabelText(/who i am/i), "covers the world desk");
+  await user.type(screen.getByLabelText(/^style$/i), "plain and direct");
+  await user.click(screen.getByRole("button", { name: /create persona/i }));
 
   await screen.findByText("Ada Reporter");
   // The roster actually replaced its empty state, not just appended.
   assert.equal(screen.queryByText(/no personas yet/i), null);
 });
 
-test("clicking the Runs tab reveals the runs panel and updates aria-selected", async () => {
+test("mounts exactly five tabs and no Runs tab", async () => {
   server.use(...baseHandlers());
-  const user = userEvent.setup();
   mount();
   await screen.findByText("online");
 
-  // Before selecting Runs, its Start-run control is hidden (role queries skip it).
-  assert.equal(screen.queryByRole("button", { name: /start run/i }), null);
-
-  const authorsTab = screen.getByRole("tab", { name: /authors/i });
-  const runsTab = screen.getByRole("tab", { name: /runs/i });
-  await user.click(runsTab);
-
-  assert.equal(runsTab.getAttribute("aria-selected"), "true");
-  assert.equal(authorsTab.getAttribute("aria-selected"), "false");
-  // The runs panel is now shown, so its control is reachable.
-  assert.ok(screen.getByRole("button", { name: /start run/i }), "the run trigger should be visible");
+  const tabs = screen.getAllByRole("tab");
+  assert.equal(tabs.length, 5, "the tablist drops from six tabs to five");
+  assert.deepEqual(
+    tabs.map((tab) => tab.textContent),
+    ["Authors", "Sources", "Editorial", "Prompts", "Status"],
+  );
+  assert.equal(screen.queryByRole("tab", { name: /runs/i }), null, "the dead Runs tab is gone");
 });
 
 test("the Status tab renders backend status from /api/status/backend", async () => {

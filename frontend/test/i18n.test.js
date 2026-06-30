@@ -158,9 +158,9 @@ test("Spanish help prose renders for a help (?) marker", async () => {
 
   // The New persona help button carries the translated prose as its accessible name.
   const helpBtn = screen.getByRole("button", {
-    name: t("Synthesize an author persona from a short seed. The new author joins the roster below."),
+    name: t("Create an author persona from explicit fields. The new author joins the roster below."),
   });
-  assert.match(helpBtn.getAttribute("aria-label"), /Sintetice una persona de autor/);
+  assert.match(helpBtn.getAttribute("aria-label"), /Cree una persona de autor/);
 });
 
 test("a representative panel renders Spanish field labels and empty-state copy", async () => {

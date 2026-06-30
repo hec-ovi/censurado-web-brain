@@ -6,7 +6,6 @@ import { BackendStatus } from "./components/backendStatus.js";
 import { PersonaList } from "./components/personaList.js";
 import { PersonaForm } from "./components/personaForm.js";
 import { SourcesPanel } from "./components/sourcesPanel.js";
-import { RunPanel } from "./components/runPanel.js";
 import { EditorialPanel } from "./components/editorialPanel.js";
 import { PromptsPanel } from "./components/promptsPanel.js";
 
@@ -73,7 +72,7 @@ function ThemeControl() {
 // the whole app against MSW or a stub; production passes nothing and the real
 // /api client is used. Returns the live component handles for tests.
 //
-// The console is a six-tab ARIA tablist. Switching tabs only toggles `hidden`
+// The console is a five-tab ARIA tablist. Switching tabs only toggles `hidden`
 // (hide, not unmount), so controls in inactive tabs stay in the DOM and remain
 // findable by tests and assistive tech instead of being rebuilt. Every tab is a
 // real panel; none are placeholders.
@@ -85,14 +84,13 @@ export function mountApp(root, deps = {}) {
   const list = PersonaList({ api });
   const form = PersonaForm({ api, onCreated: () => list.reload() });
   const sources = SourcesPanel({ api });
-  const runs = RunPanel({ api });
   const editorial = EditorialPanel({ api });
   const prompts = PromptsPanel({ api });
 
   const newPersonaPanel = el("section", { class: "panel" }, [
     el("div", { class: "panel-head" }, [
       el("h2", {}, t("New persona")),
-      help(t("Synthesize an author persona from a short seed. The new author joins the roster below.")),
+      help(t("Create an author persona from explicit fields. The new author joins the roster below.")),
     ]),
     form.element,
   ]);
@@ -108,7 +106,6 @@ export function mountApp(root, deps = {}) {
   const tabs = [
     { id: "authors", label: t("Authors"), content: [newPersonaPanel, list.element] },
     { id: "sources", label: t("Sources"), content: [sources.element] },
-    { id: "runs", label: t("Runs"), content: [runs.element] },
     { id: "editorial", label: t("Editorial"), content: [editorial.element] },
     { id: "prompts", label: t("Prompts"), content: [prompts.element] },
     { id: "status", label: t("Status"), content: [healthPanel, backend.element] },
@@ -231,10 +228,8 @@ export function mountApp(root, deps = {}) {
   backend.refresh();
   list.reload();
   sources.reload();
-  runs.loadAuthors();
-  runs.reloadHistory();
   editorial.reload();
   prompts.reload();
 
-  return { health, backend, list, form, sources, runs, editorial, prompts, tabs: tabButtons, panels, select };
+  return { health, backend, list, form, sources, editorial, prompts, tabs: tabButtons, panels, select };
 }
