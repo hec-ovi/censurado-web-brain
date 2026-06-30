@@ -1,27 +1,18 @@
-"""The automation entry point (Step 10): ``newsroom.cli.main``, driven end to end.
+"""The brain's management CLI (``newsroom.cli.main``), driven end to end.
 
-This is the command an external periodic trigger invokes. The tests exercise the
-REAL entry point (``main`` with parsed argv) through to its side effects against the
-shared fake: a full managed run publishes one article, a publish failure surfaces as
-a non-zero exit, a crash is recorded and reported, and the arg surface (mode / n /
-persona subset) resolves the scope it should.
-
-The headline test goes through the PRODUCTION dependency assembly
-(``build_run_deps`` + ``roles_for_settings``); only the two network seams (web search
-and the research loop) are stubbed, so the run never leaves the box while the rest of
-the wiring is the real thing.
+These tests exercise the REAL entry point (``main`` with parsed argv) through to its side
+effects: the source (portal) registry, the author (persona) registry + per-author source
+links, the versioned house style + location editorial config, and the topic-cleanse
+map-file lane. Each verb is the command-line parity of the brain's HTTP management API;
+stores are injected over a temp brain DB so a verb's writes are visible to the next call.
 """
 
 from __future__ import annotations
 
 import json
-import threading
-from datetime import datetime, timezone
 
-import pytest
-
-from newsroom.cli import main
-from newsroom.config import Settings
+from newsroom.cleanse import ArticleTopics
+from newsroom.cli import _topics_main, main
 from newsroom.db import open_db
 from newsroom.editorial import (
     LocationStore,
@@ -31,270 +22,6 @@ from newsroom.editorial import (
     StyleStore,
 )
 from newsroom.personas import Persona, PersonaStore
-from newsroom.research.ledger import Ledger
-from newsroom.runner import build_run_deps
-from newsroom.runs import RunStore
-
-
-# ----- builders (a thin local copy of the run scripting) -----
-
-
-def _settings(fake, tmp_path, **over) -> Settings:
-    base = dict(
-        persona_db_path=tmp_path / "brain.db",
-        inference_base_url=f"{fake.base_url}/v1",
-        publish_base_url=fake.base_url,
-        operator_token="op-token",
-    )
-    base.update(over)
-    return Settings(**base)
-
-
-def _ready_ledger(_assignment, _spec, _persona, _budget) -> Ledger:
-    """A make_ledger double: a non-empty grounded ledger so the rules evaluator can
-    PASS, without running the research loop or touching the network."""
-    led = Ledger(clock=lambda: datetime(2026, 6, 23, tzinfo=timezone.utc))
-    led.add(claim="grounding", url="https://src.test/a", snippet="a source")
-    return led
-
-
-def _no_search(_query: str) -> list:
-    return []
-
-
-def _assign(persona_id: str, headline: str = "A fresh story") -> str:
-    return json.dumps(
-        {"action": "assign", "assignments": [
-            {"persona_id": persona_id, "headline": headline, "angle": "cover it", "triage": "new"}
-        ]}
-    )
-
-
-def _assign_many(specs: list[tuple[str, str]]) -> str:
-    return json.dumps(
-        {"action": "assign", "assignments": [
-            {"persona_id": pid, "headline": h, "angle": "cover it", "triage": "new"} for pid, h in specs
-        ]}
-    )
-
-
-def _finalize_ok(title: str = "Title", body: str = "Final body.") -> str:
-    return json.dumps({"title": title, "body": body, "topics": ["chips"]})
-
-
-def _ada() -> Persona:
-    return Persona(id="ada", display_name="Ada", beat="tech", who_i_am="I cover chips.", style="dry")
-
-
-def _bea() -> Persona:
-    return Persona(id="bea", display_name="Bea", beat="world", who_i_am="I cover summits.", style="wry")
-
-
-def _deps_with(fake, settings, personas, *, search_news=None, make_ledger=None):
-    """Build run deps through the REAL production assembly over a fresh connection,
-    pre-seeding the personas. Only the two network seams are stubbed; everything else
-    (the store, coverage, the resolved roles pointed at the fake) is the real wiring
-    the command uses in production."""
-    conn = open_db(settings.persona_db_path, check_same_thread=False)
-    persona_store = PersonaStore(conn)
-    for persona in personas:
-        persona_store.create(persona)
-    return build_run_deps(
-        settings,
-        conn=conn,
-        lock=threading.Lock(),
-        persona_store=persona_store,
-        search_news=search_news or _no_search,
-        make_ledger=make_ledger or _ready_ledger,
-    )
-
-
-# ----- the full managed run, end to end through the command -----
-
-
-def test_cli_managed_run_publishes_end_to_end(fake, tmp_path, capsys):
-    # The default invocation (no args) is a managed run: the command picks the managed
-    # mode, the manager assigns one story to ada, her pipeline drafts and finalizes it,
-    # and the publish tail POSTs it. Exit 0, a JSON summary, and the real side effects.
-    settings = _settings(fake, tmp_path)
-    deps = _deps_with(fake, settings, [_ada()])
-    fake.state.script_chat(_assign("ada", headline="Chips ship early"))
-    for body in ("an outline", "a clean draft", "an enriched body", "a respin 1", "a respin 2"):
-        fake.state.script_chat(body)
-    fake.state.script_chat(_finalize_ok("Chips Ship Early", "The chips shipped."))
-
-    code = main([], build_deps=lambda _s: deps)  # no args -> default mode "managed"
-
-    assert code == 0
-    out = json.loads(capsys.readouterr().out)
-    assert out["mode"] == "managed"
-    assert out["status"] == "done"
-    assert (out["assigned"], out["published"], out["failed"]) == (1, 1, 0)
-
-    # The run really happened: one article on the platform (published via the default
-    # atomic batch), the run row closed, and a coverage row so the next run will not
-    # republish the story.
-    assert len(fake.state.batch_requests) == 1 and len(fake.state.batch_requests[0]["items"]) == 1
-    run = deps.store.get_run(out["run_id"])
-    assert run.status == "done" and run.finished_at
-    coverage = deps.coverage_store.recent(limit=5)
-    assert len(coverage) == 1 and coverage[0].headline == "Chips Ship Early"
-
-
-def test_cli_publish_failure_exits_2_and_keeps_the_article(fake, tmp_path, capsys):
-    # A finalized article whose publish 403s makes the run done_with_errors; the command
-    # exits 2 (not 0) so an operator's alerting fires, and the body is kept.
-    settings = _settings(fake, tmp_path, operator_token="noscope-token")  # fake 403s this key
-    deps = _deps_with(fake, settings, [_ada()])
-    fake.state.script_chat(_assign("ada"))
-    for body in ("outline", "draft", "enriched", "respin 1", "respin 2"):
-        fake.state.script_chat(body)
-    fake.state.script_chat(_finalize_ok())
-
-    code = main(["--mode", "managed"], build_deps=lambda _s: deps)
-
-    assert code == 2
-    out = json.loads(capsys.readouterr().out)
-    assert out["status"] == "done_with_errors"
-    assert (out["assigned"], out["published"], out["failed"]) == (1, 0, 1)
-    row = deps.store.list_assignments(run_id=out["run_id"])[0]
-    assert row.status == "publish_failed" and row.final_body  # kept, re-publishable
-
-
-def test_cli_failed_run_exits_1_and_reports_the_error(fake, tmp_path, capsys):
-    # If the run itself raises, the command exits 1 and prints a failed summary with the
-    # error; the run record is marked failed (a dead run is re-run, never lost).
-    class _BoomCoverage:
-        def recent(self, *, limit):
-            raise RuntimeError("coverage store is down")
-
-    settings = _settings(fake, tmp_path)
-    deps = _deps_with(fake, settings, [_ada()])
-    deps.coverage_store = _BoomCoverage()
-
-    code = main(["--mode", "managed"], build_deps=lambda _s: deps)
-
-    assert code == 1
-    out = json.loads(capsys.readouterr().out)
-    assert out["status"] == "failed"
-    assert "coverage store is down" in out["error"]
-    assert deps.store.get_run(out["run_id"]).status == "failed"
-
-
-def test_cli_n_zero_is_a_clean_noop(fake, tmp_path, capsys):
-    # --n 0 is a no-op trigger: it short-circuits before the manager, spends zero
-    # inference, and still exits 0 with an empty summary.
-    settings = _settings(fake, tmp_path)
-    deps = _deps_with(fake, settings, [_ada()])
-
-    code = main(["--mode", "managed", "--n", "0"], build_deps=lambda _s: deps)
-
-    assert code == 0
-    out = json.loads(capsys.readouterr().out)
-    assert (out["assigned"], out["published"], out["failed"]) == (0, 0, 0)
-    assert fake.state.chat_requests == []  # n=0 spent zero inference
-
-
-def test_cli_dropped_article_is_surfaced_in_the_summary(fake, tmp_path, capsys):
-    # An article the pipeline drops (invalid finalize on both the attempt and its retry)
-    # makes a "done" run that published nothing. It is NOT a publish failure, so it would
-    # be invisible if the summary only counted publishes; the `dropped` count surfaces it
-    # and keeps assigned == published + failed + dropped consistent.
-    settings = _settings(fake, tmp_path)
-    deps = _deps_with(fake, settings, [_ada()])
-    fake.state.script_chat(_assign("ada"))
-    for body in ("outline", "draft", "enriched", "respin 1", "respin 2"):
-        fake.state.script_chat(body)
-    fake.state.script_chat(json.dumps({"title": ""}))  # invalid finalize
-    fake.state.script_chat(json.dumps({"title": ""}))  # invalid retry
-
-    code = main(["--mode", "managed"], build_deps=lambda _s: deps)
-
-    assert code == 0  # the run itself is fine; one article dropped
-    out = json.loads(capsys.readouterr().out)
-    assert out["status"] == "done"
-    assert (out["assigned"], out["published"], out["failed"], out["dropped"]) == (1, 0, 0, 1)
-    assert fake.state.publish_requests == []  # a dropped body is never published
-
-
-def test_cli_run_creation_failure_exits_1_with_a_null_run_id(fake, tmp_path, capsys):
-    # If even creating the run record fails (a store/disk error before the run exists),
-    # the command still prints a parseable failed summary with a null run id and exits 1,
-    # rather than crashing with only a traceback.
-    settings = _settings(fake, tmp_path)
-    deps = _deps_with(fake, settings, [_ada()])
-
-    class _BoomStore:
-        def create_run(self, **_kw):
-            raise RuntimeError("cannot create run")
-
-    deps.store = _BoomStore()
-
-    code = main(["--mode", "managed"], build_deps=lambda _s: deps)
-
-    assert code == 1
-    out = json.loads(capsys.readouterr().out)
-    assert out["run_id"] is None and out["status"] == "failed"
-    assert "cannot create run" in out["error"]
-    assert fake.state.chat_requests == []  # failed before any inference
-
-
-def test_cli_persona_ids_scope_the_run(fake, tmp_path, capsys):
-    # --persona-ids parses to a subset that scopes the run: the manager tries to assign
-    # both personas, but only the in-scope one (ada) is assignable; an unknown id is
-    # silently skipped, not an error.
-    settings = _settings(fake, tmp_path)
-    deps = _deps_with(fake, settings, [_ada(), _bea()])
-    fake.state.script_chat(_assign_many([("ada", "A tech story"), ("bea", "A world story")]))
-    for body in ("outline", "draft", "enriched", "respin 1", "respin 2"):
-        fake.state.script_chat(body)
-    fake.state.script_chat(_finalize_ok())
-
-    code = main(["--mode", "manual", "--persona-ids", "ada, ghost"], build_deps=lambda _s: deps)
-
-    assert code == 0
-    out = json.loads(capsys.readouterr().out)
-    assert out["mode"] == "manual"
-    assert (out["assigned"], out["published"]) == (1, 1)  # bea out of scope, ghost skipped
-    assert deps.store.list_assignments(run_id=out["run_id"])[0].persona_id == "ada"
-
-
-def test_cli_runs_list_and_get(tmp_path, capsys):
-    # The `runs` verb group inspects the run records from the command line, mirroring the
-    # HTTP run surface. One injected store backs every call, so list/get see the same rows.
-    store = RunStore(open_db(tmp_path / "brain.db", check_same_thread=False))
-    r_done = store.create_run(mode="managed", n_requested=2)
-    store.finish_run(r_done.id, status="done")
-    r_running = store.create_run(mode="manual", n_requested=1)
-
-    # list: every run, newest first, with its status.
-    assert main(["runs", "list"], run_store=store) == 0
-    listing = json.loads(capsys.readouterr().out)
-    assert listing["total"] == 2
-    assert {r["run_id"] for r in listing["runs"]} == {r_done.id, r_running.id}
-    by_id = {r["run_id"]: r["status"] for r in listing["runs"]}
-    assert by_id[r_done.id] == "done" and by_id[r_running.id] == "running"
-
-    # list --status filters.
-    assert main(["runs", "list", "--status", "done"], run_store=store) == 0
-    only_done = json.loads(capsys.readouterr().out)
-    assert [r["run_id"] for r in only_done["runs"]] == [r_done.id]
-
-    # get: one run with its (empty here) assignments list.
-    assert main(["runs", "get", r_done.id], run_store=store) == 0
-    detail = json.loads(capsys.readouterr().out)
-    assert detail["run_id"] == r_done.id and detail["status"] == "done"
-    assert detail["assignments"] == []
-
-    # get on an unknown id is a clean 1 with a JSON error.
-    assert main(["runs", "get", "nope"], run_store=store) == 1
-    assert "nope" in json.loads(capsys.readouterr().out)["error"]
-
-
-def test_cli_runs_unknown_subverb_exits_1_with_usage(tmp_path, capsys):
-    store = RunStore(open_db(tmp_path / "brain.db", check_same_thread=False))
-    assert main(["runs", "teleport"], run_store=store) == 1
-    assert "teleport" in json.loads(capsys.readouterr().out)["error"]
 
 
 def test_cli_sources_add_list_update_disable_remove(tmp_path, capsys):
@@ -620,108 +347,6 @@ def test_cli_authors_sources_unknown_subverb_exits_1(tmp_path, capsys):
     assert "teleport" in json.loads(capsys.readouterr().out)["error"]
 
 
-# ----- authors synthesize (the model path, CLI parity of POST /personas synthesis) -----
-
-# A complete synthesized persona as the model is scripted to return it (the same shape the
-# HTTP synthesis test uses), for the end-to-end CLI synthesize test against the fake.
-_PERSONA_JSON = {
-    "who_i_am": "I am Ada Rez. I cover machine learning the way a mechanic covers engines.",
-    "about": "Ada Rez is a technology reporter focused on applied machine learning.",
-    "style": "Short declaratives. Name the system, the claim, and the evidence. No hype.",
-    "few_shots_pos": [],
-    "few_shots_neg": [{"prompt": "a launch", "bad": "This GAME-CHANGING AI will BLOW YOUR MIND!"}],
-    "sources": ["arxiv-org"],
-}
-
-
-def test_cli_authors_synthesize_creates_a_persona_via_injected_synth(tmp_path, capsys):
-    # `authors synthesize` is the CLI parity of the async POST /personas synthesis: it grows
-    # a persona from a free-text seed via one (here injected) model call, run synchronously,
-    # and prints the resulting PersonaOut. The injected synth persists from the seed it is
-    # handed, proving the verb wires the seed through and prints the stored row.
-    store = PersonaStore(open_db(tmp_path / "brain.db", check_same_thread=False))
-
-    def fake_synth(seed, *, store, settings):
-        created = store.create(
-            Persona(
-                display_name=seed.display_name,
-                beat=seed.beat,
-                who_i_am=f"I am {seed.display_name}. {seed.seed}",
-                style="dry",
-                sources=list(seed.sources or []),
-            )
-        )
-        return created.id
-
-    code = main(
-        ["authors", "synthesize", "--display-name", "Ada Rez", "--beat", "tech",
-         "--seed", "wire-style ML reporter", "--sources", "arxiv-org"],
-        persona_store=store, synthesize=fake_synth,
-    )
-    assert code == 0
-    out = json.loads(capsys.readouterr().out)
-    assert out["id"] == "ada-rez" and out["beat"] == "tech"
-    assert out["who_i_am"].startswith("I am Ada Rez")
-    assert out["sources"] == ["arxiv-org"]  # the seed's sources rode through
-
-
-def test_cli_authors_synthesize_invalid_beat_is_rejected_before_the_model(tmp_path, capsys):
-    # A bad beat is rejected UP FRONT (the same code path POST /personas takes), so no model
-    # call is made: the injected synth is never reached.
-    store = PersonaStore(open_db(tmp_path / "brain.db", check_same_thread=False))
-    called: list[int] = []
-
-    def fake_synth(seed, *, store, settings):
-        called.append(1)
-        return "x"
-
-    code = main(
-        ["authors", "synthesize", "--display-name", "Ada", "--beat", "gossip", "--seed", "x"],
-        persona_store=store, synthesize=fake_synth,
-    )
-    assert code == 1
-    assert "invalid beat" in json.loads(capsys.readouterr().out)["error"]
-    assert called == []  # no model call
-
-
-def test_cli_authors_synthesize_failure_is_a_clean_exit_1(tmp_path, capsys):
-    # A synthesis failure (bad model output, a store conflict) is surfaced as a JSON error
-    # and a non-zero exit, never a traceback.
-    from newsroom.brain.synthesis import SynthesisError
-
-    store = PersonaStore(open_db(tmp_path / "brain.db", check_same_thread=False))
-
-    def fake_synth(seed, *, store, settings):
-        raise SynthesisError("model did not return valid JSON")
-
-    code = main(
-        ["authors", "synthesize", "--display-name", "Ada", "--beat", "tech", "--seed", "x"],
-        persona_store=store, synthesize=fake_synth,
-    )
-    assert code == 1
-    assert "JSON" in json.loads(capsys.readouterr().out)["error"]
-
-
-def test_cli_authors_synthesize_end_to_end_against_the_fake(fake, tmp_path, monkeypatch, capsys):
-    # The REAL synthesis capability over the CLI: no injected synth, the production
-    # _default_synthesize calls the model (the fake, scripted) and persists the persona.
-    # Proves the synthesis CAPABILITY is genuinely CLI-reachable, not just the wiring.
-    monkeypatch.setenv("NEWSROOM_PERSONA_DB_PATH", str(tmp_path / "brain.db"))
-    monkeypatch.setenv("NEWSROOM_INFERENCE_BASE_URL", f"{fake.base_url}/v1")
-    fake.state.script_chat(json.dumps(_PERSONA_JSON))
-
-    code = main(
-        ["authors", "synthesize", "--display-name", "Ada Rez", "--beat", "tech",
-         "--seed", "a wire-style ML reporter who hates hype"],
-    )
-    assert code == 0
-    out = json.loads(capsys.readouterr().out)
-    assert out["id"] == "ada-rez"
-    assert out["who_i_am"].startswith("I am Ada Rez")
-    # The accepted chat carried no length cap (the fake's teardown guard also checks this).
-    assert "max_tokens" not in fake.state.chat_requests[-1]["body"]
-
-
 # ----- editorial config (house style + location) -----
 
 
@@ -877,11 +502,75 @@ def test_cli_editorial_unknown_group_and_subverb_exit_1(tmp_path, capsys):
     assert "teleport" in json.loads(capsys.readouterr().out)["error"]
 
 
-def test_cli_rejects_an_unknown_mode(fake, tmp_path):
-    # argparse's choices= guard rejects a mode outside the trigger surface before any
-    # run is built: a SystemExit (the standard argparse usage-error exit).
-    settings = _settings(fake, tmp_path)
-    deps = _deps_with(fake, settings, [_ada()])
-    with pytest.raises(SystemExit):
-        main(["--mode", "turbo"], build_deps=lambda _s: deps)
-    assert fake.state.chat_requests == []  # rejected before any inference
+# ----- topics cleanse (the agent-supplied map-file lane, no inference) -----
+
+
+def test_cli_topics_cleanse_map_file_dry_run_plans_the_remap(tmp_path, capsys):
+    # `topics cleanse --map-file` is the non-LLM lane: a CLI agent supplies the canonical
+    # {tag: canonical} map, and the verb fetches the corpus and PLANS the remap (dry-run by
+    # default, writing nothing). The fetch + apply seams are injected so no network is hit.
+    articles = [
+        ArticleTopics(slug="a", topics=["ia", "inteligencia-artificial"]),
+        ArticleTopics(slug="b", topics=["gpu"]),
+    ]
+    mapping = {"ia": "inteligencia artificial", "inteligencia-artificial": "inteligencia artificial"}
+    map_file = tmp_path / "map.json"
+    map_file.write_text(json.dumps(mapping), encoding="utf-8")
+    applied: list = []
+
+    code = _topics_main(
+        ["cleanse", "--map-file", str(map_file)],
+        fetch=lambda: articles,
+        apply=lambda plan: (applied.extend(plan), (len(plan), []))[1],
+    )
+
+    assert code == 0
+    out = json.loads(capsys.readouterr().out)
+    assert out["dry_run"] is True
+    assert out["mapping"]["ia"] == "inteligencia artificial"
+    # Article a's two synonymous tags collapse to one canonical (it changes); b is untouched.
+    changed = {p["slug"] for p in out["plan"]}
+    assert changed == {"a"}
+    assert out["plan"][0]["after"] == ["inteligencia artificial"]
+    assert applied == []  # dry-run wrote nothing
+
+
+def test_cli_topics_cleanse_map_file_apply_calls_the_apply_seam(tmp_path, capsys):
+    # With --apply the verb runs the apply seam on the planned remap and reports the count.
+    articles = [ArticleTopics(slug="a", topics=["ia"])]
+    map_file = tmp_path / "m.json"
+    map_file.write_text(json.dumps({"ia": "inteligencia artificial"}), encoding="utf-8")
+    seen: dict = {}
+
+    def fake_apply(plan):
+        seen["n"] = len(plan)
+        return len(plan), []
+
+    code = _topics_main(
+        ["cleanse", "--map-file", str(map_file), "--apply"],
+        fetch=lambda: articles,
+        apply=fake_apply,
+    )
+
+    assert code == 0
+    out = json.loads(capsys.readouterr().out)
+    assert out["dry_run"] is False and out["applied"] == 1 and out["failed"] == []
+    assert seen["n"] == 1
+
+
+def test_cli_topics_cleanse_without_a_map_is_an_identity_noop(tmp_path, capsys):
+    # No --map-file means every tag maps to itself: the plan is empty (a no-op), so the
+    # apply seam is never even reached.
+    articles = [ArticleTopics(slug="a", topics=["ia", "gpu"])]
+    called: list = []
+
+    code = _topics_main(
+        ["cleanse"],
+        fetch=lambda: articles,
+        apply=lambda plan: (called.append(1), (0, []))[1],
+    )
+
+    assert code == 0
+    out = json.loads(capsys.readouterr().out)
+    assert out["plan"] == [] and out["articles_changed"] == 0
+    assert called == []  # dry-run, nothing applied

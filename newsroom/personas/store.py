@@ -184,14 +184,14 @@ class PersonaStore:
 
     def delete(self, persona_id: str) -> bool:
         """Delete a persona. Returns True if a row was removed, False if it was
-        already absent. Raises ``ValueError`` if an assignment still references the
-        persona (the foreign key forbids the delete), keeping the module's error
-        contract consistent rather than leaking a raw ``sqlite3.IntegrityError``."""
+        already absent. Raises ``ValueError`` rather than leaking a raw
+        ``sqlite3.IntegrityError`` if a foreign key ever forbids the delete, keeping the
+        module's error contract consistent."""
         try:
             cur = self._conn.execute("DELETE FROM personas WHERE id = ?", (persona_id,))
         except sqlite3.IntegrityError as exc:
             raise ValueError(
-                f"cannot delete persona {persona_id!r}: it is referenced by assignments"
+                f"cannot delete persona {persona_id!r}: it is still referenced"
             ) from exc
         self._conn.commit()
         return cur.rowcount > 0

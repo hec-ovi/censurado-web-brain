@@ -248,23 +248,6 @@ def test_delete_missing_reports_false(store: PersonaStore):
     assert store.delete("never-existed") is False
 
 
-def test_delete_referenced_persona_raises_value_error():
-    # Share one connection between the store and raw SQL so the assignment's
-    # foreign key points at the persona the store just created.
-    conn = open_db(":memory:")
-    store = PersonaStore(conn, clock=_Clock())
-    store.create(_full_persona(id="p"))
-    conn.execute("INSERT INTO runs (id, mode, status, created_at) VALUES ('r','managed','running','t')")
-    conn.execute(
-        "INSERT INTO assignments (id, run_id, persona_id, section, status, created_at) "
-        "VALUES ('a','r','p','politics','assigned','t')"
-    )
-    conn.commit()
-    with pytest.raises(ValueError, match="referenced by assignments"):
-        store.delete("p")
-    assert store.get("p") is not None  # the rejected delete left the row intact
-
-
 # ----- language -----
 
 
@@ -312,16 +295,18 @@ def test_persona_persists_across_connections(tmp_path):
     assert got.few_shots_neg[0]["bad"].startswith("In a stunning blow")
 
 
-# ----- raw schema guarantees (runs/assignments shipped now, CRUD lands later) -----
+# ----- raw schema guarantees -----
 
 
-def test_all_three_tables_exist():
+def test_core_tables_exist_and_run_tables_are_gone():
     conn = open_db(":memory:")
     names = {
         r["name"]
         for r in conn.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchall()
     }
-    assert {"personas", "runs", "assignments"} <= names
+    assert {"personas", "coverage", "portals", "location", "style_guide", "prompt_template"} <= names
+    # The LLM-newsroom run records are gone with the inference lane.
+    assert "runs" not in names and "assignments" not in names
 
 
 def test_beat_check_constraint_enforced_at_sql_level():
@@ -331,78 +316,3 @@ def test_beat_check_constraint_enforced_at_sql_level():
             "INSERT INTO personas (id, display_name, beat, who_i_am, style, created_at, updated_at) "
             "VALUES ('x','X','sports','w','s','t','t')"
         )
-
-
-def test_run_mode_validated_in_code_not_by_a_sql_check():
-    # runs.mode carries NO SQL CHECK, so adding a mode (e.g. the direct-from-link
-    # 'direct') is a free, non-breaking change, like assignments.status. Validation
-    # moved to RunStore.create_run instead.
-    from newsroom.runs import RunStore
-
-    conn = open_db(":memory:")
-    # The SQL level accepts any mode string (the CHECK is gone) ...
-    conn.execute(
-        "INSERT INTO runs (id, mode, status, created_at) VALUES ('rraw','whatever','queued','t')"
-    )
-    # ... but the store validates: a bad mode raises, and 'direct' (run mode 3) is valid.
-    store = RunStore(conn)
-    with pytest.raises(ValueError, match="invalid run mode"):
-        store.create_run(mode="cron")
-    assert store.create_run(mode="direct").mode == "direct"
-
-
-def test_open_db_migrates_a_legacy_runs_mode_check(tmp_path):
-    # A DB created before the direct-from-link mode constrained runs.mode to a 3-mode
-    # CHECK that rejects 'direct'. open_db must recreate the table WITHOUT the CHECK,
-    # preserving existing rows, so mode 3 is accepted on an upgraded DB.
-    db = tmp_path / "legacy.db"
-    raw = sqlite3.connect(db)
-    raw.executescript(
-        "CREATE TABLE runs (id TEXT PRIMARY KEY,"
-        " mode TEXT NOT NULL CHECK (mode IN ('manual','express','managed')),"
-        " status TEXT NOT NULL, n_requested INTEGER, created_at TEXT NOT NULL, finished_at TEXT);"
-        "INSERT INTO runs (id, mode, status, created_at) VALUES ('old','managed','done','t');"
-    )
-    raw.commit()
-    raw.close()
-
-    conn = open_db(db, check_same_thread=False)
-    # The legacy row survived the recreation ...
-    assert conn.execute("SELECT mode FROM runs WHERE id='old'").fetchone()[0] == "managed"
-    # ... and 'direct' now inserts (the CHECK is gone, validation lives in code).
-    conn.execute("INSERT INTO runs (id, mode, status, created_at) VALUES ('d','direct','running','t')")
-    assert conn.execute("SELECT mode FROM runs WHERE id='d'").fetchone()[0] == "direct"
-
-
-def test_assignment_foreign_keys_enforced():
-    conn = open_db(":memory:")
-    # run_id / persona_id reference rows that do not exist -> FK violation.
-    with pytest.raises(sqlite3.IntegrityError):
-        conn.execute(
-            "INSERT INTO assignments (id, run_id, persona_id, section, status, created_at) "
-            "VALUES ('a1','missing-run','missing-persona','tech','assigned','t')"
-        )
-
-
-def test_idempotency_key_unique_but_many_nulls_allowed():
-    conn = open_db(":memory:")
-    conn.execute("INSERT INTO runs (id, mode, status, created_at) VALUES ('r','managed','running','t')")
-    conn.execute(
-        "INSERT INTO personas (id, display_name, beat, who_i_am, style, created_at, updated_at) "
-        "VALUES ('p','P','tech','w','s','t','t')"
-    )
-
-    def _assignment(aid: str, key) -> None:
-        conn.execute(
-            "INSERT INTO assignments (id, run_id, persona_id, section, status, idempotency_key, created_at) "
-            "VALUES (?, 'r', 'p', 'tech', 'assigned', ?, 't')",
-            (aid, key),
-        )
-
-    # Two un-finalized assignments both carry NULL keys: allowed.
-    _assignment("a1", None)
-    _assignment("a2", None)
-    # First finalized key is fine; a second assignment with the SAME key collides.
-    _assignment("a3", "idem-123")
-    with pytest.raises(sqlite3.IntegrityError):
-        _assignment("a4", "idem-123")

@@ -1,13 +1,11 @@
-"""Rendering the house style into prompt text, the banned-lexicon check, and the
-recent-coverage digest. Pure functions; no model, no DB connection beyond building a
-StyleGuide / CoverageItem value.
+"""Rendering the house style into prompt text and the banned-lexicon check. Pure
+functions; no model, no DB connection beyond building a StyleGuide value.
 """
 
 from __future__ import annotations
 
 from newsroom.editorial import banned_terms_found, style_for_draft, style_for_eval
 from newsroom.editorial.seeds import DEFAULT_STYLE
-from newsroom.manager.coverage import CoverageItem, recent_coverage_text
 
 
 # ----- style_for_draft -----
@@ -72,31 +70,3 @@ def test_banned_terms_found_is_word_bounded_and_case_insensitive():
 def test_banned_terms_found_empty_without_lexicon():
     assert banned_terms_found("anything", None) == []
     assert banned_terms_found("anything", {}) == []
-
-
-# ----- recent coverage digest -----
-
-
-def _cov(section, headline, topics=None):
-    return CoverageItem(section=section, headline=headline, topics=topics or [])
-
-
-def test_recent_coverage_text_empty_when_nothing_published():
-    assert recent_coverage_text([]) == ""
-
-
-def test_recent_coverage_text_lists_section_headline_topics():
-    out = recent_coverage_text([
-        _cov("politics", "Reforma aprobada", ["congreso", "reforma"]),
-        _cov("economics", "Sube la tasa"),
-    ])
-    assert "Do NOT repeat" in out
-    assert "- politics: Reforma aprobada [topics: congreso, reforma]" in out
-    assert "- economics: Sube la tasa" in out
-
-
-def test_recent_coverage_text_honors_limit():
-    items = [_cov("tech", f"Story {i}") for i in range(5)]
-    out = recent_coverage_text(items, limit=2)
-    assert "Story 0" in out and "Story 1" in out
-    assert "Story 2" not in out

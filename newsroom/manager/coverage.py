@@ -37,7 +37,6 @@ __all__ = [
     "fingerprint",
     "similarity",
     "classify",
-    "recent_coverage_text",
 ]
 
 # Short, high-frequency words that carry no story identity. Kept deliberately small:
@@ -190,24 +189,6 @@ class CoverageStore:
             "SELECT * FROM coverage ORDER BY published_at DESC, id DESC LIMIT ?", (limit,)
         ).fetchall()
         return [_row_to_item(r) for r in rows]
-
-
-def recent_coverage_text(coverage: list[CoverageItem], *, limit: int | None = None) -> str:
-    """A digest of recent coverage for the drafter (section, headline, topics), so the
-    writer reads what was already published and does not repeat it. Returns "" when
-    nothing has been published, so the draft prompt's token simply disappears."""
-    items = list(coverage)[:limit] if limit else list(coverage)
-    if not items:
-        return ""
-    lines = [
-        "Recently published by this newsroom. Do NOT repeat any of these stories: if "
-        "yours extends one, add only what is new and reference it; otherwise take a "
-        "distinct angle.",
-    ]
-    for c in items:
-        topics = f" [topics: {', '.join(c.topics)}]" if c.topics else ""
-        lines.append(f"- {c.section}: {c.headline}{topics}")
-    return "\n".join(lines)
 
 
 def _row_to_item(row: sqlite3.Row) -> CoverageItem:

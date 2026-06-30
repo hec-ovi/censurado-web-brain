@@ -1,23 +1,16 @@
 """The brain-owned SQLite database: connection + schema, in-process only.
 
-Nothing outside the harness reads this file. It holds the tables from the
-architecture doc (B.5): ``personas`` (author identities), ``runs`` (one row per
-harness invocation), ``assignments`` (one row per article a run attempts, the
-idempotency anchor), and ``coverage`` (one row per published article, the manager's
-"coverage memory" for freshness and non-repetition). Step 2 ships the full schema
-and the typed persona CRUD on top of it (``newsroom.personas.store``); the ``runs``
-/ ``assignments`` CRUD lands with the steps that own those rows (the manager at
-Step 6, finalize/publish at Steps 5/7), and ``coverage`` is written by publish
-(Step 7) and read by the manager's triage (Step 6). Defining the whole schema now
-keeps it in one place and avoids a later migration.
+Nothing outside the harness reads this file. It holds ``personas`` (author
+identities), ``coverage`` (one row per published article, the "coverage memory" for
+freshness and non-repetition), and the operator-editable editorial config tables
+(``location``, ``portals``, and the versioned ``style_guide`` / ``prompt_template``
+with their active pointers). Step 2 ships the persona CRUD on top
+(``newsroom.personas.store``); ``coverage`` is recorded when an article publishes and
+read by the dedup triage.
 
-``beat`` on a persona and ``section`` on an assignment share the harness section
-vocabulary (``contracts.sections``); the CHECK on ``beat`` mirrors that enum so the
-constraint and the Python validation cannot drift apart.
-
-``idempotency_key`` is NULL until an assignment is finalized, then it is the
-content-derived key (B.5). The unique index allows many NULLs (SQLite treats NULLs
-as distinct) but rejects two assignments that finalize to the same key.
+``beat`` on a persona shares the harness section vocabulary (``contracts.sections``);
+the CHECK on ``beat`` mirrors that enum so the constraint and the Python validation
+cannot drift apart.
 """
 
 from __future__ import annotations
@@ -48,42 +41,9 @@ CREATE TABLE IF NOT EXISTS personas (
   updated_at    TEXT NOT NULL
 );
 
-CREATE TABLE IF NOT EXISTS runs (
-  id          TEXT PRIMARY KEY,
-  mode        TEXT NOT NULL,                -- validated in code (RunStore._RUN_MODES); no CHECK,
-                                            -- so a new mode (e.g. 'direct') is a free addition,
-                                            -- like assignments.status
-  status      TEXT NOT NULL,
-  n_requested INTEGER,
-  created_at  TEXT NOT NULL,
-  finished_at TEXT
-);
-
-CREATE TABLE IF NOT EXISTS assignments (
-  id              TEXT PRIMARY KEY,
-  run_id          TEXT NOT NULL REFERENCES runs(id),
-  persona_id      TEXT NOT NULL REFERENCES personas(id),
-  section         TEXT NOT NULL,
-  angle           TEXT,
-  entities        TEXT,                         -- JSON array of story entities (de-dup signature)
-  status          TEXT NOT NULL,
-  drop_reason     TEXT,
-  final_body      TEXT,
-  content_hash    TEXT,
-  idempotency_key TEXT,
-  ledger_digest   TEXT,
-  published_id    TEXT,
-  image_url       TEXT,
-  image_prompt    TEXT,
-  created_at      TEXT NOT NULL
-);
-
-CREATE UNIQUE INDEX IF NOT EXISTS idx_assignment_idem
-  ON assignments(idempotency_key);
-
 CREATE TABLE IF NOT EXISTS coverage (
   id            INTEGER PRIMARY KEY AUTOINCREMENT,
-  assignment_id TEXT REFERENCES assignments(id),
+  assignment_id TEXT,
   published_id  TEXT,
   slug          TEXT,
   section       TEXT NOT NULL,
@@ -188,13 +148,12 @@ def open_db(path: str | Path = ":memory:", *, check_same_thread: bool = True) ->
 
     ``path`` defaults to an in-memory database (tests). A file path's parent
     directory is created if missing. Foreign keys are enforced (off by default in
-    SQLite) so the ``assignments`` references are real; rows come back as
+    SQLite) so the active-pointer references are real; rows come back as
     ``sqlite3.Row`` for name-based access.
 
     ``check_same_thread`` defaults to True (sqlite's own guard). The brain's HTTP
     layer opens with it False and serializes access under a lock, so one shared
-    connection (one in-memory DB) can be reached from a request handler and a
-    background synthesis thread.
+    connection (one in-memory DB) can be reached from concurrent request handlers.
 
     A FILE database also gets WAL journaling and a busy timeout. The automation
     entry point (``newsroom.cli``) runs as a SEPARATE process from a live brain, so
@@ -224,13 +183,6 @@ def open_db(path: str | Path = ":memory:", *, check_same_thread: bool = True) ->
 # added explicitly. Each is idempotent (skipped when already present); a fresh DB
 # already has them from SCHEMA, so this is a no-op there.
 _ADDED_COLUMNS = {
-    "assignments": (
-        ("image_url", "TEXT"),
-        ("image_prompt", "TEXT"),
-        # The entity de-dup channel shipped after the initial assignments table; a live
-        # brain DB predates it, so it is added explicitly (NULL on old rows -> []).
-        ("entities", "TEXT"),
-    ),
     # The persona writer language shipped after the initial personas table. A live
     # personas.db predates it, so the column is added explicitly with the Spanish
     # default; existing rows inherit it. A fresh DB already has it from SCHEMA.
@@ -255,43 +207,3 @@ def _migrate(conn: sqlite3.Connection) -> None:
         for name, decl in columns:
             if name not in existing:
                 conn.execute(f"ALTER TABLE {table} ADD COLUMN {name} {decl}")
-    _migrate_runs_mode_check(conn)
-
-
-def _migrate_runs_mode_check(conn: sqlite3.Connection) -> None:
-    """Drop the legacy 3-mode CHECK on ``runs.mode`` so the direct-from-link run
-    record (``mode='direct'``) is accepted.
-
-    A DB created before that change constrained ``mode`` to ('manual','express',
-    'managed'); ``CREATE TABLE IF NOT EXISTS`` never recreates an existing table, so the
-    old CHECK lingers and rejects a new mode. Recreate the table WITHOUT the CHECK
-    (mode is validated in code, exactly like ``assignments.status`` carries no CHECK).
-    A fresh DB already has the no-CHECK schema, so this is a no-op there. Best-effort
-    and guarded: it copies before dropping inside one transaction and rolls back on any
-    error, so a failure leaves the existing table intact."""
-    row = conn.execute(
-        "SELECT sql FROM sqlite_master WHERE type='table' AND name='runs'"
-    ).fetchone()
-    if row is None or "CHECK" not in (row[0] or "").upper():
-        return  # fresh schema (no CHECK) or no runs table yet
-    if conn.in_transaction:
-        conn.commit()
-    conn.execute("PRAGMA foreign_keys = OFF")
-    try:
-        conn.execute("BEGIN")
-        conn.execute(
-            "CREATE TABLE _runs_migrated ("
-            " id TEXT PRIMARY KEY, mode TEXT NOT NULL, status TEXT NOT NULL,"
-            " n_requested INTEGER, created_at TEXT NOT NULL, finished_at TEXT)"
-        )
-        conn.execute(
-            "INSERT INTO _runs_migrated (id, mode, status, n_requested, created_at, finished_at)"
-            " SELECT id, mode, status, n_requested, created_at, finished_at FROM runs"
-        )
-        conn.execute("DROP TABLE runs")
-        conn.execute("ALTER TABLE _runs_migrated RENAME TO runs")
-        conn.execute("COMMIT")
-    except Exception:
-        conn.execute("ROLLBACK")
-    finally:
-        conn.execute("PRAGMA foreign_keys = ON")

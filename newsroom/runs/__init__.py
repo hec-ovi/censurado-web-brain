@@ -1,16 +1,13 @@
-"""Runs and assignments: the harness's record of what each invocation attempted.
+"""Assignment: the in-memory carrier for one article at the publish seam.
 
-A ``run`` is one harness invocation; an ``assignment`` is one article a run tries
-to produce, and it is the idempotency anchor at the publish seam. This package
-ships the typed CRUD over those two tables (the schema itself lives in
-``newsroom.db``). The per-article pipeline (Step 5) drives an assignment through
-``assigned -> drafting -> ready`` (finalized, body persisted, awaiting publish) or
-``-> dropped`` (e.g. budget exhausted, never published). The manager (Step 6)
-creates runs and assignments; the publish client (Step 7) sets ``published``.
+An ``assignment`` is one article to publish; it is the idempotency anchor at the
+publish boundary (its ``content_hash`` / ``idempotency_key`` dedup a replay). The
+publish client reads these fields. Callers construct an ``Assignment`` in memory;
+there is no run-records database.
 """
 
 from __future__ import annotations
 
-from newsroom.runs.store import Assignment, Run, RunStore, open_runs_store
+from newsroom.runs.store import Assignment
 
-__all__ = ["Assignment", "Run", "RunStore", "open_runs_store"]
+__all__ = ["Assignment"]

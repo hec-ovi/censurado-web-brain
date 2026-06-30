@@ -7,12 +7,11 @@ headless caller could not drive them over the API like the rest of the infra:
     avatar) to the platform author registry, the brain->backend backfill. Exposed here as
     ``POST /mirror/authors`` (``?dry_run=true`` previews the handles without contacting
     the platform), mirroring the CLI's report shape.
-  * ``bootstrap`` -- idempotently SEED a fresh box (default personas/portals/style/
-    location), mirror the platform authors, and OPTIONALLY run one batch. Exposed here as
-    ``POST /bootstrap`` (``run`` defaults False: seed-only, since the run half is already
-    ``POST /runs``), so a headless caller can provision a fresh box over the API.
+  * ``bootstrap`` -- idempotently SEED a fresh box (editorial config + any default
+    portals/personas) and mirror the platform authors. Exposed here as ``POST /bootstrap``
+    so a headless caller can provision a fresh box over the API.
 
-Both actions touch the network / the full run path, so they execute OFF the event loop
+Both actions touch the network, so they execute OFF the event loop
 (``anyio.to_thread``) exactly like the status probe, and ``bootstrap`` opens its own
 connection from ``settings.persona_db_path`` (the same as the CLI subcommand), so it is
 self-contained rather than reusing the request's connection.
@@ -31,7 +30,6 @@ from newsroom.bootstrap import bootstrap
 from newsroom.brain.problems import _problem
 from newsroom.mirror import PushResult, backfill_web_authors, push_web_author
 from newsroom.personas import Persona
-from newsroom.runner import RUN_MODES
 
 __all__ = ["router"]
 
@@ -57,25 +55,16 @@ class MirrorAuthorsOut(BaseModel):
 
 
 class BootstrapIn(BaseModel):
-    """The ``POST /bootstrap`` body. ``run`` (default False) seeds only; set it True to
-    also run one batch through the same path ``POST /runs`` uses. ``mode`` / ``n`` shape
-    that optional run, mirroring the CLI ``bootstrap`` subcommand."""
-
-    run: bool = False
-    mode: str = "managed"
-    n: int | None = None
+    """The ``POST /bootstrap`` body (no parameters; seeding is find-or-create)."""
 
 
 class BootstrapOut(BaseModel):
     """The ``POST /bootstrap`` result (the CLI ``bootstrap`` shape): the per-category seed
-    result, the platform-author reconcile result, whether a batch ran, and (when it did)
-    the run summary. ``seeded`` / ``reconciled`` / ``run`` keep the stores' own report
-    dicts rather than re-modeling every nested field."""
+    result and the platform-author reconcile result. ``seeded`` / ``reconciled`` keep the
+    stores' own report dicts rather than re-modeling every nested field."""
 
     seeded: dict
     reconciled: dict
-    ran: bool
-    run: dict | None = None
 
 
 def _build_push(settings):
@@ -130,16 +119,10 @@ async def mirror_authors(request: Request, dry_run: bool = False):
 
 @router.post("/bootstrap", status_code=200, response_model=BootstrapOut)
 async def run_bootstrap(body: BootstrapIn, request: Request):
-    """Idempotently seed the newsroom (default personas/portals/style/location), mirror
-    the platform authors, and OPTIONALLY run one batch (``run``, default False). Safe to
-    re-run: seeding is find-or-create. 422 ``invalid_mode`` if ``run`` is set with an
-    unknown ``mode``. Seeding + the optional run go OFF the event loop (the run can be
-    long), over a connection bootstrap opens from ``settings.persona_db_path``. Returns
-    the seed + reconcile + (optional) run summary."""
-    if body.run and body.mode not in RUN_MODES:
-        return _problem(422, "invalid_mode", detail=f"mode must be one of {RUN_MODES}")
+    """Idempotently seed the newsroom (editorial config + any default portals/personas)
+    and mirror the platform authors. Safe to re-run: seeding is find-or-create. Seeding
+    goes OFF the event loop, over a connection bootstrap opens from
+    ``settings.persona_db_path``. Returns the seed + reconcile summary."""
     settings = request.app.state.settings
-    result = await anyio.to_thread.run_sync(
-        lambda: bootstrap(settings, run=body.run, mode=body.mode, n=body.n)
-    )
+    result = await anyio.to_thread.run_sync(lambda: bootstrap(settings))
     return BootstrapOut(**result)

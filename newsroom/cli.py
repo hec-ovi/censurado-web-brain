@@ -1,30 +1,22 @@
-"""The automation entry point: one command that runs the brain once and exits.
+"""The brain's management CLI: curate the newsroom config from the command line.
 
-This is the command an external periodic trigger (the automation layer) invokes to
-produce a batch of articles. The brain stays TRIGGER-BLIND: this command does
-nothing but pick a ``mode`` (the entire trigger surface) and funnel it through the
-SAME run-execution path every other trigger uses (``newsroom.runner``). The brain
-has no knowledge of what drives it on a schedule; swapping the automation layer
-never touches the brain (architecture doc B.7).
+``censurado-brain <subcommand>`` is the command-line parity of the brain's HTTP
+management API. It does NOT write articles (the CLI authoring agent does that and
+publishes to the backend directly); it manages the newsroom's CONFIGURATION:
 
-Run it directly (``python -m newsroom --mode managed``) or via the installed console
-script (``censurado-brain --mode managed``). It prints a one-line JSON summary of the
-run to stdout and sets an exit status the trigger can branch on:
+  * ``bootstrap``       seed a fresh box (idempotent) and mirror the platform authors
+  * ``mirror-authors``  push local personas' public fields to the platform registry
+  * ``status``          probe the brain<->backend connection
+  * ``sources``         curate the source (portal) registry
+  * ``authors``         curate the author (persona) registry + per-author source links
+  * ``editorial``       read/edit the house style + publication location
+  * ``topics``          remap topic tags onto an agent-supplied canonical map
+  * ``embeds``          re-check stored tweet/youtube snapshots
 
-  * 0  the run finished and every finalized article published (``done``)
-  * 2  the run finished but at least one finalized article failed to publish
-       (``done_with_errors``); those articles are kept and stay re-publishable
-  * 1  the run itself failed with an unexpected error (recorded ``failed``)
-
-A non-zero status is deliberate so the trigger's own failure mail/alerting fires. A
-``done`` run (exit 0) can still include articles the pipeline DROPPED (budget
-exhausted, finalize failed); the summary's ``dropped`` count surfaces them, since a
-dropped article published nothing but is not a publish failure either.
-
-Dependencies are assembled from the environment by default (the same production
-assembly the HTTP surface uses, in ``newsroom.runner.deps``); a test injects a
-``build_deps`` that points the two network seams (web search + research) at an
-in-process fake, so the real entry point is exercised without leaving the box.
+Run it directly (``python -m newsroom <subcommand>``) or via the installed console
+script (``censurado-brain <subcommand>``). Each subcommand prints a one-line JSON
+result to stdout and sets an exit status a caller can branch on (0 ok, non-zero on a
+failure or a partial apply).
 """
 
 from __future__ import annotations
@@ -32,13 +24,12 @@ from __future__ import annotations
 import argparse
 import json
 import sys
-import threading
 from collections.abc import Callable
 from dataclasses import asdict, replace
 
 from newsroom.bootstrap import bootstrap
 from newsroom.config import Settings, load_settings
-from newsroom.contracts.sections import SECTION_ENUM, is_valid_section
+from newsroom.contracts.sections import SECTION_ENUM
 from newsroom.db import open_db
 from newsroom.editorial import (
     Location,
@@ -57,91 +48,12 @@ from newsroom.mirror import (
     push_web_author,
 )
 from newsroom.personas import Persona, PersonaStore
-from newsroom.runner import (
-    RUN_MODES,
-    RunDeps,
-    RunReport,
-    build_run_deps,
-    execute_run,
-    run_batch,
-    run_direct,
-    start_run,
-)
-from newsroom.runs import RunStore
 
-__all__ = ["main", "build_deps_from_env"]
+__all__ = ["main"]
 
-# Exit codes the trigger can branch on. A run that did not fully publish is non-zero
-# so an operator's failure alerting fires on a partial run, not only on a crash.
+# Exit codes a caller can branch on. A subcommand that did not fully succeed is non-zero
+# so an operator's failure alerting fires on a partial apply, not only on a crash.
 _EXIT = {"done": 0, "done_with_errors": 2, "failed": 1}
-
-DepsBuilder = Callable[[Settings], RunDeps]
-
-
-def build_deps_from_env(settings: Settings) -> RunDeps:
-    """Assemble run dependencies from settings + the environment over a fresh
-    file-backed connection. This one-shot command is its own process: it opens its
-    own connection (shared between the run path and the publish tail under one lock)
-    and the production research/search seams the HTTP surface also uses."""
-    conn = open_db(settings.persona_db_path, check_same_thread=False)
-    persona_store = PersonaStore(conn)
-    return build_run_deps(settings, conn=conn, lock=threading.Lock(), persona_store=persona_store)
-
-
-def _parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(
-        prog="censurado-brain",
-        description="Run the newsroom once and exit (the automation entry point).",
-    )
-    parser.add_argument(
-        "--mode",
-        choices=RUN_MODES,
-        default="managed",
-        help="the trigger surface (default: managed, the full automated run)",
-    )
-    parser.add_argument(
-        "--n",
-        type=int,
-        default=None,
-        help="override the article ceiling for this run (clamped to N_MAX)",
-    )
-    parser.add_argument(
-        "--persona-ids",
-        default=None,
-        help="comma-separated persona ids to draw from (default: all personas)",
-    )
-    parser.add_argument(
-        "--images",
-        action=argparse.BooleanOptionalAction,
-        default=None,
-        help="generate hero images for this run (--no-images to skip); "
-        "default: the server setting NEWSROOM_AUTO_GENERATE_IMAGE",
-    )
-    return parser
-
-
-def _parse_persona_ids(raw: str | None) -> list[str] | None:
-    if not raw:
-        return None
-    ids = [piece.strip() for piece in raw.split(",")]
-    return [pid for pid in ids if pid] or None
-
-
-def _summary(report: RunReport) -> dict:
-    """The machine-readable run summary written to stdout: enough for the trigger to
-    log/alert on without parsing the full report. ``dropped`` is derived from the
-    pipeline outcomes (not the publish outcomes) so the count stays self-consistent:
-    ``assigned == published + failed + dropped`` over the finalize-or-drop set, and a
-    run that drafted articles but dropped them all is not a silent zero-output green."""
-    return {
-        "run_id": report.run_id,
-        "mode": report.mode,
-        "status": report.status,
-        "assigned": len(report.manifest.assignments),
-        "published": sum(1 for outcome in report.published if outcome.ok),
-        "failed": sum(1 for outcome in report.published if not outcome.ok),
-        "dropped": sum(1 for outcome in report.outcomes if outcome.status == "dropped"),
-    }
 
 
 def _emit(summary: dict) -> None:
@@ -150,144 +62,19 @@ def _emit(summary: dict) -> None:
 
 
 def _bootstrap_main(argv: list[str]) -> int:
-    """``censurado-brain bootstrap``: idempotently seed the newsroom and (by default)
-    run one batch. Safe to re-run; ``--no-run`` seeds only. Prints a JSON summary and
-    returns the run's exit code (0 when seed-only)."""
+    """``censurado-brain bootstrap``: idempotently seed the newsroom (editorial config +
+    any default portals/personas) and mirror the platform authors. Safe to re-run. Prints
+    a JSON summary and returns 0."""
     parser = argparse.ArgumentParser(
         prog="censurado-brain bootstrap",
-        description="Seed the newsroom (idempotent) and run one batch. Safe to re-run.",
+        description="Seed the newsroom (idempotent) and mirror the platform authors.",
     )
-    parser.add_argument("--no-run", action="store_true", help="seed only; do not run a batch")
-    parser.add_argument(
-        "--mode", choices=RUN_MODES, default="managed", help="run mode (default: managed)"
-    )
-    parser.add_argument(
-        "--n", type=int, default=None, help="article ceiling for the run (clamped to N_MAX)"
-    )
-    args = parser.parse_args(argv)
+    parser.parse_args(argv)  # no flags; surfaces -h and rejects stray args
 
     settings = load_settings()
-    result = bootstrap(settings, run=not args.no_run, mode=args.mode, n=args.n)
+    result = bootstrap(settings)
     _emit(result)
-    run_summary = result.get("run")
-    if result.get("ran") and isinstance(run_summary, dict):
-        return _EXIT.get(run_summary.get("status"), _EXIT["failed"])
     return 0
-
-
-def _direct_main(argv: list[str], *, build_deps: DepsBuilder | None = None) -> int:
-    """``censurado-brain direct --persona ID [--brief TEXT] [--link URL ...] [--focus TEXT]``:
-    run mode 3, one persona writes one article from a BRIEF, BYPASSING the manager. The
-    brief is a free-text instruction; ``--link`` may be repeated for 0..N sources the
-    operator vouched for; ``--focus`` narrows the angle. The agent reads the links and
-    researches OUTWARD from the brief, and the corroboration gate is OFF for this path.
-    At least one of ``--brief`` / ``--link`` is required (there has to be something to
-    write about). Prints a JSON summary and returns the run's exit code (the same code map
-    as a batch run)."""
-    parser = argparse.ArgumentParser(
-        prog="censurado-brain direct",
-        description="Write one article from a brief with one persona (bypasses the manager).",
-    )
-    parser.add_argument("--persona", required=True, help="the persona id that writes it")
-    parser.add_argument(
-        "--brief", default="", help="the free-text instruction for the article"
-    )
-    parser.add_argument(
-        "--link", action="append", default=None, metavar="URL",
-        help="a source URL to read (repeatable for 0..N links)",
-    )
-    parser.add_argument(
-        "--focus", default=None, help="an optional focus that narrows the angle"
-    )
-    parser.add_argument(
-        "--images", action=argparse.BooleanOptionalAction, default=None,
-        help="generate a hero image for this article (default: the server setting)",
-    )
-    args = parser.parse_args(argv)
-
-    links: list[str] = []
-    for raw in args.link or []:
-        cleaned = (raw or "").strip()
-        if cleaned and cleaned not in links:
-            links.append(cleaned)
-    brief = (args.brief or "").strip()
-    if not brief and not links:
-        _emit({"run_id": None, "mode": "direct", "status": "failed",
-               "error": "provide a --brief and/or at least one --link"})
-        return _EXIT["failed"]
-
-    settings = load_settings()
-    deps = (build_deps or build_deps_from_env)(settings)
-    try:
-        if deps.persona_store.get(args.persona) is None:
-            _emit({"run_id": None, "mode": "direct", "status": "failed",
-                   "error": f"unknown persona {args.persona!r}"})
-            return _EXIT["failed"]
-        report = run_direct(
-            deps=deps, links=links, persona_id=args.persona, brief=brief, focus=args.focus,
-            images=args.images,
-        )
-    except Exception as exc:
-        _emit({"run_id": None, "mode": "direct", "status": "failed", "error": str(exc)})
-        return _EXIT["failed"]
-
-    _emit(_summary(report))
-    return _EXIT.get(report.status, _EXIT["failed"])
-
-
-def _batch_main(argv: list[str], *, build_deps: DepsBuilder | None = None) -> int:
-    """``censurado-brain batch [--persona ID ...] [--timeframe day] [--max N] [--images]``:
-    run mode 4, a BATCH sweep. The manager runs ONCE PER AUTHOR over that author's OWN
-    source-scoped, time-filtered discovery search, so each desk lists topics from only the
-    outlets it reads; the per-author manifests are merged and published through the same
-    per-article pipeline as every other run.
-
-    ``--persona`` is repeatable to narrow the desks (default: every active author);
-    ``--timeframe`` is the discovery freshness window (``any|day|week|month|year``, default
-    the server's ``batch_timeframe``); ``--max`` caps the whole batch (default: the natural
-    ``batch_per_author x desks`` bound). Prints a JSON summary and returns the run's exit
-    code (the same map as every other run verb)."""
-    parser = argparse.ArgumentParser(
-        prog="censurado-brain batch",
-        description="Run a batch sweep: the manager fanned once per author over per-author sources.",
-    )
-    parser.add_argument(
-        "--persona", action="append", default=None, metavar="ID",
-        help="restrict the sweep to this author id (repeatable; default: all active authors)",
-    )
-    parser.add_argument(
-        "--timeframe", default=None, choices=("any", "day", "week", "month", "year"),
-        help="the discovery freshness window (default: the server's batch_timeframe)",
-    )
-    parser.add_argument(
-        "--max", type=int, default=None, metavar="N",
-        help="cap the total articles across all desks (default: batch_per_author x desks)",
-    )
-    parser.add_argument(
-        "--images", action=argparse.BooleanOptionalAction, default=None,
-        help="generate hero images for the batch (default: the server setting)",
-    )
-    args = parser.parse_args(argv)
-
-    persona_ids: list[str] = []
-    for raw in args.persona or []:
-        cleaned = (raw or "").strip()
-        if cleaned and cleaned not in persona_ids:
-            persona_ids.append(cleaned)
-
-    settings = load_settings()
-    deps = (build_deps or build_deps_from_env)(settings)
-    try:
-        report = run_batch(
-            deps=deps, persona_ids=persona_ids or None, timeframe=args.timeframe,
-            max_total=args.max, images=args.images,
-        )
-    except Exception as exc:
-        _emit({"run_id": None, "mode": "batch", "status": "failed", "error": str(exc)})
-        return _EXIT["failed"]
-
-    _emit(_summary(report))
-    return _EXIT.get(report.status, _EXIT["failed"])
 
 
 def _mirror_authors_main(argv: list[str], *, push: AuthorPush | None = None) -> int:
@@ -531,100 +318,10 @@ def _sources_main(argv: list[str], *, store: PortalStore | None = None) -> int:
     return 0 if removed else _EXIT["failed"]
 
 
-def _open_runs_store() -> RunStore:
-    """Open the brain DB the API uses and wrap it in a ``RunStore``. The CLI run verbs are
-    their own process (a separate connection from a live brain); WAL + the busy timeout
-    (see ``open_db``) let that connection share the file safely."""
-    settings = load_settings()
-    conn = open_db(settings.persona_db_path, check_same_thread=False)
-    return RunStore(conn)
-
-
-def _run_detail_payload(store: RunStore, run) -> dict:
-    """One run plus its assignments, mirroring the HTTP ``GET /runs/{id}`` body: the
-    run-level record and the per-assignment statuses (so a dropped/published article is
-    visible from the CLI exactly as over HTTP)."""
-    assignments = store.list_assignments(run_id=run.id)
-    return {
-        "run_id": run.id,
-        "mode": run.mode,
-        "status": run.status,
-        "n_requested": run.n_requested,
-        "created_at": run.created_at,
-        "finished_at": run.finished_at,
-        "assignments": [
-            {
-                "id": a.id,
-                "persona_id": a.persona_id,
-                "section": a.section,
-                "status": a.status,
-                "published_id": a.published_id,
-                "drop_reason": a.drop_reason,
-                "image_url": a.image_url,
-            }
-            for a in assignments
-        ],
-    }
-
-
-def _runs_main(argv: list[str], *, store: RunStore | None = None) -> int:
-    """``censurado-brain runs list|get``: read-only inspection of the run records,
-    mirroring the HTTP run surface. ``list`` prints every run newest-first (optionally
-    filtered to a ``--status``), ``get <run_id>`` prints one run with its assignments.
-    Operates on a local ``RunStore`` over the brain DB. Prints a JSON result via ``_emit``
-    and returns 0 on success, 1 on an unknown run/sub-verb. ``store`` is injectable for
-    tests."""
-    if not argv:
-        _emit({"error": "usage: runs list|get"})
-        return _EXIT["failed"]
-    verb, rest = argv[0], argv[1:]
-    if verb not in ("list", "get"):
-        _emit({"error": f"unknown runs verb {verb!r}"})
-        return _EXIT["failed"]
-
-    store = store or _open_runs_store()
-
-    if verb == "list":
-        parser = argparse.ArgumentParser(prog="censurado-brain runs list")
-        parser.add_argument(
-            "--status", default=None,
-            help="filter to one status (running|done|done_with_errors|failed)",
-        )
-        args = parser.parse_args(rest)
-        runs = store.list_runs(status=args.status)
-        _emit({
-            "runs": [
-                {
-                    "run_id": r.id,
-                    "mode": r.mode,
-                    "status": r.status,
-                    "n_requested": r.n_requested,
-                    "created_at": r.created_at,
-                    "finished_at": r.finished_at,
-                }
-                for r in runs
-            ],
-            "total": len(runs),
-        })
-        return 0
-
-    # verb == "get"
-    parser = argparse.ArgumentParser(prog="censurado-brain runs get")
-    parser.add_argument("run_id", help="the run id to inspect")
-    args = parser.parse_args(rest)
-    run = store.get_run(args.run_id)
-    if run is None:
-        _emit({"error": f"unknown run {args.run_id!r}"})
-        return _EXIT["failed"]
-    _emit(_run_detail_payload(store, run))
-    return 0
-
-
 # A topics-cleanse seam bundle, injected by tests so the verb is driven end to end
-# without a network or a model call (fetch the corpus, cluster the tags, apply the
-# remap). In production each defaults to the real implementation over the live APIs.
+# without a network (fetch the corpus, apply the remap). In production each defaults to
+# the real implementation over the live APIs.
 TopicsFetch = Callable[[], list]
-TopicsCluster = Callable[[list], dict]
 TopicsApply = Callable[[list], tuple]
 
 
@@ -632,19 +329,19 @@ def _topics_main(
     argv: list[str],
     *,
     fetch: TopicsFetch | None = None,
-    cluster: TopicsCluster | None = None,
     apply: TopicsApply | None = None,
 ) -> int:
-    """``censurado-brain topics cleanse [--apply]``: the agentic topic cleanse. Reads the
-    corpus tag set over the read API, asks the model to cluster synonymous/overlapping
-    tags into a small canonical set, and (with ``--apply``) remaps each changed article in
-    place over the operator edit lane (``PUT /articles``, admin:write). Default is a
-    DRY-RUN that prints the canonical map + the per-article plan and writes nothing. Prints
-    a JSON summary via ``_emit``; returns 0 on success, 2 if some applies failed, 1 on a
-    read/usage error. The three seams are injectable so a test drives the verb without a
-    network or a model."""
+    """``censurado-brain topics cleanse --map-file PATH [--apply]``: remap topic tags onto
+    a canonical set. Reads the corpus tag set over the read API, applies the canonical
+    ``{tag: canonical}`` map an agent supplies via ``--map-file`` (a file path, or ``-`` for
+    stdin), and (with ``--apply``) remaps each changed article in place over the operator
+    edit lane (``PUT /articles``, admin:write). Without ``--map-file`` every tag maps to
+    itself (a no-op). Default is a DRY-RUN that prints the canonical map + the per-article
+    plan and writes nothing. Prints a JSON summary via ``_emit``; returns 0 on success, 2 if
+    some applies failed, 1 on a read/usage error. The fetch + apply seams are injectable so
+    a test drives the verb without a network."""
     if not argv or argv[0] != "cleanse":
-        _emit({"error": "usage: topics cleanse [--apply]"})
+        _emit({"error": "usage: topics cleanse --map-file PATH [--apply]"})
         return _EXIT["failed"]
     parser = argparse.ArgumentParser(prog="censurado-brain topics cleanse")
     parser.add_argument(
@@ -653,19 +350,13 @@ def _topics_main(
     )
     parser.add_argument(
         "--map-file", default=None, metavar="PATH",
-        help="apply a pre-computed canonical map (JSON {tag: canonical}) from PATH (or '-' "
-        "for stdin) INSTEAD of asking the model. This is how a CLI agent (e.g. Claude) "
-        "supplies the clustering itself, with no inference backend in the loop.",
+        help="the canonical map (JSON {tag: canonical}) from PATH (or '-' for stdin). This "
+        "is how a CLI agent supplies the clustering itself, with no inference backend in "
+        "the loop. Omit to map every tag to itself (a no-op).",
     )
     args = parser.parse_args(argv[1:])
 
-    from newsroom.cleanse import (
-        apply_remap,
-        cluster_topics,
-        collect_topics,
-        fetch_articles,
-        remap_plan,
-    )
+    from newsroom.cleanse import apply_remap, collect_topics, fetch_articles, remap_plan
 
     settings = load_settings()
     base = str(settings.publish_base_url).rstrip("/")
@@ -673,7 +364,6 @@ def _topics_main(
     edit_token = settings.admin_token or settings.operator_token
 
     fetch = fetch or (lambda: fetch_articles(base, read_token))
-    cluster = cluster or (lambda tags: cluster_topics(tags))
     apply = apply or (lambda plan: apply_remap(plan, base_url=base, read_token=read_token, edit_token=edit_token))
 
     try:
@@ -683,10 +373,12 @@ def _topics_main(
         return _EXIT["failed"]
 
     tags = collect_topics(articles)
+    # The agent-supplied path: read a {tag: canonical} map (file or '-' stdin) and use it
+    # directly, so the clustering comes from a CLI agent rather than a backend model. Every
+    # corpus tag maps to itself unless the map overrides it; with no map, the whole pass is
+    # a no-op (identity).
+    raw: dict = {}
     if args.map_file:
-        # The agent-supplied path: read a {tag: canonical} map (file or '-' stdin) and use
-        # it directly, so the clustering can come from a CLI agent rather than a backend
-        # model. Every corpus tag maps to itself unless the map overrides it.
         try:
             src = sys.stdin.read() if args.map_file == "-" else open(args.map_file, encoding="utf-8").read()
             raw = json.loads(src)
@@ -695,13 +387,7 @@ def _topics_main(
         except (OSError, ValueError, json.JSONDecodeError) as exc:
             _emit({"error": f"failed to read --map-file: {exc}"})
             return _EXIT["failed"]
-        canon = {t: (str(raw.get(t, t)).strip() or t) for t in tags}
-    else:
-        try:
-            canon = cluster(tags)
-        except Exception as exc:  # an inference failure (e.g. 429) exits cleanly, not a traceback
-            _emit({"error": f"clustering failed (inference): {exc}"})
-            return _EXIT["failed"]
+    canon = {t: (str(raw.get(t, t)).strip() or t) for t in tags}
     plan = remap_plan(articles, canon)
     summary = {
         "tags_before": len(tags),
@@ -901,104 +587,25 @@ def _authors_sources_main(
     return 0
 
 
-# A synth takes a seed plus the persona store and the loaded settings and returns the new
-# persona id (running the model call synchronously). Injected so the `authors synthesize`
-# verb tests without a real model call, exactly like the run/probe seams.
-SynthesizeFn = Callable[..., str]
-
-
-def _default_synthesize(seed, *, store: PersonaStore, settings: Settings) -> str:
-    """The production synth: build the persona-synth provider config from settings (the
-    same ``ProviderConfig`` the HTTP synthesis route assembles) and run one synthesis
-    SYNCHRONOUSLY, returning the new persona id. A CLI process has no request to return to,
-    so unlike the 202-then-poll HTTP route this blocks on the model and writes the persona
-    before returning."""
-    from newsroom.brain.synthesis import synthesize_persona
-    from newsroom.inference.provider import (
-        DEFAULT_MODEL,
-        DEFAULT_PROVIDER,
-        DIALECTS,
-        ProviderConfig,
-    )
-
-    cfg = ProviderConfig(
-        role="persona_synth",
-        provider=DEFAULT_PROVIDER,
-        base_url=str(settings.inference_base_url).rstrip("/"),
-        model=DEFAULT_MODEL,
-        **DIALECTS[DEFAULT_PROVIDER],
-    )
-    return synthesize_persona(seed, cfg=cfg, store=store, prompts_dir=settings.prompts_dir)
-
-
-def _authors_synthesize_main(
-    argv: list[str], *, store: PersonaStore, synthesize: SynthesizeFn | None = None
-) -> int:
-    """``censurado-brain authors synthesize --display-name --beat --seed [--sources]``: grow
-    a persona from a free-text SEED brief via one model call, the CLI parity of the async
-    ``POST /personas`` synthesis. The beat is validated UP FRONT against the section enum
-    (rejected before any model call, like the HTTP route), then the model drafts the voice
-    and the persona is persisted. Runs synchronously (no job to poll). Prints the resulting
-    ``PersonaOut`` (the stored persona) via ``_emit`` and returns 0; on a synthesis failure
-    (bad model output, duplicate id) prints a JSON error and returns 1. ``synthesize`` is
-    injectable for tests."""
-    from newsroom.brain.synthesis import PersonaSeed, SynthesisError
-
-    parser = argparse.ArgumentParser(prog="censurado-brain authors synthesize")
-    parser.add_argument("--display-name", required=True, help="the author's display name")
-    parser.add_argument("--beat", required=True, help=f"one of {', '.join(SECTION_ENUM)}")
-    parser.add_argument(
-        "--seed", required=True, help="the free-text brief the model grows into a voice"
-    )
-    parser.add_argument(
-        "--sources", default=None, help="comma-separated source ids/urls the persona seeds with"
-    )
-    args = parser.parse_args(argv)
-
-    if not is_valid_section(args.beat):  # reject before any model call, like POST /personas
-        _emit({"error": f"invalid beat {args.beat!r}; must be one of {', '.join(SECTION_ENUM)}"})
-        return _EXIT["failed"]
-
-    seed = PersonaSeed(
-        display_name=args.display_name,
-        beat=args.beat,
-        seed=args.seed,
-        sources=_split_csv(args.sources),
-    )
-    settings = load_settings()
-    synth = synthesize or _default_synthesize
-    try:
-        persona_id = synth(seed, store=store, settings=settings)
-    except SynthesisError as exc:  # bad model output or a store conflict: a clean exit 1
-        _emit({"error": str(exc)})
-        return _EXIT["failed"]
-    persona = store.get(persona_id)
-    _emit(asdict(persona))
-    return 0
-
-
 def _authors_main(
     argv: list[str],
     *,
     store: PersonaStore | None = None,
     portal_store: PortalStore | None = None,
-    synthesize: SynthesizeFn | None = None,
 ) -> int:
-    """``censurado-brain authors list|get|add|synthesize|update|remove|sources``: curate the
-    author (persona) registry from the command line, mirroring the HTTP management API.
-    ``add`` builds a persona from EXPLICIT fields with no model call (POST /personas/direct);
-    ``synthesize`` drafts a voice from a free-text seed brief via ONE model call (the CLI
-    parity of the async POST /personas synthesis, run synchronously so it needs no job
-    poll). Operates on a local ``PersonaStore`` over the brain DB. Prints a JSON result via
+    """``censurado-brain authors list|get|add|update|remove|sources``: curate the author
+    (persona) registry from the command line, mirroring the HTTP management API. ``add``
+    builds a persona from EXPLICIT fields with no model call (POST /personas/direct).
+    Operates on a local ``PersonaStore`` over the brain DB. Prints a JSON result via
     ``_emit`` and returns 0 on success, 1 on a store rejection (duplicate id, invalid beat,
-    unknown id, an in-use delete), a synthesis failure, or a missing/unknown sub-verb. The
-    ``sources`` sub-verb curates an author's source links and also needs the ``PortalStore``
-    to validate ids. The stores and the ``synthesize`` callable are injectable for tests."""
+    unknown id, an in-use delete), or a missing/unknown sub-verb. The ``sources`` sub-verb
+    curates an author's source links and also needs the ``PortalStore`` to validate ids. The
+    stores are injectable for tests."""
     if not argv:
-        _emit({"error": "usage: authors list|get|add|synthesize|update|remove|sources"})
+        _emit({"error": "usage: authors list|get|add|update|remove|sources"})
         return _EXIT["failed"]
     verb, rest = argv[0], argv[1:]
-    if verb not in ("list", "get", "add", "synthesize", "update", "remove", "sources"):
+    if verb not in ("list", "get", "add", "update", "remove", "sources"):
         _emit({"error": f"unknown authors verb {verb!r}"})
         return _EXIT["failed"]
 
@@ -1006,9 +613,6 @@ def _authors_main(
 
     if verb == "sources":
         return _authors_sources_main(rest, persona_store=store, portal_store=portal_store)
-
-    if verb == "synthesize":
-        return _authors_synthesize_main(rest, store=store, synthesize=synthesize)
 
     if verb == "list":
         parser = argparse.ArgumentParser(prog="censurado-brain authors list")
@@ -1440,99 +1044,46 @@ def _editorial_main(
 def main(
     argv: list[str] | None = None,
     *,
-    build_deps: DepsBuilder | None = None,
     portal_store: PortalStore | None = None,
     persona_store: PersonaStore | None = None,
-    run_store: RunStore | None = None,
     style_store: StyleStore | None = None,
     location_store: LocationStore | None = None,
     backend_probe: BackendProbeFn | None = None,
-    synthesize: SynthesizeFn | None = None,
 ) -> int:
-    """Parse args, run once, print a JSON summary, return an exit code.
+    """Dispatch a management subcommand, print a JSON result, return an exit code.
 
-    ``build_deps`` defaults to the production assembly; a test overrides it to inject
-    in-process doubles for the network seams while still driving this real path."""
+    The stores and the backend probe default to production; a test injects doubles to
+    drive a subcommand without touching the brain DB or the platform."""
     argv = list(sys.argv[1:] if argv is None else argv)
     if argv and argv[0] == "bootstrap":
-        # The one-command setup path: seed the newsroom, then run. Kept as a subcommand
-        # so the bare invocation (a plain --mode run) is unchanged for the trigger.
+        # Seed the newsroom (idempotent) and mirror the platform authors.
         return _bootstrap_main(argv[1:])
-    if argv and argv[0] == "direct":
-        # Run mode 3: write one article from a link, bypassing the manager. A subcommand
-        # so the bare --mode invocation (the periodic trigger) is unchanged.
-        return _direct_main(argv[1:], build_deps=build_deps)
-    if argv and argv[0] == "batch":
-        # Run mode 4: a batch sweep, the manager fanned once per author over per-author
-        # sources. A subcommand so the bare --mode run path (the periodic trigger) is
-        # unchanged.
-        return _batch_main(argv[1:], build_deps=build_deps)
     if argv and argv[0] == "mirror-authors":
         # The one-time author backfill: push local personas to the platform registry.
-        # A subcommand so the bare --mode run path stays untouched.
         return _mirror_authors_main(argv[1:])
     if argv and argv[0] == "status":
         # Report the brain<->backend connection (live probe), the CLI parity of
-        # GET /status/backend. A subcommand so the bare --mode run path is unchanged.
+        # GET /status/backend.
         return _status_main(argv[1:], probe=backend_probe)
     if argv and argv[0] == "sources":
-        # Curate the source (portal) registry, mirroring the HTTP management API. A
-        # subcommand so the bare --mode run path (the periodic trigger) is unchanged.
+        # Curate the source (portal) registry, mirroring the HTTP management API.
         return _sources_main(argv[1:], store=portal_store)
     if argv and argv[0] == "authors":
-        # Curate the author (persona) registry, mirroring the HTTP management API (direct
-        # CRUD AND the `synthesize` model path). A subcommand so the bare --mode run path is
-        # unchanged. The portal store rides along so `authors sources` can validate source
-        # ids; `synthesize` is injectable so a test drives it without a real model call.
-        return _authors_main(
-            argv[1:], store=persona_store, portal_store=portal_store, synthesize=synthesize
-        )
-    if argv and argv[0] == "runs":
-        # Inspect the run records (list / get), mirroring the HTTP run surface. A
-        # subcommand so the bare --mode run path (the periodic trigger) is unchanged.
-        return _runs_main(argv[1:], store=run_store)
+        # Curate the author (persona) registry, mirroring the HTTP management API. The
+        # portal store rides along so `authors sources` can validate source ids.
+        return _authors_main(argv[1:], store=persona_store, portal_store=portal_store)
     if argv and argv[0] == "editorial":
         # Read and edit the operator-owned editorial config (house style + location),
-        # mirroring the HTTP editorial API. A subcommand so the bare --mode run path is
-        # unchanged. The style/location stores ride along so a test can inject them.
+        # mirroring the HTTP editorial API.
         return _editorial_main(
             argv[1:], style_store=style_store, location_store=location_store
         )
     if argv and argv[0] == "topics":
-        # Agentic topic cleanse: cluster the corpus tag set into a canonical set and
-        # remap changed articles. A subcommand so the bare --mode run path is unchanged.
+        # Remap topic tags onto an agent-supplied canonical map.
         return _topics_main(argv[1:])
     if argv and argv[0] == "embeds":
         # Re-check stored tweet/youtube snapshots and refresh their availability flags
-        # (deleted tweet -> erased, pulled video -> unavailable). A subcommand so the bare
-        # --mode run path is unchanged.
+        # (deleted tweet -> erased, pulled video -> unavailable).
         return _embeds_main(argv[1:])
-    args = _parser().parse_args(argv)
-    settings = load_settings()
-    deps = (build_deps or build_deps_from_env)(settings)
-
-    # Create the run record and execute it on THIS thread. A one-shot command runs
-    # synchronously: there is no request to return to, unlike the HTTP surface's
-    # 202-then-background path. Both the record creation and the run are guarded so
-    # EVERY exit prints a parseable JSON summary: execute_run already records the run
-    # failed, and a failure before the record exists reports a null run id rather than
-    # crashing with only a traceback. (An assembly failure in build_deps above is a
-    # config error that is left to crash loudly, distinct from a run failure.)
-    run = None
-    try:
-        run, scope = start_run(
-            args.mode, deps=deps, n=args.n,
-            persona_ids=_parse_persona_ids(args.persona_ids), images=args.images,
-        )
-        report = execute_run(run=run, scope=scope, deps=deps)
-    except Exception as exc:
-        _emit({
-            "run_id": run.id if run is not None else None,
-            "mode": args.mode,
-            "status": "failed",
-            "error": str(exc),
-        })
-        return _EXIT["failed"]
-
-    _emit(_summary(report))
-    return _EXIT.get(report.status, _EXIT["failed"])
+    _emit({"error": "usage: bootstrap|mirror-authors|status|sources|authors|editorial|topics|embeds"})
+    return _EXIT["failed"]

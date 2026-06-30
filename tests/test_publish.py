@@ -1,9 +1,9 @@
 """The publish client (Step 7), driven against the shared fake's ``/articles``.
 
 The fake mirrors the live platform handler's observable contract (bearer auth, the
-write/publish-any scope split incl. the 403, the required Idempotency-Key header,
-strict decode, author binding, and content-hash idempotency/dedup), so these tests
-exercise the real wire contract end to end. The build-plan contracts for Step 7:
+write/publish-any scope split incl. the 403, the required Idempotency-Key header, strict
+decode, author binding, and content-hash idempotency/dedup), so these tests exercise the
+real wire contract end to end. The build-plan contracts for Step 7:
 
   (a) a key missing ``articles:write`` -> 403 insufficient_scope;
   (b) a finalized body POSTs once -> {id, slug};
@@ -11,9 +11,9 @@ exercise the real wire contract end to end. The build-plan contracts for Step 7:
   (d) a stray section is rejected LOCALLY, before any POST;
   (e) ``metadata.newsroom`` is present in the payload and accepted.
 
-Plus the author-binding 403 (why the operator key needs publish-any), the
-transport-failure degrade, and the side-effecting wrapper (mark published + record
-one coverage row, idempotent across a replay).
+Plus the author-binding 403 (why the operator key needs publish-any) and the
+transport-failure degrade. The ``Assignment`` is the in-memory carrier the caller builds
+(its content_hash + idempotency_key anchor the publish); there is no run-records store.
 """
 
 from __future__ import annotations
@@ -24,30 +24,18 @@ import httpx
 
 from newsroom.contracts.article import PublishArticleInput
 from newsroom.contracts.hashing import content_hash, idempotency_key
-from newsroom.db import open_db
-from newsroom.manager.coverage import CoverageStore
-from newsroom.personas import Persona, PersonaStore
-from newsroom.publish import build_payload, publish_article, publish_assignment
-from newsroom.runs import RunStore
+from newsroom.publish import build_payload, publish_article
+from newsroom.runs import Assignment
 
 
 @dataclass
 class Env:
-    store: RunStore
-    coverage: CoverageStore
     run_id: str
     author: str
 
 
 def _env() -> Env:
-    conn = open_db(":memory:")
-    personas = PersonaStore(conn)
-    store = RunStore(conn)
-    persona = personas.create(Persona(
-        display_name="Ada Reporter", beat="tech", who_i_am="I cover chips.", style="dry",
-    ))
-    run = store.create_run(mode="managed", n_requested=1)
-    return Env(store=store, coverage=CoverageStore(conn), run_id=run.id, author=persona.id)
+    return Env(run_id="run-1", author="ada-reporter")
 
 
 def _article(env: Env, *, title="The Chip Ships", body="A grounded body.", section="tech",
@@ -58,16 +46,17 @@ def _article(env: Env, *, title="The Chip Ships", body="A grounded body.", secti
     )
 
 
-def _ready_assignment(env: Env, article: PublishArticleInput):
-    """Create an assignment and finalize it through the store, so its persisted
-    content_hash + idempotency_key match the article (as the pipeline leaves it)."""
-    a = env.store.create_assignment(run_id=env.run_id, persona_id=env.author, section=article.section)
+def _ready_assignment(env: Env, article: PublishArticleInput) -> Assignment:
+    """Build an in-memory assignment finalized to the article, so its content_hash +
+    idempotency_key match (as the caller leaves it before publishing)."""
+    aid = "asg-1"
     chash = content_hash(article.title, article.body, article.author, article.section)
-    env.store.finalize_assignment(
-        a.id, final_body=article.body, content_hash=chash,
-        idempotency_key=idempotency_key(a.id, chash), ledger_digest="sha256:abc",
+    return Assignment(
+        id=aid, run_id=env.run_id, persona_id=env.author, section=article.section,
+        angle="", status="ready", created_at="2026-01-01T00:00:00+00:00",
+        final_body=article.body, content_hash=chash,
+        idempotency_key=idempotency_key(aid, chash), ledger_digest="sha256:abc",
     )
-    return env.store.get_assignment(a.id)
 
 
 # ----- (a) the scope split -----
@@ -202,142 +191,6 @@ def test_transport_failure_returns_a_typed_result(fake):
     assert result.ok is False
     assert result.code == "transport_error"
     assert result.status == 0
-
-
-# ----- the side-effecting wrapper -----
-
-
-def test_publish_assignment_marks_published_and_records_coverage(fake):
-    env = _env()
-    article = _article(env, topics=["chips", "gpu"])
-    assignment = _ready_assignment(env, article)
-
-    result = publish_assignment(article, assignment=assignment, store=env.store,
-                                base_url=fake.base_url, token="op-token", coverage=env.coverage)
-
-    assert result.ok is True
-    row = env.store.get_assignment(assignment.id)
-    assert row.status == "published"
-    assert row.published_id == result.id
-    recent = env.coverage.recent(limit=10)
-    assert len(recent) == 1
-    assert recent[0].headline == "The Chip Ships"
-    assert recent[0].section == "tech"
-    assert recent[0].topics == ["chips", "gpu"]
-    assert recent[0].published_id == result.id
-
-
-def test_publish_records_entities_so_a_reworded_dup_is_caught(fake):
-    # The publish path is the ONLY place a coverage row is written, so it must carry the
-    # assignment's entities. Without them the stored fingerprint has no entity tokens and
-    # a later, REWORDED headline about the same event scores as NEW and gets republished
-    # (the silent bug the de-dup channel was meant to prevent). This drives the real
-    # publish path and pins the last link (row -> coverage) plus the end-to-end effect.
-    from newsroom.manager.coverage import classify, fingerprint
-    from newsroom.manager.types import Triage
-
-    env = _env()
-    article = _article(env, title="Milei anuncia un fuerte recorte del gasto", topics=["economia"])
-    a = env.store.create_assignment(
-        run_id=env.run_id, persona_id=env.author, section=article.section,
-        entities=["Javier Milei", "Casa Rosada"],
-    )
-    chash = content_hash(article.title, article.body, article.author, article.section)
-    env.store.finalize_assignment(
-        a.id, final_body=article.body, content_hash=chash,
-        idempotency_key=idempotency_key(a.id, chash), ledger_digest="sha256:abc",
-    )
-    assignment = env.store.get_assignment(a.id)
-
-    result = publish_assignment(article, assignment=assignment, store=env.store,
-                                base_url=fake.base_url, token="op-token", coverage=env.coverage)
-    assert result.ok is True
-
-    row = env.coverage.recent(limit=1)[0]
-    assert row.entities == ["Javier Milei", "Casa Rosada"]  # persisted, not silently dropped
-
-    # A later run surfaces a REWORDED headline about the SAME event (same entities). Now
-    # that the entity channel is alive it must NOT come back as NEW.
-    candidate = fingerprint(headline="El Gobierno presenta un ajuste del gasto publico",
-                            entities=["Javier Milei", "Casa Rosada"])
-    verdict = classify(candidate, env.coverage.recent(limit=10),
-                       duplicate_threshold=0.6, followup_threshold=0.3)
-    assert verdict.triage is not Triage.NEW
-    assert verdict.matched is not None
-
-
-def test_publish_assignment_does_not_double_record_coverage_on_replay(fake):
-    env = _env()
-    article = _article(env)
-    assignment = _ready_assignment(env, article)
-
-    publish_assignment(article, assignment=assignment, store=env.store,
-                       base_url=fake.base_url, token="op-token", coverage=env.coverage)
-    # A second publish (e.g. a crash-replay) returns the idempotent 200 and must not
-    # add a second coverage row. Re-fetch the assignment: it is now "published".
-    refreshed = env.store.get_assignment(assignment.id)
-    again = publish_assignment(article, assignment=refreshed, store=env.store,
-                               base_url=fake.base_url, token="op-token", coverage=env.coverage)
-
-    assert again.replayed is True
-    assert len(env.coverage.recent(limit=10)) == 1  # still exactly one
-
-
-def test_publish_assignment_holds_the_lock_around_its_store_block(fake):
-    # When a lock is given (the brain's shared-connection lock), the side-effecting
-    # store block runs under it, so a concurrent request-loop read never races the
-    # publish writes. CRUCIALLY the POST is NOT under the lock: __enter__ asserts the
-    # publish request has ALREADY landed, so a regression wrapping the network call in
-    # the lock (the HARD never-lock-across-network rule) would fail this test.
-    import threading
-
-    class _OrderingLock:
-        def __init__(self, fake):
-            self.enters = 0
-            self.exits = 0
-            self._inner = threading.Lock()
-            self._fake = fake
-
-        def __enter__(self):
-            assert len(self._fake.state.publish_requests) == 1, "POST must precede lock acquisition"
-            self.enters += 1
-            self._inner.acquire()
-            return self
-
-        def __exit__(self, *exc):
-            self._inner.release()
-            self.exits += 1
-            return False
-
-    env = _env()
-    article = _article(env)
-    assignment = _ready_assignment(env, article)
-    lock = _OrderingLock(fake)
-
-    result = publish_assignment(article, assignment=assignment, store=env.store,
-                                base_url=fake.base_url, token="op-token", coverage=env.coverage,
-                                lock=lock)
-
-    assert result.ok is True
-    assert lock.enters == 1 and lock.enters == lock.exits  # store block ran once, under the lock
-    assert env.store.get_assignment(assignment.id).status == "published"
-
-
-def test_publish_assignment_skips_side_effects_on_failure(fake):
-    # On a failed publish the wrapper must leave the assignment "ready" and record no
-    # coverage, so a later run can replay it.
-    env = _env()
-    article = _article(env)
-    assignment = _ready_assignment(env, article)
-
-    result = publish_assignment(article, assignment=assignment, store=env.store,
-                                base_url=fake.base_url, token="noscope-token", coverage=env.coverage)
-
-    assert result.ok is False and result.status == 403
-    row = env.store.get_assignment(assignment.id)
-    assert row.status == "ready"  # not marked published
-    assert row.published_id is None
-    assert env.coverage.recent(limit=10) == []  # no coverage row written
 
 
 # ----- the content-hash <-> key invariant -----

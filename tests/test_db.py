@@ -27,11 +27,13 @@ def test_two_connections_share_one_file(tmp_path):
     other = open_db(path, check_same_thread=False)
     try:
         live.execute(
-            "INSERT INTO runs (id, mode, status, created_at) VALUES (?, ?, ?, ?)",
-            ("r1", "managed", "running", "2026-06-23T00:00:00Z"),
+            "INSERT INTO portals (id, domain, created_at, updated_at) VALUES (?, ?, ?, ?)",
+            ("clarin-com", "clarin.com", "2026-06-23T00:00:00Z", "2026-06-23T00:00:00Z"),
         )
         live.commit()
-        assert other.execute("SELECT status FROM runs WHERE id = 'r1'").fetchone()[0] == "running"
+        assert other.execute(
+            "SELECT domain FROM portals WHERE id = 'clarin-com'"
+        ).fetchone()[0] == "clarin.com"
     finally:
         live.close()
         other.close()
@@ -48,68 +50,27 @@ def test_a_writer_commits_while_a_reader_holds_an_open_transaction(tmp_path):
     writer = open_db(path, check_same_thread=False)
     try:
         writer.execute(
-            "INSERT INTO runs (id, mode, status, created_at) VALUES (?, ?, ?, ?)",
-            ("seed", "managed", "running", "t"),
+            "INSERT INTO portals (id, domain, created_at, updated_at) VALUES (?, ?, ?, ?)",
+            ("seed", "seed.example", "t", "t"),
         )
         writer.commit()
 
         # Open and hold a read transaction on `reader` (the shared lock is taken at the
         # first read and held until the transaction ends).
         reader.execute("BEGIN")
-        assert reader.execute("SELECT count(*) FROM runs").fetchone()[0] == 1
+        assert reader.execute("SELECT count(*) FROM portals").fetchone()[0] == 1
 
         # Commit a new row on `writer` while that read transaction is still open.
         writer.execute(
-            "INSERT INTO runs (id, mode, status, created_at) VALUES (?, ?, ?, ?)",
-            ("r2", "managed", "running", "t"),
+            "INSERT INTO portals (id, domain, created_at, updated_at) VALUES (?, ?, ?, ?)",
+            ("r2", "r2.example", "t", "t"),
         )
         writer.commit()  # returns under WAL; would block-then-error under rollback journal
-        assert writer.execute("SELECT count(*) FROM runs").fetchone()[0] == 2
+        assert writer.execute("SELECT count(*) FROM portals").fetchone()[0] == 2
     finally:
         reader.rollback()
         reader.close()
         writer.close()
-
-
-def test_open_db_migrates_image_columns_onto_an_existing_db(tmp_path):
-    # The upgrade-safety path: a brain DB created before the image columns existed must
-    # gain them. CREATE TABLE IF NOT EXISTS leaves a deployed table untouched, so the
-    # columns only appear via the explicit ALTER in _migrate. Build a pre-image table,
-    # reopen via open_db, and assert the columns were added (and an old row survives).
-    import sqlite3
-
-    path = tmp_path / "old.db"
-    raw = sqlite3.connect(str(path))
-    raw.executescript(
-        """
-        CREATE TABLE assignments (
-          id TEXT PRIMARY KEY, run_id TEXT, persona_id TEXT, section TEXT, angle TEXT,
-          status TEXT, drop_reason TEXT, final_body TEXT, content_hash TEXT,
-          idempotency_key TEXT, ledger_digest TEXT, published_id TEXT, created_at TEXT
-        );
-        """
-    )
-    raw.execute(
-        "INSERT INTO assignments (id, run_id, persona_id, section, status, created_at) "
-        "VALUES ('a1','r','p','tech','ready','t')"
-    )
-    raw.commit()
-    raw.close()
-
-    conn = open_db(path, check_same_thread=False)
-    try:
-        cols = {row["name"] for row in conn.execute("PRAGMA table_info(assignments)")}
-        assert "image_url" in cols and "image_prompt" in cols
-        row = conn.execute(
-            "SELECT image_url, image_prompt FROM assignments WHERE id = 'a1'"
-        ).fetchone()
-        assert row["image_url"] is None and row["image_prompt"] is None  # old row survives, new cols NULL
-    finally:
-        conn.close()
-
-    # Idempotent: a second open does not error (the columns are already present).
-    again = open_db(path, check_same_thread=False)
-    again.close()
 
 
 def test_open_db_migrates_language_column_onto_an_existing_personas_db(tmp_path):

@@ -1,9 +1,8 @@
-"""The one-command bootstrap: seed (idempotent), then run.
+"""The one-command bootstrap: seed the editorial config (idempotent) + mirror authors.
 
-Seeding and the run share one connection, so the run sees the personas the seed just
-wrote. The run step is injected here so the seed wiring is proven without the inference
-pipeline: the headline assertion is that the runner is invoked AFTER seeding (the seeded
-personas are visible to it). A real managed run end to end is covered by ``test_cli``.
+Seeding is find-or-create, so a re-run never clobbers an operator's edits; the platform
+author registry is mirrored into the local personas after the seed (best-effort: a down
+platform is a skipped no-op, never an emptied newsroom).
 """
 
 from __future__ import annotations
@@ -30,9 +29,8 @@ def _settings(tmp_path, **over) -> Settings:
 
 
 def test_bootstrap_seed_only_populates_a_fresh_box(tmp_path):
-    result = bootstrap(_settings(tmp_path), run=False)
+    result = bootstrap(_settings(tmp_path))
 
-    assert result["ran"] is False
     seeded = result["seeded"]
     assert seeded["location_created"] is True and seeded["style_created"] is True
     assert set(seeded["personas_created"]) == _DEFAULT_IDS
@@ -48,8 +46,8 @@ def test_bootstrap_seed_only_populates_a_fresh_box(tmp_path):
 
 def test_bootstrap_is_idempotent(tmp_path):
     settings = _settings(tmp_path)
-    bootstrap(settings, run=False)
-    second = bootstrap(settings, run=False)
+    bootstrap(settings)
+    second = bootstrap(settings)
 
     assert second["seeded"]["personas_created"] == []
     assert set(second["seeded"]["personas_skipped"]) == _DEFAULT_IDS
@@ -60,27 +58,8 @@ def test_bootstrap_is_idempotent(tmp_path):
     assert len({p.id for p in PersonaStore(conn).list()}) == len(PersonaStore(conn).list())
 
 
-def test_bootstrap_runs_after_seeding_with_injected_runner(tmp_path):
-    seen: dict = {}
-
-    def runner(settings, conn, persona_store, *, mode, n):
-        # When the runner fires, the seeded personas must already be visible to it,
-        # so the manager will not hit the empty-persona early-return.
-        seen["personas"] = {p.id for p in persona_store.list()}
-        seen["mode"] = mode
-        return {"run_id": "r1", "mode": mode, "status": "done",
-                "assigned": 0, "published": 0, "failed": 0, "dropped": 0}
-
-    result = bootstrap(_settings(tmp_path), run=True, mode="managed", runner=runner)
-
-    assert result["ran"] is True
-    assert seen["personas"] >= _DEFAULT_IDS  # seeded BEFORE the run
-    assert seen["mode"] == "managed"
-    assert result["run"]["status"] == "done"
-
-
 def test_bootstrap_forwards_seed_overrides(tmp_path):
-    result = bootstrap(_settings(tmp_path), run=False, personas=(), portals=())
+    result = bootstrap(_settings(tmp_path), personas=(), portals=())
 
     assert result["seeded"]["personas_created"] == []
     assert result["seeded"]["portals_created"] == []
@@ -105,7 +84,7 @@ def test_bootstrap_reconciles_personas_from_web(tmp_path):
             WebAuthor("nuevo-web", "Nuevo Web", "creado en la web", ""),
         ]
 
-    result = bootstrap(_settings(tmp_path), run=False, fetch_authors=fetch)
+    result = bootstrap(_settings(tmp_path), fetch_authors=fetch)
 
     rec = result["reconciled"]
     assert rec["skipped"] is False
@@ -134,7 +113,7 @@ def test_bootstrap_skips_reconcile_when_the_platform_is_unreachable(tmp_path):
     def boom():
         raise httpx.ConnectError("platform down")
 
-    result = bootstrap(_settings(tmp_path), run=False, fetch_authors=boom)
+    result = bootstrap(_settings(tmp_path), fetch_authors=boom)
 
     assert result["reconciled"]["skipped"] is True
     # The newsroom was NOT emptied: all four seeded personas remain active.
@@ -145,29 +124,18 @@ def test_bootstrap_skips_reconcile_when_the_platform_is_unreachable(tmp_path):
 # ----- the CLI subcommand dispatch -----
 
 
-def test_cli_bootstrap_no_run_seeds_and_exits_zero(tmp_path, monkeypatch, capsys):
+def test_cli_bootstrap_seeds_and_exits_zero(tmp_path, monkeypatch, capsys):
     monkeypatch.setenv("NEWSROOM_PERSONA_DB_PATH", str(tmp_path / "brain.db"))
 
-    code = main(["bootstrap", "--no-run"])
+    code = main(["bootstrap"])
 
     assert code == 0
     out = json.loads(capsys.readouterr().out)
-    assert out["ran"] is False
     assert "lara-arianna" in out["seeded"]["personas_created"]
 
     # A second invocation is a clean no-op (idempotent setup).
-    code2 = main(["bootstrap", "--no-run"])
+    code2 = main(["bootstrap"])
     assert code2 == 0
     out2 = json.loads(capsys.readouterr().out)
     assert out2["seeded"]["personas_created"] == []
     assert "lara-arianna" in out2["seeded"]["personas_skipped"]
-
-
-def test_cli_bare_run_invocation_is_unchanged_by_the_subcommand(tmp_path, monkeypatch):
-    # Adding the bootstrap subcommand must not change the bare run parser: an unknown
-    # mode is still rejected by argparse (proves the run path still parses normally).
-    import pytest
-
-    monkeypatch.setenv("NEWSROOM_PERSONA_DB_PATH", str(tmp_path / "brain.db"))
-    with pytest.raises(SystemExit):
-        main(["--mode", "turbo"])

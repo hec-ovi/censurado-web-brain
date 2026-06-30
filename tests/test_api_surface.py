@@ -33,10 +33,7 @@ _ADA = {
 
 
 def _settings(tmp_path, **over) -> Settings:
-    base = dict(
-        persona_db_path=tmp_path / "brain.db",
-        inference_base_url="http://127.0.0.1:1/v1",
-    )
+    base = dict(persona_db_path=tmp_path / "brain.db")
     base.update(over)
     return Settings(**base)
 
@@ -132,14 +129,12 @@ def test_every_operation_is_tagged_by_resource(tmp_path):
     def tags(path: str, method: str) -> list[str]:
         return spec["paths"][path][method].get("tags", [])
 
-    # Inline routes are tagged (system / personas / runs)...
+    # Inline routes are tagged (system / personas)...
     assert "system" in tags("/health", "get")
     assert "personas" in tags("/personas", "get")
-    assert "runs" in tags("/runs/{run_id}", "get")
     # ...and the routers carry their resource tag.
     assert "personas" in tags("/personas/direct", "post")
     assert "portals" in tags("/portals", "get")
-    assert "runs" in tags("/runs", "get")
     assert "editorial" in tags("/editorial/style", "get")
     assert "status" in tags("/status/backend", "get")
     assert "management" in tags("/mirror/authors", "post")
@@ -154,17 +149,13 @@ def test_every_operation_is_tagged_by_resource(tmp_path):
 
 
 def test_openapi_types_the_inline_lifecycle_routes(tmp_path):
-    # The core inline flows now declare a response_model, so a generated client gets typed
+    # The core inline flows declare a response_model, so a generated client gets typed
     # responses for the main surface (not a bare empty object).
     spec = _client(tmp_path).get("/openapi.json").json()
     schemas = spec["components"]["schemas"]
     for name in (
         "HealthOut",
-        "JobAcceptedOut",
-        "JobStatusOut",
         "PersonaListOut",
-        "RunAcceptedOut",
-        "RunDetailOut",
         "MirrorAuthorsOut",
         "BootstrapOut",
     ):
@@ -177,10 +168,6 @@ def test_openapi_types_the_inline_lifecycle_routes(tmp_path):
     assert ref("/health", "get", "200").endswith("/HealthOut")
     assert ref("/personas", "get", "200").endswith("/PersonaListOut")
     assert ref("/personas/{persona_id}", "get", "200").endswith("/PersonaOut")
-    assert ref("/personas", "post", "202").endswith("/JobAcceptedOut")
-    assert ref("/runs", "post", "202").endswith("/RunAcceptedOut")
-    assert ref("/articles/from-link", "post", "202").endswith("/RunAcceptedOut")
-    assert ref("/runs/{run_id}", "get", "200").endswith("/RunDetailOut")
 
 
 # ----- list_personas pagination (the inline collection) -----
@@ -260,10 +247,9 @@ def test_mirror_authors_without_a_token_is_503(tmp_path):
 def test_bootstrap_seed_only_provisions_a_fresh_box(tmp_path):
     client = _client(tmp_path)
 
-    resp = client.post("/bootstrap", json={"run": False})
+    resp = client.post("/bootstrap", json={})
     assert resp.status_code == 200
     body = resp.json()
-    assert body["ran"] is False
     assert "lara-arianna" in body["seeded"]["personas_created"]
     # No platform token configured -> the author reconcile is a skipped no-op.
     assert body["reconciled"]["skipped"] is True
@@ -272,10 +258,3 @@ def test_bootstrap_seed_only_provisions_a_fresh_box(tmp_path):
     listed = client.get("/personas").json()
     assert listed["total"] >= 4
     assert "lara-arianna" in [p["id"] for p in listed["personas"]]
-
-
-def test_bootstrap_with_run_and_an_unknown_mode_is_422(tmp_path):
-    client = _client(tmp_path)
-    resp = client.post("/bootstrap", json={"run": True, "mode": "turbo"})
-    assert resp.status_code == 422
-    assert resp.json()["code"] == "invalid_mode"
