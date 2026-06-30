@@ -1,11 +1,9 @@
 """The ComfyUI client: raw HTTP to the local image-generation server.
 
 ComfyUI's HTTP API is asynchronous on the wire (submit a graph, then poll for the
-result), unlike the one-shot OpenAI-dialect text endpoint. This client hides that
-submit -> poll -> fetch loop behind one synchronous ``generate`` call so the rest of
-the harness keeps the same typed-in/typed-out shape it uses for inference and
-publish. It is sync and runs inside the thread-pool pipeline (off the event loop, off
-the SQLite lock), exactly like ``chat`` and ``publish_article``.
+result). This client hides that submit -> poll -> fetch loop behind one synchronous
+``generate`` call, the same typed-in/typed-out shape the publish transport uses. It
+is sync and runs off the event loop (and off the SQLite lock), like ``publish_article``.
 
 Flow (verified against upstream ComfyUI):
   * ``POST /prompt`` with ``{"prompt": <graph>, "client_id": ...}`` -> ``{"prompt_id"}``;

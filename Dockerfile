@@ -1,13 +1,9 @@
-# The brain image: the FastAPI surface plus the run engine, served by uvicorn.
+# The brain image: the FastAPI config-plane surface, served by uvicorn.
 # Buildless on the frontend side; this side is a plain Python package install.
 FROM python:3.11-slim
 
-# git: the research tool (websearch-skill) is a pinned git dependency, so the
-# install step needs to clone it. uv: the project's toolchain, copied from its
-# official image rather than pip-installed.
-RUN apt-get update \
-    && apt-get install -y --no-install-recommends git \
-    && rm -rf /var/lib/apt/lists/*
+# uv, the project's toolchain, copied from its official image rather than
+# pip-installed. No git or build toolchain needed: the deps are pure-PyPI wheels.
 COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv
 
 WORKDIR /app
@@ -19,8 +15,7 @@ COPY newsroom ./newsroom
 COPY testkit ./testkit
 COPY prompts ./prompts
 
-# Install into the system interpreter (no venv layer in the image). The git dep
-# resolves over anonymous HTTPS from its pinned public tag.
+# Install into the system interpreter (no venv layer in the image).
 RUN uv pip install --system --no-cache .
 
 # Runtime config: the SQLite lives on a mounted volume, prompts in the image.

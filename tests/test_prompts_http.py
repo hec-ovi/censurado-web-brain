@@ -22,7 +22,6 @@ from newsroom.editorial.seeds import seed_prompts
 def _client(tmp_path) -> TestClient:
     settings = Settings(
         persona_db_path=tmp_path / "brain.db",
-        inference_base_url="http://127.0.0.1:1/v1",
     )
     return TestClient(create_app(settings=settings))
 

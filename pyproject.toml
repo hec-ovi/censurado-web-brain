@@ -1,7 +1,7 @@
 [project]
 name = "censurado-web-brain"
 version = "0.0.0"
-description = "Agentic newsroom harness that researches, drafts, reviews, and publishes articles to the censurado-web platform."
+description = "Newsroom config plane for the censurado-web platform: stores the authors, sources, prompts, and editorial style and serves them to a CLI agent and the operator console. Runs no model."
 readme = "README.md"
 requires-python = ">=3.11"
 license = { text = "MIT" }
@@ -12,19 +12,15 @@ dependencies = [
     "httpx>=0.27",
     "pydantic>=2.7",
     "pydantic-settings>=2.3",
-    # The journalists' research tool, reused whole (Step 4). Pinned to the public
-    # release tag; keyless multi-engine search + URL fetch with an SSRF guard.
-    "websearch-skill @ git+https://github.com/hec-ovi/websearch-skill@v0.1.0",
-    # Typed structured output at the FINALIZE seam ONLY (Step 5): prompted-JSON
-    # output validated into the publish payload with one re-prompt on failure. No
-    # output-length cap is ever set on the model (the body is never truncated).
-    "pydantic-ai>=1.107,<2",
 ]
 
 [project.optional-dependencies]
 dev = [
     "pytest>=8.0",
     "ruff>=0.5",
+    # The schema-drift guard validates the vendored article.schema.json (test-only;
+    # previously pulled in transitively, now declared explicitly).
+    "jsonschema>=4.0",
 ]
 
 [project.scripts]
@@ -43,14 +39,10 @@ packages = [
     "newsroom.brain",
     "newsroom.personas",
     "newsroom.editorial",
-    "newsroom.inference",
-    "newsroom.research",
-    "newsroom.pipeline",
     "newsroom.runs",
     "newsroom.manager",
     "newsroom.publish",
     "newsroom.imagery",
-    "newsroom.runner",
     "newsroom.mirror",
     "newsroom.cleanse",
     "testkit",
@@ -63,16 +55,6 @@ packages = [
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = "-q"
-# Silence a transitive websockets deprecation pulled in via fastmcp (a
-# websearch-skill dependency); it is third-party noise, scoped narrowly here.
-filterwarnings = [
-    "ignore:websockets.legacy is deprecated.*:DeprecationWarning",
-    "ignore:websockets.server.WebSocketServerProtocol is deprecated.*:DeprecationWarning",
-    # pydantic-ai's run_sync uses the deprecated get_event_loop() internally when
-    # called off the event loop (the finalize seam runs in a worker thread); their
-    # code, scoped narrowly here.
-    "ignore:There is no current event loop:DeprecationWarning",
-]
 
 [tool.ruff]
 line-length = 100

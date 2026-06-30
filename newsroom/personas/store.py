@@ -8,8 +8,7 @@ persona can never carry a section the platform would slugify into an orphan page
 
 The three JSON columns (``few_shots_pos``, ``few_shots_neg``, ``sources``) round-
 trip as Python lists; the NEGATIVE few-shots are first-class, not an afterthought,
-because local Gemma-class models lean on contrastive examples to hold a voice
-(architecture doc, agentic-refinements appendix).
+because a drafting model leans on contrastive examples to hold a voice.
 
 Timestamps come from an injectable ``clock`` (defaults to real UTC) so a caller, or
 a test, can prove ``updated_at`` advances on edit without racing the wall clock.

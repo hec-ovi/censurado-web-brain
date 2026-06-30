@@ -14,20 +14,11 @@ import threading
 import time
 from dataclasses import dataclass
 
-import httpx
 import pytest
 import uvicorn
 
 from testkit.assertions import length_cap_keys_in
 from testkit.fake_server import FakeState, create_fake_app
-
-
-@pytest.fixture(autouse=True)
-def _no_inference_cooldown(monkeypatch):
-    """Default the per-answer inference cooldown OFF for the whole suite so tests that
-    drive ``chat()`` against the fake never sleep on real time. The cooldown-specific
-    tests re-set ``NEWSROOM_INFERENCE_COOLDOWN`` explicitly to assert the pacing."""
-    monkeypatch.setenv("NEWSROOM_INFERENCE_COOLDOWN", "0")
 
 
 def _serve(app) -> tuple[uvicorn.Server, threading.Thread, int]:
@@ -111,25 +102,3 @@ def serve_app():
         for server, thread in started:
             server.should_exit = True
             thread.join(timeout=5)
-
-
-@pytest.fixture
-def brain(fake, tmp_path):
-    """The brain HTTP app, running on its own port, with inference pointed at the
-    fake and a fresh file-backed persona store. Yields an httpx client. Depends on
-    ``fake`` so the no-cap teardown guard covers synthesis calls too."""
-    from newsroom.brain import create_app
-    from newsroom.config import Settings
-
-    settings = Settings(
-        persona_db_path=tmp_path / "brain.db",
-        inference_base_url=f"{fake.base_url}/v1",
-    )
-    server, thread, port = _serve(create_app(settings=settings))
-    client = httpx.Client(base_url=f"http://127.0.0.1:{port}", timeout=10)
-    try:
-        yield client
-    finally:
-        client.close()
-        server.should_exit = True
-        thread.join(timeout=5)

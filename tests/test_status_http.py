@@ -30,7 +30,6 @@ _TOKEN = "op-token"
 def _client(tmp_path, *, base_url: str = _BACKEND, token: str = _TOKEN) -> TestClient:
     settings = Settings(
         persona_db_path=tmp_path / "brain.db",
-        inference_base_url="http://127.0.0.1:1/v1",
         publish_base_url=base_url,
         operator_token=token,
     )
