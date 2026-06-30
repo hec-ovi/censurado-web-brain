@@ -1,6 +1,6 @@
 """The prompt library: the journalist/manager/etc. prompt templates as editable versions.
 
-The ten ``prompts/<role>/<name>.md`` files lifted into the SAME immutable-versions plus
+The shipped ``prompts/<role>/<name>.md`` files lifted into the SAME immutable-versions plus
 active-pointer shape the house style guide uses, so a prompt edit inserts a NEW version
 (never mutates an old one) and promote/rollback is just moving the pointer. That gives a
 full audit trail and instant restore per prompt.

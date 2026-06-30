@@ -93,14 +93,50 @@ def _prompt_out(template: PromptTemplate) -> PromptOut:
     )
 
 
+def _list_shipped_keys(prompts_dir: Path | str) -> list[str]:
+    """Every shipped prompt key under ``prompts_dir`` (the on-disk library), each its relative
+    path with forward slashes (e.g. ``art_director/illustrate.md``). Globs ``*.md`` only, so a
+    stray non-``.md`` file is never a key. The shipped ``prompts/*.md`` are the CANONICAL
+    workflow content that travels with the brain, so the listing knows them even before any
+    seeder lifts them into the versioned store."""
+    root = Path(prompts_dir)
+    keys: list[str] = []
+    for path in root.rglob("*.md"):
+        if not path.is_file():
+            continue
+        keys.append(path.relative_to(root).as_posix())
+    return keys
+
+
 @router.get("/prompts", status_code=200, response_model=PromptListOut)
 async def list_prompts(request: Request):
-    """The prompt library: one row per key, each its ACTIVE version. ``total`` is the count
-    of keys. An empty store (before the seeder runs) is an empty list, not a 404."""
+    """The prompt library: one row per key, each its ACTIVE version. The key set is the UNION
+    of the versioned store's keys and the shipped on-disk keys, so a fresh box (empty store,
+    before any seeder runs) still lists every shipped workflow prompt. For a key the store has
+    an active version of, that stored version wins (the store is the OVERRIDE layer); otherwise
+    the shipped disk body is synthesized as ``version`` 0, ``created_by`` ``"disk"``, exactly
+    as the single-key read path does. Keys are deduped (a stored override never doubles with its
+    disk file) and sorted for stable output. ``total`` is the count of keys."""
     state = request.app.state
     with state.lock:
-        actives = [state.prompt_store.active(key) for key in state.prompt_store.list_keys()]
-    templates = [_prompt_out(t) for t in actives if t is not None]
+        keys = set(state.prompt_store.list_keys()) | set(
+            _list_shipped_keys(state.settings.prompts_dir)
+        )
+        actives = {key: state.prompt_store.active(key) for key in keys}
+        templates: list[PromptOut] = []
+        for key in sorted(keys):
+            stored = actives[key]
+            if stored is not None:
+                templates.append(_prompt_out(stored))
+                continue
+            body = _read_shipped_prompt(state.settings.prompts_dir, key)
+            if body is None:
+                continue
+            templates.append(
+                PromptOut(
+                    key=key, version=0, body=body, created_by="disk", created_at="", is_active=True
+                )
+            )
     return PromptListOut(templates=templates, total=len(templates))
 
 

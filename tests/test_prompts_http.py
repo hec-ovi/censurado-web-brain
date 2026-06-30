@@ -108,15 +108,20 @@ def test_publish_staged_without_activating(tmp_path):
 def test_list_prompts_one_row_per_key(tmp_path):
     client = _client(tmp_path)
     # Two keys, the first with two versions: the listing shows ONE row per key (its active).
+    # Both keys also ship on disk, so the union must not double them: each appears exactly once,
+    # carrying the stored active version, not a duplicate v0 disk row.
     client.post("/prompts/template", json={"key": "journalist/draft.md", "body": "d1"})
     client.post("/prompts/template", json={"key": "journalist/draft.md", "body": "d2"})
     client.post("/prompts/template", json={"key": "persona/synthesize.md", "body": "s1"})
 
     listing = client.get("/prompts").json()
-    assert listing["total"] == 2
+    keys = [t["key"] for t in listing["templates"]]
+    assert keys.count("journalist/draft.md") == 1  # one row per key, no disk duplicate
+    assert keys.count("persona/synthesize.md") == 1
     by_key = {t["key"]: t for t in listing["templates"]}
-    assert set(by_key) == {"journalist/draft.md", "persona/synthesize.md"}
     assert by_key["journalist/draft.md"]["version"] == 2  # the active version of the key
+    assert by_key["persona/synthesize.md"]["version"] == 3  # version is a global autoincrement
+    assert by_key["persona/synthesize.md"]["created_by"] != "disk"  # stored, not a disk row
     assert all(t["is_active"] for t in listing["templates"])
 
 
@@ -258,3 +263,60 @@ def test_disk_fallback_refuses_path_traversal(tmp_path):
     resp = client.get("/prompts/template", params={"key": "../secret.md"})
     assert resp.status_code == 404
     assert "SECRET" not in resp.text
+
+
+# ----- GET /prompts disk-union (a fresh box lists every shipped workflow prompt) -----
+
+
+def test_list_prompts_unions_the_shipped_disk_keys_on_a_fresh_box(tmp_path):
+    # The store is empty (no seeder), but the shipped prompts/ tree ships 11 .md files: the
+    # listing is the union, so every workflow prompt key is present, each marked v0/disk.
+    client = _client(tmp_path)
+    listing = client.get("/prompts").json()
+    assert listing["total"] >= 11
+    by_key = {t["key"]: t for t in listing["templates"]}
+    assert "art_director/illustrate.md" in by_key
+    assert "persona/synthesize.md" in by_key
+    assert by_key["art_director/illustrate.md"]["version"] == 0
+    assert by_key["art_director/illustrate.md"]["created_by"] == "disk"
+    assert by_key["persona/synthesize.md"]["version"] == 0
+    assert by_key["persona/synthesize.md"]["created_by"] == "disk"
+    # Keys come back sorted for stable output.
+    keys = [t["key"] for t in listing["templates"]]
+    assert keys == sorted(keys)
+
+
+def test_list_prompts_override_shows_once_as_a_stored_version(tmp_path):
+    # Publishing one key makes it a stored version; it must appear EXACTLY once (no duplicate
+    # disk row) with version > 0 and created_by != "disk", while the others stay v0/disk.
+    client = _client(tmp_path)
+    client.post(
+        "/prompts/template",
+        json={"key": "journalist/draft.md", "body": "OPERATOR DRAFT", "created_by": "hector"},
+    )
+    listing = client.get("/prompts").json()
+    rows = [t for t in listing["templates"] if t["key"] == "journalist/draft.md"]
+    assert len(rows) == 1
+    row = rows[0]
+    assert row["version"] > 0
+    assert row["created_by"] != "disk"
+    assert row["is_active"] is True
+    assert row["body"] == "OPERATOR DRAFT"
+    # The union still lists the rest of the shipped keys (the override did not shrink the set).
+    assert listing["total"] >= 11
+
+
+def test_list_prompts_ignores_a_stray_non_md_file(tmp_path):
+    # A controlled library: one shipped .md plus a stray non-.md file. Only the .md is a key.
+    lib = tmp_path / "prompts"
+    (lib / "journalist").mkdir(parents=True)
+    (lib / "journalist" / "draft.md").write_text("DISK DRAFT", encoding="utf-8")
+    (lib / "journalist" / "notes.txt").write_text("NOT A PROMPT", encoding="utf-8")
+    (lib / "README").write_text("NOT A PROMPT EITHER", encoding="utf-8")
+    settings = Settings(persona_db_path=tmp_path / "brain.db", prompts_dir=lib)
+    client = TestClient(create_app(settings=settings))
+
+    listing = client.get("/prompts").json()
+    keys = {t["key"] for t in listing["templates"]}
+    assert keys == {"journalist/draft.md"}
+    assert listing["total"] == 1
