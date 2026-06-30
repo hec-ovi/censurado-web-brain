@@ -14,8 +14,8 @@ The backend has no concept of personas (its article schema takes only an `author
 
 - **Authors (personas).** Each author's identity: `who_i_am`, `style`, `about`, `beat`, few-shot examples, avatar, and language. Created on demand via `POST /personas/direct` or the console; no model runs server side, the agent writes the persona JSON itself.
 - **Sources (portals).** The outlets each author reads, for grounding and cross-checking. Registered per deployment, linked per author.
-- **Editorial style.** A versioned house style guide (voice, exemplars, the vetoed-term lexicon, the sourcing floor), with an operator-editable active version.
-- **Prompt library.** The workflow prompts (`prompts/persona`, `prompts/journalist`, `prompts/manager`, `prompts/art_director`) as versioned `.md`. They ship in the image and serve as-is from disk; the versioned store is an override layer an operator can edit from the console.
+- **Editorial style.** A versioned house style guide (voice, exemplars, the vetoed-term lexicon) plus the workflow knobs the journalist prompts read: `sourcing.min_sources` (the independent-source floor, default 5), `structure.respin_passes` (default 2), and `structure.topic_cap` (default 12). An operator edits the active version over the API; the prior versions stay restorable.
+- **Prompt library.** 12 versioned `.md` prompts across `prompts/journalist`, `prompts/persona`, `prompts/manager`, `prompts/art_director`. The journalist set is the editorial loop end to end (`workflow.md`, then research, outline, draft, the six-dimension `evaluate.md`, respin, factcheck, finalize) and carries the style knobs as `{{MIN_SOURCES}}` / `{{RESPIN_PASSES}}` / `{{TOPIC_CAP}}` placeholders the CLI agent fills. They ship in the image and serve as-is from disk; the versioned store is an override layer an operator can edit from the console.
 - **Coverage memory.** What has already been covered, so a sweep can skip duplicates.
 
 ## How it fits the rest of the system
@@ -73,7 +73,7 @@ Every test hits a real entry point (an HTTP route or a CLI invocation) through t
 
 ## Principles
 
-- **Authors are data, not code.** Persona identity and the outlets an author reads live only in the database, created by an operator or an agent. A fresh clone with an empty database has no authors and no sources.
+- **Authors live only in the database.** Persona identity and the outlets an author reads are created by an operator or an agent and are never in tracked code. A fresh clone with an empty database has no authors and no sources.
 - **No model here.** The brain holds the newsroom's configuration and serves it; the writing is done by a CLI agent's own model. Image generation runs on a local ComfyUI when an operator or script asks for it.
 - **No output-length caps.** Nothing in this repo sets a token, word, or sentence ceiling on a model.
 

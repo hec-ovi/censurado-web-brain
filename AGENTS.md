@@ -35,7 +35,7 @@ The source registry and per-author source links, the versioned house style guide
 - → `newsroom/editorial/seeds.py` (`seed_all`, `seed_prompts`; `DEFAULT_PERSONAS=()`, `DEFAULT_PORTALS=()`)
 
 ### Prompts (the agnostic workflow text)
-Versioned `.md` files with `{{TOKEN}}` placeholders, no length caps. They ship in the image and serve as-is: `GET /prompts/template` falls back to the on-disk file when the store has no version, so the prompts work on a fresh box and the store is a pure override layer.
+Versioned `.md` files with `{{TOKEN}}` placeholders, no length caps. They ship in the image and serve as-is: `GET /prompts/template` falls back to the on-disk file when the store has no version, and `GET /prompts` lists the union of stored keys and shipped on-disk keys (12 today), so the prompts work on a fresh box and the store is a pure override layer. The journalist set is the editorial loop (`workflow.md`, research, outline, draft, the six-dimension `evaluate.md`, respin, factcheck, finalize); it reads the style knobs via `{{MIN_SOURCES}}` / `{{RESPIN_PASSES}}` / `{{TOPIC_CAP}}`. The brain serves the text raw; the CLI agent fills the placeholders.
 - → `newsroom/prompts.py` (`load_prompt`, `render`)
 - → `prompts/journalist/*.md`, `prompts/manager/triage.md`, `prompts/persona/synthesize.md`, `prompts/art_director/illustrate.md`
 
@@ -88,7 +88,7 @@ No auth; treat it as a trusted-network service. In the harness it sits behind th
 
 - **Authors:** `GET /personas`, `GET /personas/{id}` (the full record: `who_i_am`, `about`, `style`, `few_shots_*`, `sources`, ...), `POST /personas/direct` (create), `PATCH` / `DELETE /personas/{id}`.
 - **Sources:** `/portals` (registry CRUD + enable/disable), `GET|PUT /personas/{id}/sources` (the per-author pool). Co-owned outlets share an `ownership_group` and count once in the corroboration gate.
-- **Editorial:** `/editorial/style` (versioned house style), `/editorial/style/lexicon` (the vetoed terms), `/editorial/style/sourcing` (the `min_sources` floor and corroboration threshold), `/editorial/location`.
+- **Editorial:** `/editorial/style` (versioned house style; the `structure` block carries the `respin_passes` and `topic_cap` workflow knobs, changed by publishing a full version with `POST /editorial/style`), `/editorial/style/lexicon` (the vetoed terms), `/editorial/style/sourcing` (the `min_sources` floor plus the `require_attribution` and `no_fabricated_quotes` flags), `/editorial/location`.
 - **Prompts:** `/prompts` (list), `GET /prompts/template?key=...` (the active version, with the on-disk fallback), `POST /prompts/template` (publish a version), `/prompts/versions` + `/prompts/versions/{version}/promote`.
 - **Lifecycle:** `POST /bootstrap` (seed style/location/prompts; idempotent; creates no authors or sources), `POST /mirror/authors` (backfill), `GET /status/backend`, `GET /health`.
 
