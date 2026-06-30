@@ -18,13 +18,19 @@ from __future__ import annotations
 import sqlite3
 from pathlib import Path
 
+from newsroom.contracts.sections import SECTION_ENUM
+
 __all__ = ["SCHEMA", "open_db"]
+
+# Single-source the persona ``beat`` CHECK from the harness section vocabulary
+# (contracts.sections) so the SQL constraint and the Python validation cannot drift apart.
+_BEAT_VALUES = ",".join(f"'{section}'" for section in SECTION_ENUM)
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS personas (
   id            TEXT PRIMARY KEY,
   display_name  TEXT NOT NULL,
-  beat          TEXT NOT NULL CHECK (beat IN ('tech','world','politics','economics')),
+  beat          TEXT NOT NULL CHECK (beat IN (__BEAT_VALUES__)),
   who_i_am      TEXT NOT NULL,
   about         TEXT,
   style         TEXT NOT NULL,
@@ -141,6 +147,9 @@ CREATE TABLE IF NOT EXISTS prompt_template_active (
   version INTEGER NOT NULL REFERENCES prompt_template(version)
 );
 """
+
+# Fill the single-sourced beat vocabulary into the schema (see ``_BEAT_VALUES`` above).
+SCHEMA = SCHEMA.replace("__BEAT_VALUES__", _BEAT_VALUES)
 
 
 def open_db(path: str | Path = ":memory:", *, check_same_thread: bool = True) -> sqlite3.Connection:

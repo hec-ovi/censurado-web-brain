@@ -14,6 +14,7 @@ from sqlite3 import Connection
 
 from newsroom.config import Settings
 from newsroom.db import open_db
+from newsroom.editorial.location import Location
 from newsroom.editorial.seeds import seed_all
 from newsroom.mirror import (
     ReconcileResult,
@@ -71,8 +72,18 @@ def bootstrap(
     without a real platform. ``seed_overrides`` are forwarded to ``seed_all``
     (location/portals/personas/style/prompts_dir)."""
     conn = open_db(settings.persona_db_path, check_same_thread=False)
-    # Seed the prompt library from the configured prompts_dir unless a caller overrode it.
+    # Seed the prompt library from the configured prompts_dir, and the publication place
+    # from the configured presentation defaults, unless a caller overrode them.
     seed_overrides.setdefault("prompts_dir", settings.prompts_dir)
+    seed_overrides.setdefault(
+        "location",
+        Location(
+            region=settings.default_region,
+            ui_lang=settings.default_ui_lang,
+            language=settings.default_language,
+            gdelt_country=settings.default_gdelt_country,
+        ),
+    )
     seeded = seed_all(conn, **seed_overrides)
     reconciled = _reconcile_from_web(settings, conn, fetch_authors)
     return {

@@ -63,6 +63,17 @@ class Settings(BaseSettings):
     persona_db_path: Path = _REPO_ROOT / "data" / "personas.db"
     prompts_dir: Path = _REPO_ROOT / "prompts"
 
+    # ----- Presentation defaults (seeded into the editable location row on bootstrap). -----
+    # The publication place is operator config, not baked-in: a fresh deploy sets these so
+    # the newsroom is not locked to one country. ``region`` is ISO-3166-1 alpha-2 (Google
+    # News ``gl``), ``ui_lang`` is BCP47 (``hl``), ``language`` is ISO-639-1 (websearch
+    # scope), ``gdelt_country`` is FIPS-10-4 (optional GDELT feed; differs from ISO for some
+    # countries). The console can change them later; this is only the first-boot seed.
+    default_region: str = "AR"
+    default_ui_lang: str = "es-419"
+    default_language: str = "es"
+    default_gdelt_country: str = "AR"
+
     # Publish seam. The platform requires the operator key scope(s).
     publish_base_url: str = "http://127.0.0.1:8080"
     operator_token: str = Field(default="", repr=False)

@@ -17,6 +17,7 @@ same code with explicit fixtures.
 
 from __future__ import annotations
 
+import json
 import sqlite3
 from dataclasses import dataclass
 from pathlib import Path
@@ -62,54 +63,29 @@ DEFAULT_PORTALS: tuple[Portal, ...] = ()
 DEFAULT_PERSONAS: tuple[Persona, ...] = ()
 
 
-# The default house style guide (the "model of redaction + rules"). Voice prose, one
-# good and one labeled BAD exemplar, an ordered list of positive imperatives, and the
-# mechanically enforceable lexicon / sourcing / structure. NO length phrasing anywhere
-# (no "en N palabras"): brevity is expressed qualitatively, never as a word cap.
-DEFAULT_STYLE = StyleGuide(
-    voice=(
-        "Escribimos noticias en espanol neutro rioplatense, sobrias y verificables. "
-        "Contamos el hecho antes que la reaccion, atribuimos cada afirmacion a una "
-        "fuente nombrada y separamos lo confirmado de lo que una sola parte sostiene. "
-        "No militamos ni adornamos: si el dato es fuerte, no necesita adjetivos."
-    ),
-    exemplars=[
-        {
-            "label": "good",
-            "text": "El Banco Central subio la tasa al 40 por ciento, segun su comunicado oficial.",
-            "why": "Hecho concreto, cifra, fuente nombrada, sin carga emotiva.",
-        },
-        {
-            "label": "bad",
-            "text": "En una decision demoledora, el Central volvio a castigar a los ahorristas.",
-            "why": "Adjetivacion sensacionalista, sin fuente, toma partido.",
-        },
-    ],
-    rules=[
-        {"id": "hecho-primero", "text": "Abri con el hecho central y su consecuencia concreta.", "severity": "gate", "scope": "both", "check": "llm"},
-        {"id": "atribuir", "text": "Atribui cada afirmacion factica a una fuente nombrada.", "severity": "gate", "scope": "both", "check": "llm"},
-        {"id": "dos-fuentes", "text": "Apoya el hecho central en al menos dos fuentes independientes.", "severity": "gate", "scope": "both", "check": "code"},
-        {"id": "confirmado", "text": "Distingui lo confirmado de lo que afirma una sola parte.", "severity": "gate", "scope": "both", "check": "llm"},
-        {"id": "sin-inventar", "text": "Usa solo datos y citas presentes en las fuentes reunidas.", "severity": "gate", "scope": "both", "check": "code"},
-        {"id": "neutral", "text": "Manten un tono sobrio y describi sin tomar partido.", "severity": "gate", "scope": "both", "check": "llm"},
-        {"id": "titulo-directo", "text": "Escribi un titulo breve y directo: el hecho esencial, sin relleno.", "severity": "preference", "scope": "draft", "check": "llm"},
-        {"id": "cifras-con-fuente", "text": "Acompana cada cifra con su fuente y su fecha.", "severity": "preference", "scope": "both", "check": "llm"},
-        {"id": "contexto-local", "text": "Da el contexto que el lector local necesita, sin asumir que ya lo sabe.", "severity": "preference", "scope": "draft", "check": "llm"},
-        {"id": "sin-jerga", "text": "Explica cualquier termino tecnico la primera vez que aparece.", "severity": "preference", "scope": "draft", "check": "llm"},
-        {"id": "no-repetir", "text": "Aporta lo nuevo del dia y enlaza la cobertura previa relacionada.", "severity": "preference", "scope": "both", "check": "llm"},
-        {"id": "cierre-util", "text": "Cierra con lo que sigue o lo que aun no se sabe, no con una opinion.", "severity": "preference", "scope": "draft", "check": "llm"},
-    ],
-    lexicon={
-        "banned_terms": ["demoledor", "escandaloso", "letal", "brutal", "sin precedentes", "increible", "no te lo podes perder"],
-        "preferred_swaps": {"polemico": "discutido", "fulmino": "rechazo", "castigo": "afecto", "historico": "destacado"},
-    },
-    sourcing={"min_sources": 5, "require_attribution": True, "no_fabricated_quotes": True},
-    structure={
-        "headline": "Breve y directo: el hecho esencial, sin relleno ni adjetivos.",
-        "dateline": "CIUDAD, fecha, al inicio del cuerpo.",
-        "lede": "Primer parrafo con que paso, quien, cuando y por que importa.",
-    },
-)
+# The default house style guide (the "model of redaction + rules") lives in a tracked
+# DATA file, not as a .py literal: voice prose, a good and a labeled BAD exemplar, an
+# ordered list of positive imperatives, and the mechanically enforceable lexicon /
+# sourcing / structure (including ``min_sources``). It is author-agnostic and operator-
+# overridable from the console; the file is the editable default, not code. NO length
+# phrasing anywhere (no "en N palabras"): brevity is qualitative, never a word cap.
+_DEFAULT_STYLE_PATH: Path = Path(__file__).resolve().parent / "default_style.json"
+
+
+def _load_default_style() -> StyleGuide:
+    """Build the default house style from the tracked ``default_style.json`` data file."""
+    data = json.loads(_DEFAULT_STYLE_PATH.read_text(encoding="utf-8"))
+    return StyleGuide(
+        voice=data.get("voice", ""),
+        exemplars=data.get("exemplars", []),
+        rules=data.get("rules", []),
+        lexicon=data.get("lexicon", {}),
+        sourcing=data.get("sourcing", {}),
+        structure=data.get("structure", {}),
+    )
+
+
+DEFAULT_STYLE = _load_default_style()
 
 
 @dataclass

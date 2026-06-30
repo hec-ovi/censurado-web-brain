@@ -81,6 +81,24 @@ def test_bootstrap_is_idempotent(tmp_path):
     assert len({p.id for p in PersonaStore(conn).list()}) == len(PersonaStore(conn).list())
 
 
+def test_bootstrap_seeds_location_from_config_defaults(tmp_path):
+    # The publication place is config, not baked in: the NEWSROOM_DEFAULT_* presentation
+    # defaults drive the seeded location row on a fresh box (here a non-AR deploy).
+    settings = _settings(
+        tmp_path,
+        default_region="UY",
+        default_ui_lang="es-UY",
+        default_language="es",
+        default_gdelt_country="UY",
+    )
+    bootstrap(settings)
+
+    loc = LocationStore(open_db(tmp_path / "brain.db", check_same_thread=False)).get()
+    assert loc.region == "UY"
+    assert loc.ui_lang == "es-UY"
+    assert loc.gdelt_country == "UY"
+
+
 # ----- the platform author mirror runs as part of bootstrap -----
 
 

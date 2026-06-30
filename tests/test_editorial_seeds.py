@@ -158,3 +158,14 @@ def test_default_style_is_coherent_and_uncapped():
 def test_default_style_banned_terms_present():
     assert "demoledor" in DEFAULT_STYLE.lexicon["banned_terms"]
     assert DEFAULT_STYLE.lexicon["preferred_swaps"]["polemico"] == "discutido"
+
+
+def test_default_style_is_loaded_from_a_data_file_not_a_py_literal():
+    # The house style default lives in a tracked JSON data file (operator-editable
+    # config), not as a Python literal, so the prompt-like prose is out of the .py.
+    from newsroom.editorial import seeds
+
+    assert seeds._DEFAULT_STYLE_PATH.exists()
+    assert seeds._DEFAULT_STYLE_PATH.suffix == ".json"
+    assert DEFAULT_STYLE.voice  # loaded and non-empty
+    assert DEFAULT_STYLE.sourcing["min_sources"] == 5

@@ -210,3 +210,32 @@ def test_in_memory_db_is_not_put_into_wal(tmp_path):
         assert conn.execute("PRAGMA foreign_keys").fetchone()[0] == 1
     finally:
         conn.close()
+
+
+def test_persona_beat_check_is_single_sourced_from_the_section_enum():
+    # The SQL CHECK is built from contracts.sections.SECTION_ENUM, not a hand-kept
+    # literal, so the constraint and the Python validation cannot drift apart.
+    from newsroom.contracts.sections import SECTION_ENUM
+    from newsroom.db import SCHEMA
+
+    expected = ",".join(f"'{section}'" for section in SECTION_ENUM)
+    assert f"CHECK (beat IN ({expected}))" in SCHEMA
+    assert "__BEAT_VALUES__" not in SCHEMA  # the sentinel was filled in
+
+
+def test_db_rejects_a_beat_outside_the_section_enum():
+    # The schema CHECK (single-sourced from the enum) rejects an unknown beat even on a
+    # raw insert that bypasses the store's Python validation.
+    import sqlite3
+
+    import pytest
+
+    conn = open_db(":memory:")
+    try:
+        with pytest.raises(sqlite3.IntegrityError):
+            conn.execute(
+                "INSERT INTO personas (id, display_name, beat, who_i_am, style, created_at, updated_at) "
+                "VALUES ('x','X','not-a-section','w','s','t','t')"
+            )
+    finally:
+        conn.close()

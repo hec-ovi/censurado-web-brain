@@ -22,7 +22,7 @@ def test_style_for_draft_includes_voice_rules_and_exemplars():
     # A draft-or-both rule appears; the good and bad exemplars appear.
     assert "Atribui cada afirmacion" in out
     assert "Write like these:" in out and "Do NOT write like these:" in out
-    assert "El Banco Central subio la tasa" in out  # good exemplar
+    assert "La autoridad monetaria subio la tasa" in out  # good exemplar
     assert "demoledor" in out  # bad exemplar text (the contrast lever)
 
 
