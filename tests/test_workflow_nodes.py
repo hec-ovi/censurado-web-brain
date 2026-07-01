@@ -91,6 +91,20 @@ def test_normalize_topics_is_a_single_node_maintenance_mode(tmp_path):
     assert node.status_code == 200 and "profile-topics" in node.json()["body"]
 
 
+def test_portal_review_is_a_single_node_maintenance_mode(tmp_path):
+    # Curating the per-day front page is its own one-shot mode (like normalize-topics and
+    # deploy), NOT a step in the article-drafting loop: it walks a single node and stops.
+    client = _client(tmp_path)
+    manifest = json.loads(
+        client.get("/prompts/template", params={"key": "workflow/manifest.json"}).json()["body"]
+    )
+    assert manifest["modes"]["portal-review"] == ["portal-review"]
+    # It must not have leaked into the article-drafting sequence.
+    assert "portal-review" not in manifest["modes"]["on-demand"]
+    node = client.get("/prompts/template", params={"key": "workflow/portal-review.md"})
+    assert node.status_code == 200 and "portada" in node.json()["body"]
+
+
 def test_deploy_node_is_wired_last_but_disabled_by_default(tmp_path):
     # Deploy (production push) is plugged in as the last step of the article modes, but
     # disabled per-mode by default (safe: an article walk ends at publish), and it has its
