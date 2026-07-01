@@ -95,16 +95,18 @@ def _prompt_out(template: PromptTemplate) -> PromptOut:
 
 def _list_shipped_keys(prompts_dir: Path | str) -> list[str]:
     """Every shipped prompt key under ``prompts_dir`` (the on-disk library), each its relative
-    path with forward slashes (e.g. ``art_director/illustrate.md``). Globs ``*.md`` only, so a
-    stray non-``.md`` file is never a key. The shipped ``prompts/*.md`` are the CANONICAL
-    workflow content that travels with the brain, so the listing knows them even before any
-    seeder lifts them into the versioned store."""
+    path with forward slashes (e.g. ``art_director/illustrate.md``). Globs ``*.md`` and
+    ``*.json`` (the step-gate's ``workflow/manifest.json`` node-order config rides in the same
+    library), so a stray file of another extension is never a key. The shipped
+    ``prompts/**`` are the CANONICAL workflow content that travels with the brain, so the
+    listing knows them even before any seeder lifts them into the versioned store."""
     root = Path(prompts_dir)
     keys: list[str] = []
-    for path in root.rglob("*.md"):
-        if not path.is_file():
-            continue
-        keys.append(path.relative_to(root).as_posix())
+    for pattern in ("*.md", "*.json"):
+        for path in root.rglob(pattern):
+            if not path.is_file():
+                continue
+            keys.append(path.relative_to(root).as_posix())
     return keys
 
 
@@ -144,10 +146,12 @@ def _read_shipped_prompt(prompts_dir: Path | str, key: str) -> str | None:
     """Read a shipped prompt ``key`` (``<role>/<name>.md``) from the on-disk prompt library,
     or ``None`` if it is absent. The shipped ``prompts/*.md`` are agnostic workflow content
     that travels with the brain, so they back the read path even before any seeder runs.
-    Guards path traversal: the key must be a ``.md`` file that resolves to inside
+    Guards path traversal: the key must be a ``.md`` or ``.json`` file that resolves to inside
     ``prompts_dir`` (a key with ``..`` or pointing elsewhere is treated as absent, never a
-    file read), so this never serves a file outside the library."""
-    if not key.endswith(".md"):
+    file read), so this never serves a file outside the library. ``.json`` is allowed so the
+    step-gate's ``workflow/manifest.json`` (the per-mode node order) is served from the same
+    library as the node bodies."""
+    if not (key.endswith(".md") or key.endswith(".json")):
         return None
     root = Path(prompts_dir).resolve()
     candidate = root.joinpath(*key.split("/")).resolve()
