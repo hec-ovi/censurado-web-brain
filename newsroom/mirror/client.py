@@ -107,18 +107,27 @@ def push_web_author(
     name: str = "",
     bio: str = "",
     avatar: str = "",
+    profile_topics: list[str] | None = None,
     timeout: float = DEFAULT_TIMEOUT,
 ) -> PushResult:
     """POST one author's PUBLIC fields to the platform operator registry (POST /authors,
     keyed on handle), the one-time backfill that makes the platform authoritative. The
     operator key must carry the ``admin:write`` scope. The upsert is idempotent, so a
     re-run is a no-op. A transport fault returns a typed failure rather than raising, so
-    the backfill loop reports per-handle and never aborts mid-way."""
+    the backfill loop reports per-handle and never aborts mid-way.
+
+    Curated ``profile_topics`` ride in the registry's ``metadata`` blob (the platform stores
+    it verbatim and the generator reads it there, preferring it over the auto-computed topic
+    union on the author page). It is sent ONLY when non-empty, so an uncurated author leaves
+    the metadata untouched and existing callers keep their exact wire shape."""
+    body: dict[str, object] = {"handle": handle, "name": name, "bio": bio, "avatar": avatar}
+    if profile_topics:
+        body["metadata"] = {"profile_topics": list(profile_topics)}
     try:
         resp = httpx.post(
             f"{base_url.rstrip('/')}/authors",
             headers={"Authorization": f"Bearer {token}"},
-            json={"handle": handle, "name": name, "bio": bio, "avatar": avatar},
+            json=body,
             timeout=timeout,
         )
     except httpx.HTTPError as exc:

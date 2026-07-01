@@ -77,6 +77,23 @@ def test_round_trips_full_persona_including_negative_few_shots(store: PersonaSto
     ]
 
 
+def test_round_trips_curated_profile_topics(store: PersonaStore):
+    created = store.create(_full_persona(profile_topics=["politica", "economia"]))
+    got = store.get(created.id)
+    assert got is not None
+    assert got.profile_topics == ["politica", "economia"]
+
+
+def test_update_replaces_profile_topics(store: PersonaStore):
+    created = store.create(_full_persona(profile_topics=["politica"]))
+    edited = store.update(created.id, profile_topics=["economia", "sociedad"])
+    assert edited.profile_topics == ["economia", "sociedad"]
+    # An empty list clears the curated set (back to the computed union on the site).
+    cleared = store.update(created.id, profile_topics=[])
+    assert cleared.profile_topics == []
+    assert store.get(created.id).profile_topics == []
+
+
 def test_id_is_derived_from_display_name_when_blank(store: PersonaStore):
     created = store.create(_full_persona(display_name="Mara Vance", id=""))
     assert created.id == "mara-vance"
@@ -108,6 +125,7 @@ def test_empty_list_fields_default_to_empty(store: PersonaStore):
     assert got.few_shots_pos == []
     assert got.few_shots_neg == []
     assert got.sources == []
+    assert got.profile_topics == []
     assert got.about == ""
     assert got.avatar_path == ""
 

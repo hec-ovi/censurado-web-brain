@@ -79,6 +79,42 @@ def test_push_web_author_posts_public_body_and_maps_200(monkeypatch):
     assert res.ok is True and res.status == 200
 
 
+def test_push_web_author_carries_curated_profile_topics_in_metadata(monkeypatch):
+    captured: dict = {}
+
+    def fake_post(url, headers=None, json=None, timeout=None):
+        captured["json"] = json
+        return httpx.Response(200, json={"handle": "ada"})
+
+    monkeypatch.setattr("newsroom.mirror.client.httpx.post", fake_post)
+    res = push_web_author(
+        "http://web:8080/", "tok-admin",
+        handle="ada", name="Ada", bio="Bio.", avatar="a.png",
+        profile_topics=["politica", "economia"],
+    )
+
+    # The curated topics ride in the registry metadata blob; the public scalar fields stay
+    # exactly where they were, so the platform stores them alongside name/bio/avatar.
+    assert captured["json"]["metadata"] == {"profile_topics": ["politica", "economia"]}
+    assert captured["json"]["handle"] == "ada" and captured["json"]["avatar"] == "a.png"
+    assert res.ok is True
+
+
+def test_push_web_author_omits_metadata_when_no_curated_topics(monkeypatch):
+    captured: dict = {}
+
+    def fake_post(url, headers=None, json=None, timeout=None):
+        captured["json"] = json
+        return httpx.Response(200, json={"handle": "ada"})
+
+    monkeypatch.setattr("newsroom.mirror.client.httpx.post", fake_post)
+    push_web_author("http://web:8080", "tok", handle="ada", name="Ada", profile_topics=[])
+
+    # An uncurated author sends NO metadata key, so an existing registry blob is untouched
+    # and the wire shape matches the pre-feature body byte for byte.
+    assert "metadata" not in captured["json"]
+
+
 def test_push_web_author_maps_a_problem_response(monkeypatch):
     def fake_post(url, headers=None, json=None, timeout=None):
         return httpx.Response(403, json={"code": "insufficient_scope", "detail": "requires admin:write"})

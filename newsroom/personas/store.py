@@ -42,10 +42,11 @@ _MUTABLE_FIELDS = (
     "few_shots_pos",
     "few_shots_neg",
     "sources",
+    "profile_topics",
     "avatar_path",
     "active",
 )
-_JSON_FIELDS = ("few_shots_pos", "few_shots_neg", "sources")
+_JSON_FIELDS = ("few_shots_pos", "few_shots_neg", "sources", "profile_topics")
 
 
 def _encode_field(col: str, value):
@@ -74,6 +75,11 @@ class Persona:
     few_shots_pos: list = field(default_factory=list)
     few_shots_neg: list = field(default_factory=list)
     sources: list = field(default_factory=list)
+    # Curated domain topics for the author's public profile page. Brain-owned (the
+    # platform never writes it back), populated by the normalize-topics step gate, and
+    # preferred by the generator over the uncapped union of every topic the author ever
+    # tagged. Empty means "fall back to the computed union".
+    profile_topics: list = field(default_factory=list)
     avatar_path: str = ""
     active: bool = True
     created_at: str = ""
@@ -128,9 +134,9 @@ class PersonaStore:
                 """
                 INSERT INTO personas (
                   id, display_name, beat, who_i_am, about, style, language,
-                  few_shots_pos, few_shots_neg, sources, avatar_path, active,
+                  few_shots_pos, few_shots_neg, sources, profile_topics, avatar_path, active,
                   created_at, updated_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     persona_id,
@@ -143,6 +149,7 @@ class PersonaStore:
                     json.dumps(persona.few_shots_pos),
                     json.dumps(persona.few_shots_neg),
                     json.dumps(persona.sources),
+                    json.dumps(persona.profile_topics),
                     persona.avatar_path,
                     int(persona.active),
                     now,
@@ -234,6 +241,7 @@ def _row_to_persona(row: sqlite3.Row) -> Persona:
         few_shots_pos=json.loads(row["few_shots_pos"]) if row["few_shots_pos"] else [],
         few_shots_neg=json.loads(row["few_shots_neg"]) if row["few_shots_neg"] else [],
         sources=json.loads(row["sources"]) if row["sources"] else [],
+        profile_topics=json.loads(row["profile_topics"]) if row["profile_topics"] else [],
         avatar_path=row["avatar_path"] or "",
         active=bool(row["active"]),
         created_at=row["created_at"],

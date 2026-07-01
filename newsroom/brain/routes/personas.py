@@ -63,6 +63,7 @@ class PersonaIn(BaseModel):
     few_shots_pos: list = []
     few_shots_neg: list = []
     sources: list[str] = []
+    profile_topics: list[str] = []
     avatar_path: str = ""
     active: bool = True
 
@@ -82,6 +83,7 @@ class PersonaPatch(BaseModel):
     few_shots_pos: list | None = None
     few_shots_neg: list | None = None
     sources: list[str] | None = None
+    profile_topics: list[str] | None = None
     avatar_path: str | None = None
     active: bool | None = None
 
@@ -100,6 +102,7 @@ class PersonaOut(BaseModel):
     few_shots_pos: list
     few_shots_neg: list
     sources: list
+    profile_topics: list
     avatar_path: str
     active: bool
     created_at: str
@@ -133,6 +136,7 @@ async def create_persona_direct(body: PersonaIn, request: Request):
         few_shots_pos=list(body.few_shots_pos),
         few_shots_neg=list(body.few_shots_neg),
         sources=list(body.sources),
+        profile_topics=list(body.profile_topics),
         avatar_path=body.avatar_path,
         active=body.active,
     )

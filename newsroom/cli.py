@@ -132,6 +132,7 @@ def _env_author_push(settings: Settings) -> AuthorPush:
             name=persona.display_name,
             bio=persona.about,
             avatar=persona.avatar_path,
+            profile_topics=persona.profile_topics,
         )
 
     return push
@@ -649,6 +650,10 @@ def _authors_main(
         parser.add_argument("--about", default="", help="the public bio")
         parser.add_argument("--language", default="español neutro")
         parser.add_argument("--sources", default=None, help="comma-separated source ids/urls")
+        parser.add_argument(
+            "--profile-topics", default=None,
+            help="comma-separated curated topics for the public profile page",
+        )
         parser.add_argument("--avatar-path", default="")
         parser.add_argument(
             "--inactive", action="store_true", help="add the author soft-deactivated (default: active)"
@@ -663,6 +668,7 @@ def _authors_main(
             about=args.about,
             language=args.language,
             sources=_split_csv(args.sources),
+            profile_topics=_split_csv(args.profile_topics),
             avatar_path=args.avatar_path,
             active=not args.inactive,
         )
@@ -684,6 +690,10 @@ def _authors_main(
         parser.add_argument("--style", default=None)
         parser.add_argument("--language", default=None)
         parser.add_argument("--sources", default=None, help="comma-separated; replaces the list")
+        parser.add_argument(
+            "--profile-topics", default=None,
+            help="comma-separated; replaces the curated profile topics (empty string clears them)",
+        )
         parser.add_argument("--avatar-path", default=None)
         parser.add_argument(
             "--active", action=argparse.BooleanOptionalAction, default=None,
@@ -705,6 +715,8 @@ def _authors_main(
             changes["language"] = args.language
         if args.sources is not None:
             changes["sources"] = _split_csv(args.sources)
+        if args.profile_topics is not None:
+            changes["profile_topics"] = _split_csv(args.profile_topics)
         if args.avatar_path is not None:
             changes["avatar_path"] = args.avatar_path
         if args.active is not None:

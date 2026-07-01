@@ -6,7 +6,8 @@
     "daily": ["10-batch-plan"],
     "weekly": ["10-batch-plan"],
     "last-hour": ["10-batch-plan"],
-    "deploy": ["deploy"]
+    "deploy": ["deploy"],
+    "normalize-topics": ["normalize-topics"]
   },
   "disabled": {
     "on-demand": ["deploy"],

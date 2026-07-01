@@ -77,6 +77,20 @@ def test_batch_mode_stops_after_the_plan(tmp_path):
     assert "50-draft" not in manifest["modes"]["daily"]
 
 
+def test_normalize_topics_is_a_single_node_maintenance_mode(tmp_path):
+    # Curating author profile topics is its own one-shot mode (like deploy), NOT a step in
+    # the article-drafting loop: it walks a single node and stops.
+    client = _client(tmp_path)
+    manifest = json.loads(
+        client.get("/prompts/template", params={"key": "workflow/manifest.json"}).json()["body"]
+    )
+    assert manifest["modes"]["normalize-topics"] == ["normalize-topics"]
+    # It must not have leaked into an article mode's sequence.
+    assert "normalize-topics" not in manifest["modes"]["on-demand"]
+    node = client.get("/prompts/template", params={"key": "workflow/normalize-topics.md"})
+    assert node.status_code == 200 and "profile-topics" in node.json()["body"]
+
+
 def test_deploy_node_is_wired_last_but_disabled_by_default(tmp_path):
     # Deploy (production push) is plugged in as the last step of the article modes, but
     # disabled per-mode by default (safe: an article walk ends at publish), and it has its

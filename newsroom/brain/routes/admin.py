@@ -80,6 +80,7 @@ def _build_push(settings):
             name=persona.display_name,
             bio=persona.about,
             avatar=persona.avatar_path,
+            profile_topics=persona.profile_topics,
         )
 
     return push

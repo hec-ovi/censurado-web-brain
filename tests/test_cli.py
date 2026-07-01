@@ -184,6 +184,31 @@ def test_cli_authors_add_get_list_update_remove(tmp_path, capsys):
     assert json.loads(capsys.readouterr().out)["removed"] is False
 
 
+def test_cli_authors_profile_topics_add_update_and_clear(tmp_path, capsys):
+    # The curated public-profile topics are settable at add time and replaceable on update;
+    # an empty --profile-topics clears them (the generator then falls back to the union).
+    store = PersonaStore(open_db(tmp_path / "brain.db", check_same_thread=False))
+
+    code = main(
+        ["authors", "add", "--display-name", "Ada", "--beat", "tech",
+         "--who-i-am", "x", "--style", "y",
+         "--profile-topics", "politica, economia"],
+        persona_store=store,
+    )
+    assert code == 0
+    assert json.loads(capsys.readouterr().out)["profile_topics"] == ["politica", "economia"]
+
+    assert main(
+        ["authors", "update", "ada", "--profile-topics", "sociedad"], persona_store=store
+    ) == 0
+    assert json.loads(capsys.readouterr().out)["profile_topics"] == ["sociedad"]
+
+    assert main(
+        ["authors", "update", "ada", "--profile-topics", ""], persona_store=store
+    ) == 0
+    assert json.loads(capsys.readouterr().out)["profile_topics"] == []
+
+
 def test_cli_authors_explicit_id_is_honored(tmp_path, capsys):
     # --id overrides the derived slug, so an operator can pin a stable author handle.
     store = PersonaStore(open_db(tmp_path / "brain.db", check_same_thread=False))

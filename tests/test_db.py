@@ -157,6 +157,50 @@ def test_open_db_migrates_active_column_onto_an_existing_personas_db(tmp_path):
     again.close()
 
 
+def test_open_db_migrates_profile_topics_column_onto_an_existing_personas_db(tmp_path):
+    # Curated public-profile topics shipped after the personas table. A live DB predates
+    # them; the column only appears via the explicit ALTER in _migrate. Build a
+    # pre-profile_topics personas table with a row, reopen via open_db, and assert the
+    # column was added defaulting to an empty JSON array (so the store reads it back as []).
+    import sqlite3
+
+    path = tmp_path / "old_personas.db"
+    raw = sqlite3.connect(str(path))
+    raw.executescript(
+        """
+        CREATE TABLE personas (
+          id TEXT PRIMARY KEY, display_name TEXT NOT NULL, beat TEXT NOT NULL,
+          who_i_am TEXT NOT NULL, about TEXT, style TEXT NOT NULL,
+          language TEXT NOT NULL DEFAULT 'español neutro',
+          active INTEGER NOT NULL DEFAULT 1,
+          few_shots_pos TEXT, few_shots_neg TEXT, sources TEXT, avatar_path TEXT,
+          created_at TEXT NOT NULL, updated_at TEXT NOT NULL
+        );
+        """
+    )
+    raw.execute(
+        "INSERT INTO personas (id, display_name, beat, who_i_am, style, created_at, updated_at) "
+        "VALUES ('p1','P One','tech','w','s','t','t')"
+    )
+    raw.commit()
+    raw.close()
+
+    conn = open_db(path, check_same_thread=False)
+    try:
+        cols = {row["name"] for row in conn.execute("PRAGMA table_info(personas)")}
+        assert "profile_topics" in cols
+        row = conn.execute("SELECT profile_topics FROM personas WHERE id = 'p1'").fetchone()
+        assert row["profile_topics"] == "[]"
+    finally:
+        conn.close()
+
+    # The store reads the migrated row back with an empty curated list, never NULL.
+    from newsroom.personas import PersonaStore
+
+    persona = PersonaStore(open_db(path, check_same_thread=False)).get("p1")
+    assert persona is not None and persona.profile_topics == []
+
+
 def test_open_db_migrates_description_column_onto_an_existing_portals_db(tmp_path):
     # The live brain DB predates the portals.description column. CREATE TABLE IF NOT
     # EXISTS leaves the deployed table untouched, so the column only appears via the

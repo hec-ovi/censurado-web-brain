@@ -35,6 +35,9 @@ CREATE TABLE IF NOT EXISTS personas (
   few_shots_pos TEXT,
   few_shots_neg TEXT,
   sources       TEXT,
+  profile_topics TEXT,                        -- curated domain topics for the public
+                                              -- profile page (JSON array); brain-owned,
+                                              -- filled by the normalize-topics step gate.
   avatar_path   TEXT,
   active        INTEGER NOT NULL DEFAULT 1,   -- mirror tombstone: 0 = soft-deactivated
                                               -- (handle left web, or a web-created shell
@@ -182,6 +185,10 @@ _ADDED_COLUMNS = {
         # live personas.db predates it, so it is added explicitly. Old rows default to
         # active (1): an existing newsroom keeps writing until the mirror says otherwise.
         ("active", "INTEGER NOT NULL DEFAULT 1"),
+        # Curated public-profile topics shipped after the initial personas table; a live
+        # personas.db predates it, so it is added explicitly (old rows default to an empty
+        # JSON array, i.e. "fall back to the computed topic union").
+        ("profile_topics", "TEXT NOT NULL DEFAULT '[]'"),
     ),
     # The operator-facing source description shipped after the initial portals table; a
     # live brain DB predates it, so it is added explicitly (old rows default to '').
