@@ -12,7 +12,9 @@ This is a two-step tool flow, do not hand-build it:
   -> style or medium -> context>" --alt "<one-line Spanish alt>"`. It renders an
   art-directed FLUX.2 hero, uploads the bytes, and prints
   `{"image":"/media/<sha>.png","image_alt":"...","seed":...}`. ComfyUI must be up on
-  `:8188` (the GPU box); the text lane does not need it, only this step does.
+  `:8188` (the GPU box); the text lane does not need it, only this step does. Heroes
+  render wide (landscape, ~16:9) by default to fill the site's hero band; do not pass
+  `--width/--height` to make them square or tall, compose for a wide frame instead.
 - **Attach:** pass `--image /media/<sha>.png --image-alt "..."` on the publish step, or, on
   a piece already live, `python3 cli/censurado.py edit <slug> --meta image=/media/<sha>.png
   --meta image_alt="..."` (the edit keeps the permalink).
