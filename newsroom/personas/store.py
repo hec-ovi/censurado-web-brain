@@ -26,6 +26,11 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from newsroom.contracts.sections import SECTION_ENUM, is_valid_section
+# The ONE canonical slugify (transliterates Latin accents to match the platform's
+# domain.Slugify), re-exported so a persona id derived from an accented display name
+# resolves to the same ASCII slug the platform assigns. Was a divergent local copy that
+# dropped accented letters ("Munoz" -> "mu-oz"); collapsed onto the shared one.
+from newsroom.contracts.slug import slugify
 from newsroom.db import open_db
 
 __all__ = ["Persona", "PersonaStore", "open_store", "slugify"]
@@ -88,23 +93,6 @@ class Persona:
 
 def _utcnow() -> datetime:
     return datetime.now(timezone.utc)
-
-
-def slugify(text: str) -> str:
-    """Lowercase alphanumerics, runs of anything else collapse to one hyphen.
-
-    Public so the HTTP layer can pre-compute a persona's id (which becomes the
-    publish-seam author) the same way ``create`` derives it, with no drift."""
-    out: list[str] = []
-    prev_dash = False
-    for ch in text.strip().lower():
-        if ch.isalnum():
-            out.append(ch)
-            prev_dash = False
-        elif not prev_dash:
-            out.append("-")
-            prev_dash = True
-    return "".join(out).strip("-")
 
 
 class PersonaStore:

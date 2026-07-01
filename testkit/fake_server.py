@@ -40,7 +40,7 @@ from fastapi.responses import JSONResponse
 from starlette.concurrency import run_in_threadpool
 
 from newsroom.contracts.hashing import content_hash
-from newsroom.contracts.slug import derive_slug
+from newsroom.contracts.slug import derive_slug, slugify
 from testkit.assertions import length_cap_keys_in
 
 # ----- the platform's observable contract, pinned from the live source -----
@@ -160,18 +160,6 @@ class FakeState:
         return f"art_{self._seq:06d}"
 
 
-def _slugify(text: str) -> str:
-    """A simple slug stand-in (the returned slug only needs to be stable)."""
-    out = []
-    prev_dash = False
-    for ch in text.strip().lower():
-        if ch.isalnum():
-            out.append(ch)
-            prev_dash = False
-        elif not prev_dash:
-            out.append("-")
-            prev_dash = True
-    return "".join(out).strip("-")
 
 
 def _bearer(authorization: str | None) -> str:
@@ -424,7 +412,7 @@ def create_fake_app(state: FakeState | None = None) -> tuple[FastAPI, FakeState]
 
         # 8. brand-new article.
         article_id = state.next_id()
-        slug = _slugify(str(payload.get("slug") or title)) or chash[:12]
+        slug = slugify(str(payload.get("slug") or title)) or chash[:12]
         record = {"id": article_id, "slug": slug, "author": author}
         state.by_hash[chash] = record
         state.ledger[key] = {"content_hash": chash, "id": article_id, "slug": slug}

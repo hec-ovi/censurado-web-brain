@@ -99,6 +99,14 @@ def test_id_is_derived_from_display_name_when_blank(store: PersonaStore):
     assert created.id == "mara-vance"
 
 
+def test_derived_id_transliterates_accents_like_the_platform(store: PersonaStore):
+    # The id becomes article.author, and the platform slugifies that into /author/<slug>
+    # by transliterating Latin accents. Deriving the id the same way keeps the two in
+    # sync: an accented display name yields a clean ASCII id, not one with dropped letters.
+    created = store.create(_full_persona(display_name="Andrés Muñoz", id=""))
+    assert created.id == "andres-munoz"
+
+
 def test_explicit_id_is_honored(store: PersonaStore):
     created = store.create(_full_persona(id="mv-politics"))
     assert created.id == "mv-politics"

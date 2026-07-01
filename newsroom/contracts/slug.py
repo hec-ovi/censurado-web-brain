@@ -2,25 +2,23 @@
 ``NewArticle`` slug fallback chain.
 
 The platform dedups slugs WITHIN a batch on the DERIVED permalink slug, not on the
-raw ``slug`` field: ``internal/domain/article.go`` computes
+raw ``slug`` field: ``domain/article.go`` computes
 
     slug := Slugify(in.Slug)            // Slugify("") == ""
     if slug == "" { slug = Slugify(title) }
     if slug == "" { slug = hash[:12] }   // hash = ContentHash(title, body, author, section)
 
-where
+where ``Slugify`` lowercases, TRANSLITERATES the common Latin (mostly Spanish) accents
+to ASCII (a->a, n->n, u->u, ...), replaces every remaining non ``[a-z0-9]`` run with a
+single hyphen, and trims leading/trailing hyphens. The transliteration is load-bearing:
+"Politica Economica" (with accents) becomes ``politica-economica`` on the platform, NOT
+``pol-tica-econ-mica``. Any accented letter not in the fold, and any other non-ASCII
+character, is dropped by the ``[^a-z0-9]+`` pass, exactly like Go.
 
-    func Slugify(s string) string {
-        s = strings.ToLower(strings.TrimSpace(s))
-        s = regexp.MustCompile(`[^a-z0-9]+`).ReplaceAllString(s, "-")
-        return strings.Trim(s, "-")
-    }
-
-The brain reproduces this so a caller can predict the final slug the platform will assign
-(e.g. to de-collide a within-batch duplicate-slug rejection that would 422 the whole
-atomic batch). Any Unicode lowercasing difference between Go and Python is erased by the
-``[^a-z0-9]+`` replacement, so the slug output is byte-equal for the fields a journalist
-writes.
+The brain reproduces this byte-for-byte so a caller can predict the final slug the
+platform will assign (e.g. to de-collide a within-batch duplicate-slug rejection that
+would 422 the whole atomic batch), and so it is the ONE canonical slugify the persona
+store and the test fake reuse. The table below mirrors ``domain.slugTranslit``.
 """
 
 from __future__ import annotations
@@ -31,13 +29,27 @@ from newsroom.contracts.hashing import content_hash
 
 __all__ = ["slugify", "derive_slug"]
 
+# Mirror of the Go platform's domain.slugTranslit: fold the common Latin (mostly
+# Spanish) accented letters to ASCII so a derived slug matches the permalink the
+# platform assigns. Keyed on the lowercase form (slugify lowercases first).
+_TRANSLIT = str.maketrans({
+    "á": "a", "à": "a", "ä": "a", "â": "a", "ã": "a", "å": "a",
+    "é": "e", "è": "e", "ë": "e", "ê": "e",
+    "í": "i", "ì": "i", "ï": "i", "î": "i",
+    "ó": "o", "ò": "o", "ö": "o", "ô": "o", "õ": "o",
+    "ú": "u", "ù": "u", "ü": "u", "û": "u",
+    "ñ": "n", "ç": "c", "ý": "y", "ÿ": "y",
+})
 _NON_ALNUM = re.compile(r"[^a-z0-9]+")
 
 
 def slugify(text: str) -> str:
-    """Lowercase, trim, replace every non-alphanumeric run with a single hyphen, and
-    strip leading/trailing hyphens. Mirrors the platform's ``Slugify``."""
-    out = _NON_ALNUM.sub("-", text.strip().lower())
+    """Lowercase, transliterate the common Latin accents to ASCII, replace every other
+    non-alphanumeric run with a single hyphen, and strip leading/trailing hyphens. A
+    byte-for-byte mirror of the platform's ``domain.Slugify`` (lower, translit, then the
+    ``[^a-z0-9]+`` replacement), so "Munoz" or "Pinera" (accented) slug the same here as
+    on the platform."""
+    out = _NON_ALNUM.sub("-", text.strip().lower().translate(_TRANSLIT))
     return out.strip("-")
 
 
