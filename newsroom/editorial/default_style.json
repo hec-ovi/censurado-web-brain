@@ -15,7 +15,7 @@
   "rules": [
     {"id": "hecho-primero", "text": "Abri con el hecho central y su consecuencia concreta.", "severity": "gate", "scope": "both", "check": "llm"},
     {"id": "atribuir", "text": "Atribui cada afirmacion factica a una fuente nombrada.", "severity": "gate", "scope": "both", "check": "llm"},
-    {"id": "fuentes-multiples", "text": "Apoya el hecho central en al menos cinco fuentes independientes.", "severity": "gate", "scope": "both", "check": "code"},
+    {"id": "fuentes-multiples", "text": "Apoya el hecho central en al menos seis fuentes independientes, con un minimo de dos de cada tipo (derecha, neutral, izquierda).", "severity": "gate", "scope": "both", "check": "code"},
     {"id": "confirmado", "text": "Distingui lo confirmado de lo que afirma una sola parte.", "severity": "gate", "scope": "both", "check": "llm"},
     {"id": "sin-inventar", "text": "Usa solo datos y citas presentes en las fuentes reunidas.", "severity": "gate", "scope": "both", "check": "code"},
     {"id": "neutral", "text": "Manten un tono sobrio y describi sin tomar partido.", "severity": "gate", "scope": "both", "check": "llm"},
@@ -30,7 +30,7 @@
     "banned_terms": ["demoledor", "escandaloso", "letal", "brutal", "sin precedentes", "increible", "no te lo podes perder"],
     "preferred_swaps": {"polemico": "discutido", "fulmino": "rechazo", "castigo": "afecto", "historico": "destacado"}
   },
-  "sourcing": {"min_sources": 5, "require_attribution": true, "no_fabricated_quotes": true},
+  "sourcing": {"min_sources": 6, "min_per_type": 2, "type_fallback": "Si el autor no tiene suficientes fuentes de un tipo (derecha, neutral, izquierda), usa la busqueda web a discrecion para completar ese tipo.", "require_attribution": true, "no_fabricated_quotes": true},
   "structure": {
     "headline": "Breve y directo: el hecho esencial, sin relleno ni adjetivos.",
     "dateline": "CIUDAD, fecha, al inicio del cuerpo.",

@@ -13,11 +13,23 @@ from fastapi.testclient import TestClient
 
 from newsroom.brain import create_app
 from newsroom.config import Settings
+from newsroom.mirror.client import PushResult
 
 
 def _client(tmp_path) -> TestClient:
     settings = Settings(
         persona_db_path=tmp_path / "brain.db",
+    )
+    return TestClient(create_app(settings=settings))
+
+
+def _configured_client(tmp_path) -> TestClient:
+    # A brain wired to a backend registry (base URL + operator key): create/edit of an
+    # author mirrors its PUBLIC profile to POST /authors.
+    settings = Settings(
+        persona_db_path=tmp_path / "brain.db",
+        publish_base_url="http://backend.test",
+        operator_token="op-token",
     )
     return TestClient(create_app(settings=settings))
 
@@ -206,3 +218,81 @@ def test_synthesized_persona_persists_and_fetches_back_intact_on_empty_db(tmp_pa
     after = client.get("/personas").json()
     assert after["total"] == 1
     assert [p["id"] for p in after["personas"]] == ["ada-lovelace"]
+
+
+# ----- author creation registers the PUBLIC profile on the platform (the two corpora) -----
+
+
+def test_direct_create_registers_the_public_profile_when_backend_configured(tmp_path, monkeypatch):
+    # Creating an author mirrors ONLY its public fields to the registry (POST /authors),
+    # so it is a real site author immediately. The private voice never crosses the seam.
+    calls = []
+
+    def spy(base_url, token, *, handle, name="", bio="", avatar="", beat="", gender="", profile_topics=None, timeout=None):
+        calls.append(
+            {"base": base_url, "handle": handle, "name": name, "bio": bio, "avatar": avatar,
+             "beat": beat, "gender": gender, "topics": list(profile_topics or [])}
+        )
+        return PushResult(handle=handle, ok=True, status=200)
+
+    monkeypatch.setattr("newsroom.brain.routes.personas.push_web_author", spy)
+    client = _configured_client(tmp_path)
+    resp = client.post(
+        "/personas/direct",
+        json=_new_persona(
+            about="Mi bio publica en primera persona.",
+            avatar_path="/media/ada.png",
+            profile_topics=["chips"],
+            gender="femenino",
+            who_i_am="VOZ SECRETA que el drafter lee.",
+            style="ESTILO SECRETO.",
+        ),
+    )
+    assert resp.status_code == 201
+    assert len(calls) == 1, "create should push the public profile exactly once"
+    c = calls[0]
+    assert c["handle"] == "ada-lovelace"
+    assert c["name"] == "Ada Lovelace"
+    assert c["bio"] == "Mi bio publica en primera persona."  # the PUBLIC about crosses
+    assert c["avatar"] == "/media/ada.png"
+    assert c["beat"] == "tech"
+    assert c["gender"] == "femenino"  # gender is a PUBLIC field, it crosses
+    assert c["topics"] == ["chips"]
+    # the SECRET voice (who_i_am / style / few_shots) is NEVER mirrored.
+    blob = repr(c)
+    assert "VOZ SECRETA" not in blob and "ESTILO SECRETO" not in blob
+
+
+def test_direct_create_skips_registry_push_without_a_configured_token(tmp_path, monkeypatch):
+    # No backend key configured: create still succeeds, and nothing is pushed (the mirror
+    # backfill reconciles later). Registration never blocks author creation.
+    calls = []
+    monkeypatch.setattr(
+        "newsroom.brain.routes.personas.push_web_author",
+        lambda *a, **k: calls.append(1),
+    )
+    client = _client(tmp_path)  # default Settings: no operator token
+    assert client.post("/personas/direct", json=_new_persona()).status_code == 201
+    assert calls == []
+
+
+def test_patch_repushes_on_a_public_field_but_not_on_private_only(tmp_path, monkeypatch):
+    # Editing a PUBLIC field (about) re-mirrors the profile; editing only the private
+    # voice (who_i_am) does not touch the public registry.
+    calls = []
+
+    def spy(base_url, token, *, handle, **kw):
+        calls.append(handle)
+        return PushResult(handle=handle, ok=True, status=200)
+
+    monkeypatch.setattr("newsroom.brain.routes.personas.push_web_author", spy)
+    client = _configured_client(tmp_path)
+
+    client.post("/personas/direct", json=_new_persona())  # push #1 (create)
+    assert len(calls) == 1
+
+    client.patch("/personas/ada-lovelace", json={"about": "nueva bio publica"})  # public
+    assert len(calls) == 2, "a public-field edit re-pushes"
+
+    client.patch("/personas/ada-lovelace", json={"who_i_am": "nueva voz privada"})  # private
+    assert len(calls) == 2, "a private-only edit must NOT push"

@@ -221,14 +221,20 @@ def test_mirror_authors_pushes_public_fields_with_a_token(tmp_path, monkeypatch)
         )
     )
     assert client.post("/personas/direct", json={**_ADA, "about": "A bio."}).status_code == 201
+    # Creating the author already auto-registers its public profile; clear that push so
+    # this test isolates the explicit /mirror/authors backfill.
+    captured.clear()
 
     resp = client.post("/mirror/authors")
     assert resp.status_code == 200
     body = resp.json()
     assert body["pushed"] == ["ada-lovelace"]
     assert body["dry_run"] is False
-    # Only the PUBLIC fields crossed the boundary (no prompt).
-    assert captured == [{"handle": "ada-lovelace", "name": "Ada Lovelace", "bio": "A bio.", "avatar": ""}]
+    # Only the PUBLIC fields cross the boundary (no private prompt); the beat rides in the
+    # metadata blob so the generator can theme an article-less author's roster card.
+    assert captured == [
+        {"handle": "ada-lovelace", "name": "Ada Lovelace", "bio": "A bio.", "avatar": "", "metadata": {"beat": "tech"}}
+    ]
 
 
 def test_mirror_authors_without_a_token_is_503(tmp_path):

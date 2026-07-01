@@ -144,7 +144,8 @@ def test_default_style_is_coherent_and_uncapped():
     # length cap: no rule or structure text imposes a word/character count.
     assert any(e["label"] == "bad" for e in DEFAULT_STYLE.exemplars)
     assert any(r["severity"] == "gate" for r in DEFAULT_STYLE.rules)
-    assert DEFAULT_STYLE.sourcing["min_sources"] == 5
+    assert DEFAULT_STYLE.sourcing["min_sources"] == 6
+    assert DEFAULT_STYLE.sourcing["min_per_type"] == 2
 
     texts = " ".join(
         [DEFAULT_STYLE.voice, *(r["text"] for r in DEFAULT_STYLE.rules), *(str(v) for v in DEFAULT_STYLE.structure.values())]
@@ -168,4 +169,4 @@ def test_default_style_is_loaded_from_a_data_file_not_a_py_literal():
     assert seeds._DEFAULT_STYLE_PATH.exists()
     assert seeds._DEFAULT_STYLE_PATH.suffix == ".json"
     assert DEFAULT_STYLE.voice  # loaded and non-empty
-    assert DEFAULT_STYLE.sourcing["min_sources"] == 5
+    assert DEFAULT_STYLE.sourcing["min_sources"] == 6

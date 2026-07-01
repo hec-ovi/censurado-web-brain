@@ -168,7 +168,8 @@ def test_default_style_structure_knobs_round_trip(tmp_path):
     got = client.get("/editorial/style").json()
     assert got["structure"]["respin_passes"] == 2
     assert got["structure"]["topic_cap"] == 12
-    assert got["sourcing"]["min_sources"] == 5
+    assert got["sourcing"]["min_sources"] == 6
+    assert got["sourcing"]["min_per_type"] == 2
 
 
 def test_structure_respin_passes_put_persists(tmp_path):
@@ -232,15 +233,25 @@ def test_sourcing_get_and_put_changes_min_sources(tmp_path):
 
     put = client.put(
         "/editorial/style/sourcing",
-        json={"min_sources": 3, "require_attribution": True, "no_fabricated_quotes": False},
+        json={
+            "min_sources": 3,
+            "min_per_type": 2,
+            "type_fallback": "usa la busqueda web a discrecion",
+            "require_attribution": True,
+            "no_fabricated_quotes": False,
+        },
     )
     assert put.status_code == 200
     assert put.json()["min_sources"] == 3
+    # The per-lean minimum and its fallback clause round-trip through the sub-resource.
+    assert put.json()["min_per_type"] == 2
+    assert put.json()["type_fallback"] == "usa la busqueda web a discrecion"
 
     # Reflected on the active style's sourcing block, on a new version.
     active = client.get("/editorial/style").json()
     assert active["version"] == 2
     assert active["sourcing"]["min_sources"] == 3
+    assert active["sourcing"]["min_per_type"] == 2
     assert active["sourcing"]["no_fabricated_quotes"] is False
 
 

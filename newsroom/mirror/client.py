@@ -107,6 +107,8 @@ def push_web_author(
     name: str = "",
     bio: str = "",
     avatar: str = "",
+    beat: str = "",
+    gender: str = "",
     profile_topics: list[str] | None = None,
     timeout: float = DEFAULT_TIMEOUT,
 ) -> PushResult:
@@ -116,13 +118,21 @@ def push_web_author(
     re-run is a no-op. A transport fault returns a typed failure rather than raising, so
     the backfill loop reports per-handle and never aborts mid-way.
 
-    Curated ``profile_topics`` ride in the registry's ``metadata`` blob (the platform stores
-    it verbatim and the generator reads it there, preferring it over the auto-computed topic
-    union on the author page). It is sent ONLY when non-empty, so an uncurated author leaves
-    the metadata untouched and existing callers keep their exact wire shape."""
+    Curated ``profile_topics`` and the author's ``beat`` ride in the registry's ``metadata``
+    blob (the platform stores it verbatim and the generator reads it there: profile_topics
+    for the author page's topic list, beat to theme the Nosotros roster card of an author
+    that has no articles yet). Each is sent ONLY when non-empty, so an author with neither
+    leaves the metadata untouched and existing callers keep their exact wire shape."""
     body: dict[str, object] = {"handle": handle, "name": name, "bio": bio, "avatar": avatar}
+    metadata: dict[str, object] = {}
     if profile_topics:
-        body["metadata"] = {"profile_topics": list(profile_topics)}
+        metadata["profile_topics"] = list(profile_topics)
+    if beat:
+        metadata["beat"] = beat
+    if gender:
+        metadata["gender"] = gender
+    if metadata:
+        body["metadata"] = metadata
     try:
         resp = httpx.post(
             f"{base_url.rstrip('/')}/authors",

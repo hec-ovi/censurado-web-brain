@@ -75,11 +75,13 @@ def _build_push(settings):
     def push(persona: Persona) -> PushResult:
         return push_web_author(
             settings.publish_base_url,
-            settings.operator_token,
+            settings.admin_token or settings.operator_token,
             handle=persona.id,
             name=persona.display_name,
             bio=persona.about,
             avatar=persona.avatar_path,
+            beat=persona.beat,
+            gender=persona.gender,
             profile_topics=persona.profile_topics,
         )
 

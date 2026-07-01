@@ -26,6 +26,8 @@ from newsroom.personas.store import slugify
 __all__ = ["Portal", "PortalStore", "portal_slug", "normalize_domain"]
 
 FEED_TYPES = ("auto", "native_rss", "atom", "news_sitemap", "site_search")
+# Political lean, for cross-spectrum sourcing (the research step requires a minimum per lean).
+LEAN_TYPES = ("right", "neutral", "left")
 
 # Fields a caller may change after creation. ``id`` and the timestamps are managed.
 _MUTABLE_FIELDS = (
@@ -36,6 +38,7 @@ _MUTABLE_FIELDS = (
     "feed_type",
     "language",
     "ownership_group",
+    "lean",
     "enabled",
     "status",
     "last_checked",
@@ -77,6 +80,7 @@ class Portal:
     feed_type: str = "auto"
     language: str = "es"
     ownership_group: str = ""
+    lean: str = "neutral"
     enabled: bool = True
     status: str = "unknown"
     last_checked: str = ""
@@ -107,6 +111,8 @@ class PortalStore:
             raise ValueError("portal domain is empty")
         if portal.feed_type not in FEED_TYPES:
             raise ValueError(f"invalid feed_type {portal.feed_type!r}; must be one of {FEED_TYPES}")
+        if portal.lean not in LEAN_TYPES:
+            raise ValueError(f"invalid lean {portal.lean!r}; must be one of {LEAN_TYPES}")
         portal_id = portal.id.strip() or portal_slug(domain)
         if not portal_id:
             raise ValueError(f"could not derive a portal id from domain {portal.domain!r}")
@@ -117,8 +123,8 @@ class PortalStore:
                 """
                 INSERT INTO portals (
                   id, domain, homepage, description, feed_urls, feed_type, language,
-                  ownership_group, enabled, status, last_checked, last_ok, created_at, updated_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                  ownership_group, lean, enabled, status, last_checked, last_ok, created_at, updated_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     portal_id,
@@ -129,6 +135,7 @@ class PortalStore:
                     portal.feed_type,
                     portal.language,
                     portal.ownership_group,
+                    portal.lean,
                     1 if portal.enabled else 0,
                     portal.status,
                     portal.last_checked,
@@ -154,6 +161,8 @@ class PortalStore:
             raise ValueError(f"cannot update unknown field(s): {sorted(unknown)}")
         if "feed_type" in changes and changes["feed_type"] not in FEED_TYPES:
             raise ValueError(f"invalid feed_type {changes['feed_type']!r}; must be one of {FEED_TYPES}")
+        if "lean" in changes and changes["lean"] not in LEAN_TYPES:
+            raise ValueError(f"invalid lean {changes['lean']!r}; must be one of {LEAN_TYPES}")
         if "domain" in changes:
             changes["domain"] = normalize_domain(changes["domain"])
             if not changes["domain"]:
@@ -227,6 +236,7 @@ def _row_to_portal(row: sqlite3.Row) -> Portal:
         feed_type=row["feed_type"],
         language=row["language"],
         ownership_group=row["ownership_group"] or "",
+        lean=row["lean"],
         enabled=bool(row["enabled"]),
         status=row["status"],
         last_checked=row["last_checked"] or "",

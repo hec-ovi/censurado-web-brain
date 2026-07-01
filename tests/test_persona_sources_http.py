@@ -185,6 +185,32 @@ def test_routes_404_on_a_missing_persona(tmp_path):
     assert put.status_code == 404 and put.json()["code"] == "persona_not_found"
 
 
+def test_sources_view_groups_portals_by_lean(tmp_path):
+    # The pool is served pre-grouped by political lean so the research step can enforce
+    # "at least N of each lean" without regrouping. by_lean always carries the three lean
+    # keys; a lean the pool has none of is an empty list (never a missing key).
+    client = _client(tmp_path)
+    client.post("/portals", json={"domain": "derecha.com", "lean": "right"})
+    client.post("/portals", json={"domain": "otra-derecha.com", "lean": "right"})
+    client.post("/portals", json={"domain": "centro.com", "lean": "neutral"})
+    client.post("/portals", json={"domain": "izquierda.com", "lean": "left"})
+    client.post(
+        "/personas/direct",
+        json={"display_name": "Ada Lovelace", "beat": "tech", "who_i_am": "x", "style": "y"},
+    )
+    client.put(
+        "/personas/ada-lovelace/sources",
+        json={"sources": ["derecha-com", "otra-derecha-com", "centro-com", "izquierda-com"]},
+    )
+
+    pool = client.get("/personas/ada-lovelace/sources").json()
+    assert set(pool["by_lean"].keys()) == {"right", "neutral", "left"}
+    assert [p["id"] for p in pool["by_lean"]["right"]] == ["derecha-com", "otra-derecha-com"]
+    assert [p["id"] for p in pool["by_lean"]["neutral"]] == ["centro-com"]
+    assert [p["id"] for p in pool["by_lean"]["left"]] == ["izquierda-com"]
+    assert all(p.get("lean") for p in pool["portals"])  # lean also rides on each portal inline
+
+
 def test_openapi_types_the_linking_responses(tmp_path):
     # The linking routes declare response_model, so the generated OpenAPI advertises
     # PersonaSourcesOut (a typed client + docs surface), not a bare 200.

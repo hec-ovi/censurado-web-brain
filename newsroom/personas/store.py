@@ -44,6 +44,7 @@ _MUTABLE_FIELDS = (
     "about",
     "style",
     "language",
+    "gender",
     "few_shots_pos",
     "few_shots_neg",
     "sources",
@@ -77,6 +78,9 @@ class Persona:
     id: str = ""
     about: str = ""
     language: str = "español neutro"
+    # The author's gender, for the public profile label and correct pronouns
+    # (e.g. "femenino", "masculino", "no binario"). Empty means unspecified.
+    gender: str = ""
     few_shots_pos: list = field(default_factory=list)
     few_shots_neg: list = field(default_factory=list)
     sources: list = field(default_factory=list)
@@ -121,10 +125,10 @@ class PersonaStore:
             self._conn.execute(
                 """
                 INSERT INTO personas (
-                  id, display_name, beat, who_i_am, about, style, language,
+                  id, display_name, beat, who_i_am, about, style, language, gender,
                   few_shots_pos, few_shots_neg, sources, profile_topics, avatar_path, active,
                   created_at, updated_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     persona_id,
@@ -134,6 +138,7 @@ class PersonaStore:
                     persona.about,
                     persona.style,
                     persona.language,
+                    persona.gender,
                     json.dumps(persona.few_shots_pos),
                     json.dumps(persona.few_shots_neg),
                     json.dumps(persona.sources),
@@ -226,6 +231,7 @@ def _row_to_persona(row: sqlite3.Row) -> Persona:
         about=row["about"] or "",
         style=row["style"],
         language=row["language"],
+        gender=row["gender"],
         few_shots_pos=json.loads(row["few_shots_pos"]) if row["few_shots_pos"] else [],
         few_shots_neg=json.loads(row["few_shots_neg"]) if row["few_shots_neg"] else [],
         sources=json.loads(row["sources"]) if row["sources"] else [],

@@ -9,11 +9,16 @@ Answer them from real sources, and build a LEDGER you keep for the rest of the w
 central fact paired with the source URL that carries it. Every claim in the article will
 have to trace to a line in this ledger, so keep it as you go.
 
-**Cross-validate across at least {{MIN_SOURCES}} INDEPENDENT sources.** Independence is the
-test: two outlets in one ownership group, or two copies of one wire story, count as ONE
-source, not two. Prefer different platforms; a fact that holds across independent outlets
-is far stronger than one carried by a single source. Never invent a source, a statistic,
-or a quote, and never keep a URL you did not actually use.
+**Cross-validate across at least {{MIN_SOURCES}} INDEPENDENT sources, balanced by political
+lean.** Read your author's own outlets first (`persona <id>` lists them, and the source view
+groups them by `lean`: RIGHT, NEUTRAL, or LEFT). Your author prioritizes its own side's
+outlets, but the story must still stand across the spectrum: pull at least {{MIN_PER_TYPE}}
+INDEPENDENT sources of EACH lean (right, neutral, left), so no single lean carries a fact.
+Independence is the test: two outlets in one ownership group, or two copies of one wire
+story, count as ONE source, not two. If the author lacks enough outlets of a lean to reach
+{{MIN_PER_TYPE}}, use web search at your discretion to fill that lean with independent
+outlets. Never invent a source, a statistic, or a quote, and never keep a URL you did not
+actually use.
 
 If a named post is part of the story (a politician's announcement, a company's release, a
 notable reaction, one of Trump's truths), find the real one now and note its status URL so

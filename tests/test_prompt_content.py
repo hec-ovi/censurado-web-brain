@@ -28,13 +28,17 @@ def _flat(name: str) -> str:
     return " ".join(_workflow(name).lower().split())
 
 
-def test_research_uses_min_sources_knob_not_the_word_five():
+def test_research_uses_min_sources_and_per_lean_knobs_not_hardcoded_numbers():
     text = _workflow("30-research.md")
     low = _flat("30-research.md")
+    # The floor and the per-lean minimum are client-filled placeholders, never literals.
     assert "{{MIN_SOURCES}}" in text
-    assert "five" not in low
-    # The prefer-different-platforms guidance is kept.
-    assert "prefer different platforms" in low
+    assert "{{MIN_PER_TYPE}}" in text
+    assert "five" not in low and "six" not in low
+    # The research node balances sources by political lean and names the web-search fallback.
+    assert "lean" in low
+    assert "right, neutral, left" in low
+    assert "web search" in low
 
 
 def test_finalize_uses_topic_cap_knob_and_themes_plus_entities():

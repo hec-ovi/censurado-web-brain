@@ -115,6 +115,8 @@ class SourcingOut(BaseModel):
     requirements. ``min_sources`` is null when the active guide does not set one."""
 
     min_sources: int | None = None
+    min_per_type: int | None = None
+    type_fallback: str = ""
     require_attribution: bool = False
     no_fabricated_quotes: bool = False
 

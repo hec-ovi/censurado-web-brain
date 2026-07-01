@@ -212,3 +212,36 @@ def test_enabled_filter_and_pagination(tmp_path):
     assert page["total"] == 3
     assert len(page["portals"]) == 1
     assert page["portals"][0]["id"] == "news-com"  # oldest-first order
+
+
+def test_lean_defaults_neutral_and_round_trips_on_create_and_patch(tmp_path):
+    # A source's political lean (right/neutral/left) defaults to neutral when unset and
+    # round-trips through create, get and patch, like feed_type/description.
+    client = _client(tmp_path)
+    default = client.post("/portals", json={"domain": "example.com"})
+    assert default.status_code == 201
+    assert default.json()["lean"] == "neutral"  # default when unset
+
+    explicit = client.post("/portals", json={"domain": "izquierda.com", "lean": "left"})
+    assert explicit.status_code == 201
+    assert explicit.json()["lean"] == "left"
+    assert client.get("/portals/izquierda-com").json()["lean"] == "left"  # survives the read
+
+    patched = client.patch("/portals/example-com", json={"lean": "right"})
+    assert patched.status_code == 200
+    assert patched.json()["lean"] == "right"
+
+
+def test_invalid_lean_on_create_is_422(tmp_path):
+    client = _client(tmp_path)
+    resp = client.post("/portals", json={"domain": "example.com", "lean": "centrist"})
+    assert resp.status_code == 422
+    assert resp.json()["code"] == "invalid_portal"
+
+
+def test_invalid_lean_on_patch_is_422(tmp_path):
+    client = _client(tmp_path)
+    client.post("/portals", json={"domain": "example.com"})
+    resp = client.patch("/portals/example-com", json={"lean": "centrist"})
+    assert resp.status_code == 422
+    assert resp.json()["code"] == "invalid_portal"

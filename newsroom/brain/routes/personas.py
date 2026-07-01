@@ -30,21 +30,65 @@ it covers this router with every other route at once, no per-handler change.
 
 from __future__ import annotations
 
+import logging
 from dataclasses import asdict
 
 from fastapi import APIRouter, Request, Response
 from pydantic import BaseModel
+from starlette.concurrency import run_in_threadpool
 
 from newsroom.brain.problems import _problem
 from newsroom.brain.routes.portals import PortalOut
 from newsroom.brain.routes.portals import _out as _portal_out
 from newsroom.contracts.sections import SECTION_ENUM, is_valid_section
 from newsroom.editorial import PortalStore
+from newsroom.mirror import push_web_author
 from newsroom.personas import Persona
 
 __all__ = ["router"]
 
 router = APIRouter(tags=["personas"])
+
+_log = logging.getLogger(__name__)
+
+# The PUBLIC half of an author's two corpora. The SECRET voice (who_i_am, style,
+# few_shots) never leaves the brain; only these fields are mirrored to the platform
+# author registry so the author shows on the public site. A change to any of them
+# re-pushes; a change to only the voice does not.
+_PUBLIC_PROFILE_FIELDS = ("display_name", "about", "avatar_path", "profile_topics", "gender")
+
+
+async def _register_public_profile(settings, persona: Persona) -> None:
+    """Best-effort: upsert a persona's PUBLIC fields into the platform author registry
+    (``POST /authors``, keyed on handle) so a newly created or edited author is a real
+    site author immediately, without waiting for their first published article. Never
+    raises and never blocks the caller's success: creation/edit is the source of truth
+    and the append-only mirror/backfill reconciles later if this push fails (backend
+    down, no token). The private prompt is intentionally NOT sent."""
+    token = getattr(settings, "admin_token", "") or getattr(settings, "operator_token", "")
+    base = getattr(settings, "publish_base_url", "")
+    if not token or not base:
+        return
+    try:
+        result = await run_in_threadpool(
+            push_web_author,
+            base,
+            token,
+            handle=persona.id,
+            name=persona.display_name,
+            bio=persona.about,
+            avatar=persona.avatar_path,
+            beat=persona.beat,
+            gender=persona.gender,
+            profile_topics=list(persona.profile_topics),
+            timeout=3.0,
+        )
+        if not result.ok:
+            _log.warning(
+                "author registry push failed for %s: %s %s", persona.id, result.code, result.detail
+            )
+    except Exception as exc:  # registration is best-effort; never break create/edit
+        _log.warning("author registry push errored for %s: %s", persona.id, exc)
 
 
 class PersonaIn(BaseModel):
@@ -60,6 +104,7 @@ class PersonaIn(BaseModel):
     id: str = ""
     about: str = ""
     language: str = "español neutro"
+    gender: str = ""
     few_shots_pos: list = []
     few_shots_neg: list = []
     sources: list[str] = []
@@ -80,6 +125,7 @@ class PersonaPatch(BaseModel):
     about: str | None = None
     style: str | None = None
     language: str | None = None
+    gender: str | None = None
     few_shots_pos: list | None = None
     few_shots_neg: list | None = None
     sources: list[str] | None = None
@@ -99,6 +145,7 @@ class PersonaOut(BaseModel):
     style: str
     about: str
     language: str
+    gender: str
     few_shots_pos: list
     few_shots_neg: list
     sources: list
@@ -133,6 +180,7 @@ async def create_persona_direct(body: PersonaIn, request: Request):
         id=body.id,
         about=body.about,
         language=body.language,
+        gender=body.gender,
         few_shots_pos=list(body.few_shots_pos),
         few_shots_neg=list(body.few_shots_neg),
         sources=list(body.sources),
@@ -147,6 +195,9 @@ async def create_persona_direct(body: PersonaIn, request: Request):
         if "already exists" in str(exc):
             return _problem(409, "duplicate_id", detail=str(exc))
         return _problem(422, "invalid_persona", detail=str(exc))
+    # A new author is registered on the public site immediately (its public profile),
+    # not only once it has published: mirror the public fields to the platform registry.
+    await _register_public_profile(state.settings, stored)
     return _out(stored)
 
 
@@ -171,6 +222,10 @@ async def patch_persona(persona_id: str, body: PersonaPatch, request: Request):
         return _problem(404, "persona_not_found", detail=f"no persona {persona_id!r}")
     except ValueError as exc:
         return _problem(422, "invalid_persona", detail=str(exc))
+    # Keep the public registry in sync when an edit touches a PUBLIC field (an edit to
+    # only the private voice never crosses the seam).
+    if any(field in changes for field in _PUBLIC_PROFILE_FIELDS):
+        await _register_public_profile(state.settings, stored)
     return _out(stored)
 
 
@@ -228,6 +283,10 @@ class PersonaSourcesOut(BaseModel):
     persona_id: str
     sources: list[str]
     portals: list[PortalOut]
+    # The resolved portals grouped by political lean (right/neutral/left), so the
+    # research step can enforce "at least N of each lean" without regrouping. Keys are
+    # always the three leans (empty lists when the pool has none of a lean).
+    by_lean: dict[str, list[PortalOut]] = {}
 
 
 def _dedup(ids: list[str]) -> list[str]:
@@ -252,8 +311,11 @@ def _sources_out(persona: Persona, portal_store: PortalStore) -> PersonaSourcesO
         portal = portal_store.get(pid)
         if portal is not None:
             portals.append(_portal_out(portal))
+    by_lean: dict[str, list[PortalOut]] = {"right": [], "neutral": [], "left": []}
+    for portal_out in portals:
+        by_lean.setdefault(portal_out.lean, []).append(portal_out)
     return PersonaSourcesOut(
-        persona_id=persona.id, sources=list(persona.sources), portals=portals
+        persona_id=persona.id, sources=list(persona.sources), portals=portals, by_lean=by_lean
     )
 
 

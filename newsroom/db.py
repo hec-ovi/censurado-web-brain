@@ -32,6 +32,9 @@ CREATE TABLE IF NOT EXISTS personas (
   about         TEXT,
   style         TEXT NOT NULL,
   language      TEXT NOT NULL DEFAULT 'español neutro',
+  gender        TEXT NOT NULL DEFAULT '',        -- author gender for the public profile
+                                                 -- label + correct pronouns (femenino /
+                                                 -- masculino / no binario); '' = unspecified.
   few_shots_pos TEXT,
   few_shots_neg TEXT,
   sources       TEXT,
@@ -81,6 +84,8 @@ CREATE TABLE IF NOT EXISTS portals (
                     CHECK (feed_type IN ('auto','native_rss','atom','news_sitemap','site_search')),
   language        TEXT NOT NULL DEFAULT 'es',
   ownership_group TEXT NOT NULL DEFAULT '',    -- independence grouping for corroboration counting
+  lean            TEXT NOT NULL DEFAULT 'neutral'   -- political lean, for cross-spectrum sourcing
+                    CHECK (lean IN ('right','neutral','left')),
   enabled         INTEGER NOT NULL DEFAULT 1,
   status          TEXT NOT NULL DEFAULT 'unknown',   -- unknown|ok|unreachable (health-checker)
   last_checked    TEXT NOT NULL DEFAULT '',
@@ -189,11 +194,19 @@ _ADDED_COLUMNS = {
         # personas.db predates it, so it is added explicitly (old rows default to an empty
         # JSON array, i.e. "fall back to the computed topic union").
         ("profile_topics", "TEXT NOT NULL DEFAULT '[]'"),
+        # The author-gender label shipped after the initial personas table; a live
+        # personas.db predates it, so it is added explicitly (old rows default to '',
+        # i.e. unspecified until the operator labels them).
+        ("gender", "TEXT NOT NULL DEFAULT ''"),
     ),
     # The operator-facing source description shipped after the initial portals table; a
     # live brain DB predates it, so it is added explicitly (old rows default to '').
     "portals": (
         ("description", "TEXT NOT NULL DEFAULT ''"),
+        # The political-lean label shipped after the initial portals table; a live brain DB
+        # predates it, so it is added explicitly (old rows default to 'neutral'). ALTER TABLE
+        # ADD COLUMN cannot carry a CHECK, so the enum is enforced in the store / PortalIn layer.
+        ("lean", "TEXT NOT NULL DEFAULT 'neutral'"),
     ),
 }
 

@@ -47,6 +47,7 @@ class PortalIn(BaseModel):
     feed_type: str = "auto"
     language: str = "es"
     ownership_group: str = ""
+    lean: str = "neutral"
     enabled: bool = True
 
 
@@ -61,6 +62,7 @@ class PortalPatch(BaseModel):
     feed_type: str | None = None
     language: str | None = None
     ownership_group: str | None = None
+    lean: str | None = None
     enabled: bool | None = None
 
 
@@ -76,6 +78,7 @@ class PortalOut(BaseModel):
     feed_type: str
     language: str
     ownership_group: str
+    lean: str
     enabled: bool
     status: str
     last_checked: str
@@ -112,6 +115,7 @@ async def create_portal(body: PortalIn, request: Request):
         feed_type=body.feed_type,
         language=body.language,
         ownership_group=body.ownership_group,
+        lean=body.lean,
         enabled=body.enabled,
     )
     try:
