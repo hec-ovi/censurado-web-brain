@@ -33,11 +33,11 @@ def test_publish_creates_v1_and_it_is_active(tmp_path):
     client = _client(tmp_path)
     created = client.post(
         "/prompts/template",
-        json={"key": "journalist/draft.md", "body": "draft v1", "created_by": "hector"},
+        json={"key": "workflow/50-draft.md", "body": "draft v1", "created_by": "hector"},
     )
     assert created.status_code == 201
     body = created.json()
-    assert body["key"] == "journalist/draft.md"
+    assert body["key"] == "workflow/50-draft.md"
     assert body["version"] == 1
     assert body["is_active"] is True  # the first version of a key auto-activates
     assert body["created_by"] == "hector"
@@ -46,19 +46,19 @@ def test_publish_creates_v1_and_it_is_active(tmp_path):
 
 def test_second_publish_same_key_creates_v2_and_flips_active(tmp_path):
     client = _client(tmp_path)
-    client.post("/prompts/template", json={"key": "journalist/draft.md", "body": "v1"})
-    v2 = client.post("/prompts/template", json={"key": "journalist/draft.md", "body": "v2"}).json()
+    client.post("/prompts/template", json={"key": "workflow/50-draft.md", "body": "v1"})
+    v2 = client.post("/prompts/template", json={"key": "workflow/50-draft.md", "body": "v2"}).json()
     assert v2["version"] == 2 and v2["is_active"] is True
 
     # The active read is now v2 (publish activates by default).
-    active = client.get("/prompts/template", params={"key": "journalist/draft.md"}).json()
+    active = client.get("/prompts/template", params={"key": "workflow/50-draft.md"}).json()
     assert active["version"] == 2 and active["body"] == "v2"
 
 
 def test_get_template_returns_the_active_body(tmp_path):
     client = _client(tmp_path)
-    client.post("/prompts/template", json={"key": "manager/triage.md", "body": "triage body"})
-    got = client.get("/prompts/template", params={"key": "manager/triage.md"})
+    client.post("/prompts/template", json={"key": "workflow/10-batch-plan.md", "body": "triage body"})
+    got = client.get("/prompts/template", params={"key": "workflow/10-batch-plan.md"})
     assert got.status_code == 200
     assert got.json()["body"] == "triage body"
 
@@ -66,15 +66,15 @@ def test_get_template_returns_the_active_body(tmp_path):
 def test_versions_lists_newest_first_with_active_flags_and_total(tmp_path):
     client = _client(tmp_path)
     for i in range(3):
-        client.post("/prompts/template", json={"key": "journalist/enrich.md", "body": f"v{i}"})
+        client.post("/prompts/template", json={"key": "workflow/80-enrich.md", "body": f"v{i}"})
 
-    versions = client.get("/prompts/versions", params={"key": "journalist/enrich.md"}).json()
+    versions = client.get("/prompts/versions", params={"key": "workflow/80-enrich.md"}).json()
     assert versions["total"] == 3
     assert [v["version"] for v in versions["versions"]] == [3, 2, 1]  # newest first
     assert [v["is_active"] for v in versions["versions"]] == [True, False, False]
 
     page = client.get(
-        "/prompts/versions", params={"key": "journalist/enrich.md", "limit": 1, "offset": 1}
+        "/prompts/versions", params={"key": "workflow/80-enrich.md", "limit": 1, "offset": 1}
     ).json()
     assert page["total"] == 3  # the count before the window, not the page size
     assert [v["version"] for v in page["versions"]] == [2]
@@ -82,26 +82,26 @@ def test_versions_lists_newest_first_with_active_flags_and_total(tmp_path):
 
 def test_promote_reverts_to_an_older_version(tmp_path):
     client = _client(tmp_path)
-    client.post("/prompts/template", json={"key": "journalist/research.md", "body": "v1 body"})
-    client.post("/prompts/template", json={"key": "journalist/research.md", "body": "v2 body"})
+    client.post("/prompts/template", json={"key": "workflow/30-research.md", "body": "v1 body"})
+    client.post("/prompts/template", json={"key": "workflow/30-research.md", "body": "v2 body"})
 
     promoted = client.post("/prompts/versions/1/promote")
     assert promoted.status_code == 200
     assert promoted.json()["version"] == 1 and promoted.json()["is_active"] is True
     # The active read rolled back to v1; v2 stays retrievable in the history.
-    active = client.get("/prompts/template", params={"key": "journalist/research.md"}).json()
+    active = client.get("/prompts/template", params={"key": "workflow/30-research.md"}).json()
     assert active["version"] == 1 and active["body"] == "v1 body"
 
 
 def test_publish_staged_without_activating(tmp_path):
     # activate=False stages a version without moving the key's pointer.
     client = _client(tmp_path)
-    client.post("/prompts/template", json={"key": "manager/triage.md", "body": "live"})
+    client.post("/prompts/template", json={"key": "workflow/10-batch-plan.md", "body": "live"})
     staged = client.post(
-        "/prompts/template", json={"key": "manager/triage.md", "body": "staged", "activate": False}
+        "/prompts/template", json={"key": "workflow/10-batch-plan.md", "body": "staged", "activate": False}
     ).json()
     assert staged["version"] == 2 and staged["is_active"] is False
-    active = client.get("/prompts/template", params={"key": "manager/triage.md"}).json()
+    active = client.get("/prompts/template", params={"key": "workflow/10-batch-plan.md"}).json()
     assert active["body"] == "live"  # unchanged
 
 
@@ -110,16 +110,16 @@ def test_list_prompts_one_row_per_key(tmp_path):
     # Two keys, the first with two versions: the listing shows ONE row per key (its active).
     # Both keys also ship on disk, so the union must not double them: each appears exactly once,
     # carrying the stored active version, not a duplicate v0 disk row.
-    client.post("/prompts/template", json={"key": "journalist/draft.md", "body": "d1"})
-    client.post("/prompts/template", json={"key": "journalist/draft.md", "body": "d2"})
+    client.post("/prompts/template", json={"key": "workflow/50-draft.md", "body": "d1"})
+    client.post("/prompts/template", json={"key": "workflow/50-draft.md", "body": "d2"})
     client.post("/prompts/template", json={"key": "persona/synthesize.md", "body": "s1"})
 
     listing = client.get("/prompts").json()
     keys = [t["key"] for t in listing["templates"]]
-    assert keys.count("journalist/draft.md") == 1  # one row per key, no disk duplicate
+    assert keys.count("workflow/50-draft.md") == 1  # one row per key, no disk duplicate
     assert keys.count("persona/synthesize.md") == 1
     by_key = {t["key"]: t for t in listing["templates"]}
-    assert by_key["journalist/draft.md"]["version"] == 2  # the active version of the key
+    assert by_key["workflow/50-draft.md"]["version"] == 2  # the active version of the key
     assert by_key["persona/synthesize.md"]["version"] == 3  # version is a global autoincrement
     assert by_key["persona/synthesize.md"]["created_by"] != "disk"  # stored, not a disk row
     assert all(t["is_active"] for t in listing["templates"])
@@ -145,7 +145,7 @@ def test_publish_empty_key_is_422(tmp_path):
 
 def test_promote_unknown_version_is_404(tmp_path):
     client = _client(tmp_path)
-    client.post("/prompts/template", json={"key": "journalist/draft.md", "body": "v1"})
+    client.post("/prompts/template", json={"key": "workflow/50-draft.md", "body": "v1"})
     resp = client.post("/prompts/versions/99/promote")
     assert resp.status_code == 404
     assert resp.json()["code"] == "not_found"
@@ -154,7 +154,7 @@ def test_promote_unknown_version_is_404(tmp_path):
 def test_publish_empty_body_is_422(tmp_path):
     # A blank body would silently neuter the stage that loads it once runs read the store.
     client = _client(tmp_path)
-    resp = client.post("/prompts/template", json={"key": "journalist/draft.md", "body": "   "})
+    resp = client.post("/prompts/template", json={"key": "workflow/50-draft.md", "body": "   "})
     assert resp.status_code == 422
     assert resp.json()["code"] == "invalid_prompt"
 
@@ -165,11 +165,11 @@ def test_publish_empty_body_is_422(tmp_path):
 def test_promote_rejects_a_version_from_a_different_key():
     conn = open_db(":memory:")
     store = PromptStore(conn)
-    a = store.add_version("journalist/draft.md", "a-body")
-    store.add_version("manager/triage.md", "b-body")
-    # Promoting key "manager/triage.md" to a version that belongs to "journalist/draft.md" must fail.
+    a = store.add_version("workflow/50-draft.md", "a-body")
+    store.add_version("workflow/10-batch-plan.md", "b-body")
+    # Promoting key "workflow/10-batch-plan.md" to a version that belongs to "workflow/50-draft.md" must fail.
     with pytest.raises(KeyError):
-        store.promote("manager/triage.md", a.version)
+        store.promote("workflow/10-batch-plan.md", a.version)
 
 
 def test_openapi_types_the_prompt_responses(tmp_path):
@@ -188,7 +188,7 @@ def test_seed_prompts_lifts_real_files_and_is_idempotent():
     created, skipped = seed_prompts(conn)
     assert skipped == []
     # Every <role>/<name>.md under prompts/ landed as an active v1 of its key.
-    assert "journalist/research.md" in created
+    assert "workflow/30-research.md" in created
     assert "persona/synthesize.md" in created
     store = PromptStore(conn)
     keys = store.list_keys()
@@ -220,8 +220,8 @@ def _client_with_prompt_lib(tmp_path):
     """A client whose prompts_dir is a CONTROLLED on-disk library: one shipped prompt under
     it, plus a secret .md OUTSIDE it to prove the traversal guard. The store starts empty."""
     lib = tmp_path / "prompts"
-    (lib / "journalist").mkdir(parents=True)
-    (lib / "journalist" / "draft.md").write_text("DISK DRAFT BODY", encoding="utf-8")
+    (lib / "workflow").mkdir(parents=True)
+    (lib / "workflow" / "50-draft.md").write_text("DISK DRAFT BODY", encoding="utf-8")
     (tmp_path / "secret.md").write_text("SECRET OUTSIDE THE LIBRARY", encoding="utf-8")
     settings = Settings(persona_db_path=tmp_path / "brain.db", prompts_dir=lib)
     return TestClient(create_app(settings=settings))
@@ -230,7 +230,7 @@ def _client_with_prompt_lib(tmp_path):
 def test_get_template_falls_back_to_on_disk_when_store_is_empty(tmp_path):
     # The store has no version for the key, but the prompt ships on disk: serve it, marked v0.
     client = _client_with_prompt_lib(tmp_path)
-    resp = client.get("/prompts/template", params={"key": "journalist/draft.md"})
+    resp = client.get("/prompts/template", params={"key": "workflow/50-draft.md"})
     assert resp.status_code == 200
     body = resp.json()
     assert body["body"] == "DISK DRAFT BODY"
@@ -243,8 +243,8 @@ def test_store_version_overrides_the_on_disk_fallback(tmp_path):
     # Publishing a version makes the store win: the disk default is the override target, not
     # the other way round.
     client = _client_with_prompt_lib(tmp_path)
-    client.post("/prompts/template", json={"key": "journalist/draft.md", "body": "OPERATOR EDIT"})
-    active = client.get("/prompts/template", params={"key": "journalist/draft.md"}).json()
+    client.post("/prompts/template", json={"key": "workflow/50-draft.md", "body": "OPERATOR EDIT"})
+    active = client.get("/prompts/template", params={"key": "workflow/50-draft.md"}).json()
     assert active["body"] == "OPERATOR EDIT"
     assert active["version"] >= 1
     assert active["created_by"] != "disk"
@@ -252,7 +252,7 @@ def test_store_version_overrides_the_on_disk_fallback(tmp_path):
 
 def test_unknown_key_is_404_even_with_the_disk_fallback(tmp_path):
     client = _client_with_prompt_lib(tmp_path)
-    resp = client.get("/prompts/template", params={"key": "journalist/does-not-exist.md"})
+    resp = client.get("/prompts/template", params={"key": "workflow/does-not-exist.md"})
     assert resp.status_code == 404
     assert resp.json()["code"] == "prompt_not_found"
 
@@ -269,16 +269,17 @@ def test_disk_fallback_refuses_path_traversal(tmp_path):
 
 
 def test_list_prompts_unions_the_shipped_disk_keys_on_a_fresh_box(tmp_path):
-    # The store is empty (no seeder), but the shipped prompts/ tree ships 11 .md files: the
-    # listing is the union, so every workflow prompt key is present, each marked v0/disk.
+    # The store is empty (no seeder), but the shipped prompts/ tree ships the workflow
+    # step-gate nodes plus persona/synthesize: the listing is the union, so every shipped
+    # prompt key is present, each marked v0/disk.
     client = _client(tmp_path)
     listing = client.get("/prompts").json()
     assert listing["total"] >= 11
     by_key = {t["key"]: t for t in listing["templates"]}
-    assert "art_director/illustrate.md" in by_key
+    assert "workflow/95-image.md" in by_key
     assert "persona/synthesize.md" in by_key
-    assert by_key["art_director/illustrate.md"]["version"] == 0
-    assert by_key["art_director/illustrate.md"]["created_by"] == "disk"
+    assert by_key["workflow/95-image.md"]["version"] == 0
+    assert by_key["workflow/95-image.md"]["created_by"] == "disk"
     assert by_key["persona/synthesize.md"]["version"] == 0
     assert by_key["persona/synthesize.md"]["created_by"] == "disk"
     # Keys come back sorted for stable output.
@@ -292,10 +293,10 @@ def test_list_prompts_override_shows_once_as_a_stored_version(tmp_path):
     client = _client(tmp_path)
     client.post(
         "/prompts/template",
-        json={"key": "journalist/draft.md", "body": "OPERATOR DRAFT", "created_by": "hector"},
+        json={"key": "workflow/50-draft.md", "body": "OPERATOR DRAFT", "created_by": "hector"},
     )
     listing = client.get("/prompts").json()
-    rows = [t for t in listing["templates"] if t["key"] == "journalist/draft.md"]
+    rows = [t for t in listing["templates"] if t["key"] == "workflow/50-draft.md"]
     assert len(rows) == 1
     row = rows[0]
     assert row["version"] > 0
@@ -309,14 +310,14 @@ def test_list_prompts_override_shows_once_as_a_stored_version(tmp_path):
 def test_list_prompts_ignores_a_stray_non_md_file(tmp_path):
     # A controlled library: one shipped .md plus a stray non-.md file. Only the .md is a key.
     lib = tmp_path / "prompts"
-    (lib / "journalist").mkdir(parents=True)
-    (lib / "journalist" / "draft.md").write_text("DISK DRAFT", encoding="utf-8")
-    (lib / "journalist" / "notes.txt").write_text("NOT A PROMPT", encoding="utf-8")
+    (lib / "workflow").mkdir(parents=True)
+    (lib / "workflow" / "50-draft.md").write_text("DISK DRAFT", encoding="utf-8")
+    (lib / "workflow" / "notes.txt").write_text("NOT A PROMPT", encoding="utf-8")
     (lib / "README").write_text("NOT A PROMPT EITHER", encoding="utf-8")
     settings = Settings(persona_db_path=tmp_path / "brain.db", prompts_dir=lib)
     client = TestClient(create_app(settings=settings))
 
     listing = client.get("/prompts").json()
     keys = {t["key"] for t in listing["templates"]}
-    assert keys == {"journalist/draft.md"}
+    assert keys == {"workflow/50-draft.md"}
     assert listing["total"] == 1

@@ -25,6 +25,10 @@ Offer these to the human if it is not already obvious, and pick one:
   article is then written as its OWN separate `on-demand` walk, so you never draft a whole
   batch inside one context.
 
+There are also one-shot maintenance walks, not article writing, run directly when asked:
+**deploy** (push the live site to production), **normalize-topics** (curate an author's
+profile topics), and **portal-review** (curate the per-day front page).
+
 Start the walk with the mode you chose:
 
     python3 cli/censurado.py step --mode <mode>

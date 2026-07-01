@@ -140,7 +140,7 @@ def test_openapi_types_the_portal_responses(tmp_path):
 
 def test_enable_disable_on_missing_id_is_404_problem_json(tmp_path):
     # The toggle routes 404 on an unknown id, in the shared problem+json envelope, just
-    # like the read/patch paths -- so the operator console gets one error shape to branch on.
+    # like the read/patch paths -- so the operator panel gets one error shape to branch on.
     client = _client(tmp_path)
     for verb in ("enable", "disable"):
         resp = client.post(f"/portals/ghost/{verb}")
@@ -151,7 +151,7 @@ def test_enable_disable_on_missing_id_is_404_problem_json(tmp_path):
 
 def test_patch_empty_body_returns_current_state_without_bumping_updated_at(tmp_path):
     # An empty PATCH is a no-op read: it returns the current portal and must NOT touch
-    # updated_at (no write happened), so a console "save" with no edits is idempotent.
+    # updated_at (no write happened), so a panel "save" with no edits is idempotent.
     client = _client(tmp_path)
     created = client.post("/portals", json={"domain": "example.com"}).json()
     before = created["updated_at"]

@@ -1,6 +1,6 @@
 # Keep the build context small and reproducible. The brain image copies only
-# pyproject/uv.lock/README + newsroom/testkit/prompts; everything below is dev-only,
-# the frontend's own build context, or generated state that must not leak into the image.
+# pyproject/uv.lock/README + newsroom/testkit/prompts; everything below is dev-only
+# or generated state that must not leak into the image.
 .git
 .venv
 .pytest_cache
@@ -12,7 +12,6 @@ data
 *.db-wal
 *.db-shm
 tests
-frontend
 docs
 deploy
 CHANGELOG.md

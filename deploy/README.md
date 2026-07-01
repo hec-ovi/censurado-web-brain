@@ -1,20 +1,19 @@
 # Deploy
 
-Run the brain and its console together.
+Run the brain on its own.
 
 ## What runs
 
-- **brain**: the FastAPI config-plane surface (authors, sources, prompts, editorial style), served by uvicorn on port 8000 inside the compose network. Its SQLite lives on the `brain-data` volume. It runs no model.
-- **console**: nginx serving the buildless UI (`../frontend`) and reverse-proxying `/api` to the brain. Published on host port 8080.
+- **brain**: the FastAPI config-plane surface (authors, sources, prompts, editorial style), served by uvicorn on port 8000. Its SQLite lives on the `brain-data` volume. It runs no model.
 
-The console has no auth of its own and the brain has state-changing POSTs, so keep this on an internal network or put an auth layer in front of port 8080 before exposing it.
+The brain has no auth of its own and has state-changing POSTs, so it is published on `127.0.0.1:8000` only. Keep it on an internal network or put an auth layer in front before exposing it off-box. In the full stack it sits behind the harness operator panel, which gates it behind a login.
 
 ## Start
 
 ```
 cd deploy
 cp .env.example .env        # set NEWSROOM_OPERATOR_TOKEN and the publish URL
-docker compose up --build   # console on http://localhost:8080
+docker compose up --build   # brain on http://127.0.0.1:8000
 ```
 
 The operator token must hold the platform scopes (`articles:write`, `articles:publish-any`, `admin:write`); that single key is the only coupling between the brain and the platform.
@@ -23,7 +22,7 @@ The default `NEWSROOM_PUBLISH_BASE_URL` points at the host platform via `host.do
 
 ## Seed a fresh box
 
-Once the brain is up, `POST /bootstrap` (idempotent) loads the default style and location and lifts the prompt library into the editable store. It creates no authors and no sources; those stay operator-owned. An operator, or a CLI agent, creates authors via `POST /personas/direct` or the console.
+Once the brain is up, `POST /bootstrap` (idempotent) loads the default style and location and lifts the prompt library into the editable store. It creates no authors and no sources; those stay operator-owned. An operator, or a CLI agent, creates authors via `POST /personas/direct`.
 
 Authoring and publishing are done by a CLI agent against the platform's `POST /articles`, following the harness `cli/AGENTS.md`. The brain does no writing of its own.
 

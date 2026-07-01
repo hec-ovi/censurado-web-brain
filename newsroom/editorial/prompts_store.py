@@ -1,4 +1,4 @@
-"""The prompt library: the journalist/manager/etc. prompt templates as editable versions.
+"""The prompt library: the workflow step-gate prompt templates as editable versions.
 
 The shipped ``prompts/<role>/<name>.md`` files lifted into the SAME immutable-versions plus
 active-pointer shape the house style guide uses, so a prompt edit inserts a NEW version
@@ -6,7 +6,7 @@ active-pointer shape the house style guide uses, so a prompt edit inserts a NEW 
 full audit trail and instant restore per prompt.
 
 UNLIKE the style guide's single-row active pointer, the active pointer here is KEYED by
-the prompt's ``key`` (its relative path with forward slashes, e.g. ``journalist/research.md``),
+the prompt's ``key`` (its relative path with forward slashes, e.g. ``workflow/30-research.md``),
 so every key tracks its own live version independently. The store mirrors ``StyleStore``: a
 typed dataclass, a store over an open ``sqlite3.Connection``, an injectable ``clock`` for
 deterministic timestamps, and no network.

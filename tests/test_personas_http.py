@@ -125,7 +125,7 @@ def test_patch_invalid_beat_is_422(tmp_path):
 
 def test_patch_empty_body_returns_current_state_without_bumping_updated_at(tmp_path):
     # An empty PATCH is a no-op read: it returns the current persona and must NOT touch
-    # updated_at (no write happened), so a console "save" with no edits is idempotent.
+    # updated_at (no write happened), so a panel "save" with no edits is idempotent.
     client = _client(tmp_path)
     created = client.post("/personas/direct", json=_new_persona()).json()
     before = created["updated_at"]

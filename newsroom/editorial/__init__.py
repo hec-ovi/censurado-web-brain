@@ -13,7 +13,7 @@ Three brain-owned, in-process stores over the editorial tables in ``newsroom.db`
 Each store mirrors ``newsroom.personas.store``: a typed dataclass, a store over an
 open ``sqlite3.Connection``, an injectable ``clock`` for deterministic timestamps, and
 no network. ``config.Settings`` provides the boot seed; the live, editable copy lives
-in these tables so a console edit takes effect without restarting the brain.
+in these tables so a panel edit takes effect without restarting the brain.
 """
 
 from __future__ import annotations

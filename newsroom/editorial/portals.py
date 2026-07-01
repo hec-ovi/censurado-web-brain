@@ -183,7 +183,7 @@ class PortalStore:
         return stored
 
     def set_enabled(self, portal_id: str, enabled: bool) -> Portal:
-        """Convenience toggle used by the console."""
+        """Convenience toggle used by the panel."""
         return self.update(portal_id, enabled=enabled)
 
     def delete(self, portal_id: str) -> bool:

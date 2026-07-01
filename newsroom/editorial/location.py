@@ -9,7 +9,7 @@ in FIPS, so it is stored, not derived). The default place is Argentina in Spanis
 
 ``get`` always returns a usable ``Location`` (the stored row, or the in-memory default
 when nothing is seeded yet), so callers never branch on "is it configured". ``set`` is
-an upsert used by the console; ``seed`` writes the default only when absent, so a
+an upsert used by the panel; ``seed`` writes the default only when absent, so a
 re-run of bootstrap never clobbers an operator's edits.
 """
 

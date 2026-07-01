@@ -1,12 +1,12 @@
 """The prompt-library management API: typed CRUD over the versioned prompt templates.
 
-The journalist/manager/etc. prompt ``.md`` files live in a versioned store (immutable
+The workflow step-gate prompt ``.md`` files live in a versioned store (immutable
 versions plus a per-key active pointer), mirroring the house style guide. This router
 exposes them so an operator can read, edit, and roll back a prompt over HTTP without a
 code change, mirroring the editorial router's shape (typed In/Out models, a
 ``response_model`` + ``status_code`` on every route, the shared ``_problem`` body).
 
-A prompt's key is its relative path with forward slashes (e.g. ``journalist/research.md``).
+A prompt's key is its relative path with forward slashes (e.g. ``workflow/30-research.md``).
 Because a key contains a slash, it never sits in the URL path: it rides as a ``key`` query
 param (reads) or in the body (the publish POST). ``POST /prompts/template`` publishes a NEW
 version of a key (activating it by default); ``POST /prompts/versions/{version}/promote``
@@ -15,7 +15,7 @@ globally-unique int the key is derived from it, so the path needs no key.
 
 Every handler reads the shared ``PromptStore`` and the single connection lock off
 ``request.app.state`` (the store shares the one SQLite connection the rest of the brain
-uses); writes go under the lock so a console edit and a concurrent request never race on the
+uses); writes go under the lock so a panel edit and a concurrent request never race on the
 connection. The router holds NO SQL: it calls the store's methods and maps their
 ``KeyError`` / ``ValueError`` to problem responses (404 not_found / prompt_not_found, 422
 invalid_prompt). Auth is wired app-wide in ``create_app``, so there is none here.
@@ -38,7 +38,7 @@ router = APIRouter(tags=["prompts"])
 
 class PromptIn(BaseModel):
     """The POST /prompts/template body: a new version of a prompt ``key`` (its relative
-    path, e.g. ``journalist/research.md``). ``created_by`` is the optional author note
+    path, e.g. ``workflow/30-research.md``). ``created_by`` is the optional author note
     recorded on the version; ``activate`` (default True) makes the new version the live one
     for that key immediately -- set it False to stage a version an operator promotes later
     (note the FIRST version of a brand-new key is always activated regardless of this flag)."""
@@ -95,7 +95,7 @@ def _prompt_out(template: PromptTemplate) -> PromptOut:
 
 def _list_shipped_keys(prompts_dir: Path | str) -> list[str]:
     """Every shipped prompt key under ``prompts_dir`` (the on-disk library), each its relative
-    path with forward slashes (e.g. ``art_director/illustrate.md``). Globs ``*.md`` and
+    path with forward slashes (e.g. ``workflow/95-image.md``). Globs ``*.md`` and
     ``*.json`` (the step-gate's ``workflow/manifest.json`` node-order config rides in the same
     library), so a stray file of another extension is never a key. The shipped
     ``prompts/**`` are the CANONICAL workflow content that travels with the brain, so the

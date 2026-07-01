@@ -283,7 +283,7 @@ def test_location_put_blank_required_field_is_422(tmp_path):
 
 
 def test_location_put_empty_body_is_a_noop_read(tmp_path):
-    # An empty PUT returns the current value without a write, so a console "save" with no
+    # An empty PUT returns the current value without a write, so a panel "save" with no
     # edits never bumps updated_at.
     client = _client(tmp_path)
     first = client.put("/editorial/location", json={"city": "Cordoba"}).json()

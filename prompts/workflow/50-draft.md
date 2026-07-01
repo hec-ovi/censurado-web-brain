@@ -13,11 +13,16 @@ name stays exact, and nothing is invented to fit the position.
 Build it in the layers you outlined: open with the self-contained summary, develop the
 detail, close with the full context. Each layer new and dense; never restate an earlier one.
 
-**Say each idea once.** A caveat or disclaimer is stated ONE time, in a single short line,
-and never repeated. If your voice is satire, opinion, or fiction, open the body with one
-short italic disclaimer line and nothing more (for example
-`*Tómelo como un cuentillo de ciencia ficción.*`); a straight-news voice writes with no
-disclaimer and no "opinión" or "análisis" label, and never names its own byline.
+**Say each idea once.** A caveat, a disclaimer, or a framing note is stated ONE time, in a
+single short compact line, and never repeated. Do not stack three, four, or five synonyms
+for the same hedge, and do not let the caveat reappear in every paragraph. Reflexive
+over-hedging and repetition are noise: they bury the signal, drain the tension, and read as
+a machine parroting its own guardrails. One sharp, compact line carries the reader further
+than five cautious ones; any point the piece already made is advanced, never echoed. If
+your voice is satire, opinion, or fiction, open the body with one short italic disclaimer
+line and nothing more (for example `*Tómelo como un cuentillo de ciencia ficción.*`); a
+straight-news voice writes with no disclaimer and no "opinión" or "análisis" label, and
+never names its own byline.
 
 Give the body texture: short paragraphs, a few content-drawn headers where they help, and
 at the spots that earn it a device that breaks the flow (a `> blockquote` pull-quote, a

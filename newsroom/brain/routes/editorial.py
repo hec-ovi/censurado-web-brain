@@ -20,7 +20,7 @@ fields), and ``GET`` always returns a usable value (the default until one is sto
 
 Every handler reads the shared ``StyleStore`` / ``LocationStore`` and the single
 connection lock off ``request.app.state`` (the stores share the one SQLite connection the
-rest of the brain uses); writes go under the lock so a console edit and a concurrent
+rest of the brain uses); writes go under the lock so a panel edit and a concurrent
 request never race on the connection. The router holds NO SQL: it calls the stores' existing
 methods (``active``/``add_version``/``promote``/``list_versions`` and ``get``/``set``) and
 maps their ``KeyError``/``ValueError`` to problem responses (404 not_found, 422

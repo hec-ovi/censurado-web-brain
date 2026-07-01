@@ -4,7 +4,7 @@ A fresh box has empty tables. The bootstrap seeds only the parts of the editoria
 config that are author-agnostic on their own: the publication location, the default
 house style guide, and the on-disk prompt library. It does NOT invent authors or news
 sources. ``DEFAULT_PERSONAS`` and ``DEFAULT_PORTALS`` are empty, so an empty database
-stays empty until an operator creates personas and registers portals (via the console,
+stays empty until an operator creates personas and registers portals (via the panel,
 the API, or their own private seed). Author identities and the specific outlets a
 newsroom trusts are operator-owned data, never shipped in tracked code.
 
@@ -49,14 +49,14 @@ DEFAULT_PROMPTS_DIR: Path = Path(__file__).resolve().parents[2] / "prompts"
 
 
 # The specific outlets a newsroom trusts are operator-owned data: they live in the
-# operator's database, registered from the console/API, never shipped in tracked code.
+# operator's database, registered from the panel/API, never shipped in tracked code.
 # The default is empty, so an empty database has zero portals. Overridable per call (the
 # ``portals`` seed parameter) for tests and an operator's private seed script.
 DEFAULT_PORTALS: tuple[Portal, ...] = ()
 
 
 # Author identities are operator-owned data: they live ONLY in the operator's database,
-# created on demand (the CLI ``create-author`` flow or the console), never shipped in
+# created on demand (the CLI ``create-author`` flow or the panel), never shipped in
 # tracked code. The default is empty, so an empty database has zero personas until the
 # operator adds them. Overridable per call (the ``personas`` seed parameter) for tests
 # and an operator's private seed script.
@@ -67,7 +67,7 @@ DEFAULT_PERSONAS: tuple[Persona, ...] = ()
 # DATA file, not as a .py literal: voice prose, a good and a labeled BAD exemplar, an
 # ordered list of positive imperatives, and the mechanically enforceable lexicon /
 # sourcing / structure (including ``min_sources``). It is author-agnostic and operator-
-# overridable from the console; the file is the editable default, not code. NO length
+# overridable from the panel; the file is the editable default, not code. NO length
 # phrasing anywhere (no "en N palabras"): brevity is qualitative, never a word cap.
 _DEFAULT_STYLE_PATH: Path = Path(__file__).resolve().parent / "default_style.json"
 
@@ -167,7 +167,7 @@ def seed_prompts(
 ) -> tuple[list[str], list[str]]:
     """Lift each ``<role>/<name>.md`` prompt file into the versioned prompt store as the
     active v1 of its key (the relative path with forward slashes, e.g.
-    ``journalist/research.md``). Find-or-create per key: a key that already has an active
+    ``workflow/30-research.md``). Find-or-create per key: a key that already has an active
     version is never replaced, so an operator's later edit is preserved. Returns
     (created_keys, skipped_keys)."""
     store = PromptStore(conn)

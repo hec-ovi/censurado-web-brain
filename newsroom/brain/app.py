@@ -140,7 +140,7 @@ def create_app(
         conn = open_db(settings.persona_db_path, check_same_thread=False)
         store = PersonaStore(conn)
 
-    # One lock across every surface over the single shared connection, so a console edit
+    # One lock across every surface over the single shared connection, so a panel edit
     # and any concurrent request serialize on the same lock.
     lock = threading.Lock()
 
@@ -158,7 +158,7 @@ def create_app(
     if location_store is None and conn is not None:
         location_store = LocationStore(conn)
 
-    # The prompt-library API (the versioned journalist/manager/etc. prompt templates) shares
+    # The prompt-library API (the versioned workflow step-gate prompt templates) shares
     # the same one connection. Built from the shared conn when not injected; a test that
     # injects a pre-built persona store (conn is None) injects it alongside when the prompt
     # routes are exercised.
@@ -218,7 +218,7 @@ def create_app(
     # lexicon + sourcing sub-resources) and the publication location, under /editorial.
     app.include_router(editorial_router)
 
-    # The prompt-library MANAGEMENT API: the versioned journalist/manager/etc. prompt
+    # The prompt-library MANAGEMENT API: the versioned workflow step-gate prompt
     # templates, under /prompts. Keys carry a slash, so the key rides as a query/body param.
     app.include_router(prompts_router)
 

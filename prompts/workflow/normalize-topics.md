@@ -1,7 +1,7 @@
 # Normalize author profile topics (maintenance)
 
 This is a standalone maintenance walk, not part of writing an article. You curate the
-short list of domain topics shown on each author's PUBLIC profile page (`/autor/<id>/`).
+short list of domain topics shown on each author's PUBLIC profile page (`/author/<id>/`).
 Left alone, that page lists the union of every tag every one of the author's pieces ever
 carried, which sprawls into dozens of chips. A curated `profile_topics` list REPLACES that
 union with the handful of beats the author is actually known for. Run this after a batch,
@@ -26,11 +26,11 @@ Do it author by author. For each active author:
 When every author is done, push the curated topics to the platform so the generator can
 read them (they travel in the author registry, not in the articles):
 
-    curl -fsS -X POST "$CENSURADO_CONSOLE/api/mirror/authors"
+    curl -fsS -X POST "$CENSURADO_BRAIN/mirror/authors"
 
-(`$CENSURADO_CONSOLE` defaults to http://127.0.0.1:8083; the console proxies it to the
-brain, which upserts every author to the backend using its own operator token.) A dry run
-that lists the handles without pushing is `.../api/mirror/authors?dry_run=true`.
+(`$CENSURADO_BRAIN` defaults to http://127.0.0.1:8085, the brain config plane, which
+upserts every author to the backend using its own operator token.) A dry run that lists
+the handles without pushing is `.../mirror/authors?dry_run=true`.
 
 The change shows up on the site only after a regenerate. In the running stack the generate
 service repaints the front pages on its own; the sealed author pages are rewritten on the

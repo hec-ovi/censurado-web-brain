@@ -23,7 +23,7 @@ class Settings(BaseSettings):
         extra="ignore",
     )
 
-    # HTTP surface (the brain's own API, consumed by the frontend and the trigger).
+    # HTTP surface (the brain's own API, consumed by the CLI agent, the panel, and the trigger).
     host: str = "127.0.0.1"
     port: int = 8722
 
@@ -67,7 +67,7 @@ class Settings(BaseSettings):
     # the newsroom is not locked to one country. ``region`` is ISO-3166-1 alpha-2 (Google
     # News ``gl``), ``ui_lang`` is BCP47 (``hl``), ``language`` is ISO-639-1 (websearch
     # scope), ``gdelt_country`` is FIPS-10-4 (optional GDELT feed; differs from ISO for some
-    # countries). The console can change them later; this is only the first-boot seed.
+    # countries). The panel can change them later; this is only the first-boot seed.
     default_region: str = "AR"
     default_ui_lang: str = "es-419"
     default_language: str = "es"

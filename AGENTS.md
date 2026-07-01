@@ -2,12 +2,12 @@
 
 A map of `censurado-web-brain` for an agent (human or model) working in it. It says what each part does and points at the file that is the contract; it does not restate the code.
 
-The brain is the newsroom CONFIG PLANE. It runs no model. It stores the authors, the sources each one reads, the editorial style, and the versioned prompt library in one SQLite, and serves them over an HTTP API to the operator console and to a CLI agent. The CLI agent does the writing and publishes to the platform's `POST /articles` itself; the editorial bar and the publish contract live in the harness `cli/AGENTS.md`.
+The brain is the newsroom CONFIG PLANE. It runs no model. It stores the authors, the sources each one reads, the editorial style, and the versioned prompt library in one SQLite, and serves them over an HTTP API to a CLI agent and to the harness operator panel. The CLI agent does the writing and publishes to the platform's `POST /articles` itself; the editorial bar and the publish contract live in the harness `cli/AGENTS.md`.
 
 One process boundary matters: the brain serves HTTP. Everything else is in-process packages whose contract is the function signature.
 
 ```
-[console / CLI agent] --HTTP--> [ Brain (FastAPI): authors, sources, prompts, editorial style ]
+[panel / CLI agent] --HTTP--> [ Brain (FastAPI): authors, sources, prompts, editorial style ]
 ```
 
 Two invariants, enforced by tests:
@@ -23,7 +23,7 @@ The FastAPI app: the config-plane API. Authors, sources, editorial style, the pr
 - → `newsroom/config.py` (`Settings`: all `NEWSROOM_*` env; no length setting by policy)
 
 ### Personas (brain-owned identities)
-Typed CRUD over the brain's SQLite. A persona's `id` becomes the article `author` at the publish seam. Created via `POST /personas/direct` (pure persist, no model) or the console; an empty database has zero personas.
+Typed CRUD over the brain's SQLite. A persona's `id` becomes the article `author` at the publish seam. Created via `POST /personas/direct` (pure persist, no model); an empty database has zero personas.
 - → `newsroom/personas/store.py` (`Persona`, `PersonaStore`, `open_store`, `slugify`)
 
 ### Editorial (sources, style, location, the prompt store, the seeders)
@@ -35,9 +35,9 @@ The source registry and per-author source links, the versioned house style guide
 - → `newsroom/editorial/seeds.py` (`seed_all`, `seed_prompts`; `DEFAULT_PERSONAS=()`, `DEFAULT_PORTALS=()`)
 
 ### Prompts (the agnostic workflow text)
-Versioned `.md` files with `{{TOKEN}}` placeholders, no length caps. They ship in the image and serve as-is: `GET /prompts/template` falls back to the on-disk file when the store has no version, and `GET /prompts` lists the union of stored keys and shipped on-disk keys (12 today), so the prompts work on a fresh box and the store is a pure override layer. The journalist set is the editorial loop (`workflow.md`, research, outline, draft, the six-dimension `evaluate.md`, respin, factcheck, finalize); it reads the style knobs via `{{MIN_SOURCES}}` / `{{RESPIN_PASSES}}` / `{{TOPIC_CAP}}`. The brain serves the text raw; the CLI agent fills the placeholders.
+Versioned `.md` files with `{{TOKEN}}` placeholders, no length caps. They ship in the image and serve as-is: `GET /prompts/template` falls back to the on-disk file when the store has no version, and `GET /prompts` lists the union of stored keys and shipped on-disk keys (at least 19 shipped keys today; the live total is the union with any store-only keys), so the prompts work on a fresh box and the store is a pure override layer. The `prompts/workflow` set is the editorial step-gate loop the CLI `step` verb walks one node at a time (research, outline, draft, the six-dimension `60-evaluate`, respin, factcheck, enrich, accents-and-entities, finalize, image), ordered by `workflow/manifest.json`; it reads the style knobs via `{{MIN_SOURCES}}` / `{{RESPIN_PASSES}}` / `{{TOPIC_CAP}}`. `persona/synthesize.md` is the only non-workflow prompt. The brain serves the text raw; the CLI agent fills the placeholders.
 - → `newsroom/prompts.py` (`load_prompt`, `render`)
-- → `prompts/journalist/*.md`, `prompts/manager/triage.md`, `prompts/persona/synthesize.md`, `prompts/art_director/illustrate.md`
+- → `prompts/workflow/*.md`, `prompts/workflow/manifest.json`, `prompts/persona/synthesize.md`
 
 ### Database
 The brain-owned SQLite: connection + schema (personas, editorial config, the versioned style/prompt tables). The persona content hash that derives slugs lives in `contracts/hashing.py`.
@@ -53,10 +53,6 @@ The article and batch shapes are pinned copies of the platform schemas, governed
 - → `newsroom/contracts/article.py`, `schema.py`, `hashing.py`, `slug.py`, `sections.py`
 - → `newsroom/contracts/vendored/v1/*.schema.json` (do not hand-edit)
 
-### Frontend (the operator console)
-Buildless vanilla ES modules served by nginx; talks to the brain only over `/api` (nginx strips the prefix).
-- → `frontend/src/` (`api.js`, `components/`), `frontend/nginx.conf`
-
 ### Tests + the shared fake
 Every test drives a real entry point through to its side effect against one in-repo fake that stands in for the platform publish seam (`/articles`, `/articles:batch`) and the chat backend (carrying the no-output-cap guard).
 - → `testkit/fake_server.py`, `testkit/assertions.py` (the no-cap guard)
@@ -64,11 +60,11 @@ Every test drives a real entry point through to its side effect against one in-r
 
 ### Infra
 - → `Dockerfile` (uvicorn serving `create_app --factory`; pure-PyPI deps, no git or build toolchain)
-- → `deploy/docker-compose.yml` (brain + console) and `deploy/.env.example`
+- → `deploy/docker-compose.yml` (brain) and `deploy/.env.example`
 
 ## Operating the running brain
 
-No auth; treat it as a trusted-network service. In the harness it sits behind the console nginx at `http://127.0.0.1:8083/api/<path>` (the container listens on `:8000`); standalone it binds `127.0.0.1:8722`. Errors come back as `application/problem+json`.
+No auth; treat it as a trusted-network service. In the harness it is published on `127.0.0.1:8085` and the CLI agent calls its routes directly (no `/api` prefix); the operator panel reaches it in-network as `brain:8000` and gates it behind a login. Standalone it binds `127.0.0.1:8722`. Errors come back as `application/problem+json`.
 
 - **Authors:** `GET /personas`, `GET /personas/{id}` (the full record: `who_i_am`, `about`, `style`, `few_shots_*`, `sources`, ...), `POST /personas/direct` (create), `PATCH` / `DELETE /personas/{id}`.
 - **Sources:** `/portals` (registry CRUD + enable/disable), `GET|PUT /personas/{id}/sources` (the per-author pool). Co-owned outlets share an `ownership_group` and count once in the corroboration gate.

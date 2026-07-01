@@ -40,32 +40,36 @@ def test_load_prompt_reads_the_role_play_synthesis_prompt():
 
 
 def test_finalize_prompt_carries_headline_discipline():
-    # The finalize prompt is where the title and dek are authored. It must ship the
-    # honest-but-arresting headline rubric (promise kept, name the concrete noun, the
-    # dek does not repeat the title) AND keep the body uncapped and the fixed tokens.
-    text = load_prompt(load_settings().prompts_dir, "journalist", "finalize.md")
-    low = text.lower()
-    # The token contract the pipeline fills.
-    for token in ("{{SECTION}}", "{{AUTHOR}}", "{{ARTICLE}}"):
-        assert token in text, f"finalize prompt dropped {token}"
+    # The finalize step-gate node is where the title and dek are authored. It must ship
+    # the honest-but-arresting headline rubric (promise kept, name the concrete noun, the
+    # dek does not repeat the title), keep the body uncapped, and lift the standfirst into
+    # the live `description` field (the retired `summary` field is gone).
+    text = load_prompt(load_settings().prompts_dir, "workflow", "90-finalize.md")
+    # Collapse whitespace so a phrase that wraps across a markdown line break still matches.
+    low = " ".join(text.lower().split())
+    # The topic cap is a client-filled knob, never a hardcoded number.
+    assert "{{TOPIC_CAP}}" in text
     # The honesty gate and the pull hooks are present.
     assert "a headline is a promise" in low
-    assert "honesty gate" in low
-    assert "no withheld subject" in low or "name the real thing" in low
+    assert "promise kept" in low
+    assert "no withheld subject" in low and "name the real thing" in low
+    assert "no overclaim" in low
     assert "stakes" in low
     # The dek must not parrot the title.
     assert "does not repeat the title" in low
-    # Bodies are never length-capped.
-    assert "no length limit on the body" in low
+    # The standfirst is the live `description` field, and the body is never truncated.
+    assert "description" in low and "standfirst" in low
+    assert "do not truncate" in low
 
 
 def test_draft_prompt_enforces_say_each_idea_once():
-    # Every author drafts through journalist/draft.md, so the anti-redundancy rule
+    # Every author drafts through the workflow draft node, so the anti-redundancy rule
     # lives there once and applies to all of them: a caveat/disclaimer is stated a
     # single compact time, never stacked into three-to-five synonyms, never echoed
     # in every paragraph.
-    text = load_prompt(load_settings().prompts_dir, "journalist", "draft.md")
-    low = text.lower()
+    text = load_prompt(load_settings().prompts_dir, "workflow", "50-draft.md")
+    # Collapse whitespace so a phrase that wraps across a markdown line break still matches.
+    low = " ".join(text.lower().split())
     assert "say each idea once" in low
     assert "single short compact line" in low
     # The explicit "do not stack N synonyms for the same hedge" guardrail.
@@ -83,8 +87,8 @@ def test_load_prompt_overrides_returns_override_and_falls_back_to_fs():
     )
 
     # A key NOT in the map falls back to the real on-disk prompt.
-    journalist = load_prompt(prompts_dir, "journalist", "research.md", overrides=overrides)
-    assert journalist == load_prompt(prompts_dir, "journalist", "research.md")
+    workflow = load_prompt(prompts_dir, "workflow", "30-research.md", overrides=overrides)
+    assert workflow == load_prompt(prompts_dir, "workflow", "30-research.md")
 
     # No overrides at all behaves exactly as before (FS read).
     assert load_prompt(prompts_dir, "persona", "synthesize.md", overrides=None) == load_prompt(

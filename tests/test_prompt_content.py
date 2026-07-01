@@ -1,11 +1,12 @@
-"""WL2: the journalist prompt library is knob-driven and ships the loop spec.
+"""The workflow step-gate library is knob-driven and gates the editorial bar.
 
-These assertions pin the prompt TEXT (Bucket 2) against the editorial bar: the
+These assertions pin the prompt TEXT of the LIVE step-gate nodes (the ``workflow/*``
+prompts the CLI ``step`` verb walks one at a time) against the editorial bar: the
 cross-source count, the topic cap, and the respin-pass count are client-filled
-placeholders, never hardcoded numbers; the evaluate prompt scores all six review
-dimensions; and a new workflow.md states the end-to-end loop. The last test starts
+placeholders, never hardcoded numbers; the evaluate node gates all six review
+dimensions; and the drafting nodes carry the anti-slop discipline. The last test starts
 the real brain app over a FRESH personas.db with the shipped prompts dir and proves
-GET /prompts lists workflow.md among the keys.
+GET /prompts lists the workflow nodes among the keys.
 """
 
 from __future__ import annotations
@@ -17,41 +18,47 @@ from newsroom.config import Settings, load_settings
 from newsroom.prompts import load_prompt
 
 
-def _journalist(name: str) -> str:
-    return load_prompt(load_settings().prompts_dir, "journalist", name)
+def _workflow(name: str) -> str:
+    return load_prompt(load_settings().prompts_dir, "workflow", name)
+
+
+def _flat(name: str) -> str:
+    # Lowercased with whitespace collapsed to single spaces, so a phrase that wraps
+    # across a markdown line break still matches as a substring.
+    return " ".join(_workflow(name).lower().split())
 
 
 def test_research_uses_min_sources_knob_not_the_word_five():
-    text = _journalist("research.md")
+    text = _workflow("30-research.md")
+    low = _flat("30-research.md")
     assert "{{MIN_SOURCES}}" in text
-    assert "five" not in text.lower()
+    assert "five" not in low
     # The prefer-different-platforms guidance is kept.
-    assert "PREFER different platforms" in text
+    assert "prefer different platforms" in low
 
 
 def test_finalize_uses_topic_cap_knob_and_themes_plus_entities():
-    text = _journalist("finalize.md")
-    low = text.lower()
+    text = _workflow("90-finalize.md")
+    low = _flat("90-finalize.md")
     assert "{{TOPIC_CAP}}" in text
     assert "at most seven" not in low
-    # Tags are themes plus named entities, specific over vague.
+    # Tags are themes plus named entities, a few sharp ones over a loose list.
     assert "themes" in low and "entities" in low
-    assert "specific beats vague" in low
+    assert "sharp tags" in low
 
 
-def test_respin_states_pass_of_total_passes():
-    text = _journalist("respin.md")
-    assert "{{PASS_NO}}" in text
+def test_respin_states_the_pass_budget_knob():
+    text = _workflow("70-respin.md")
+    low = _flat("70-respin.md")
     assert "{{RESPIN_PASSES}}" in text
-    # The redundancy/compression/wording/slop checks survive.
-    low = text.lower()
-    assert "redundant" in low
+    # The redundancy/wording/slop checks survive.
+    assert "repeated" in low
     assert "ai-slop" in low
 
 
-def test_evaluate_scores_all_six_dimensions():
-    text = _journalist("evaluate.md")
-    low = text.lower()
+def test_evaluate_gates_all_six_dimensions():
+    text = _workflow("60-evaluate.md")
+    low = _flat("60-evaluate.md")
     # The six gated dimensions are each named.
     for dim in (
         "cross-sourcing",
@@ -61,46 +68,31 @@ def test_evaluate_scores_all_six_dimensions():
         "compression",
         "non-redundancy",
     ):
-        assert dim in low, f"evaluate prompt is missing the {dim!r} dimension"
-    # It is knob-driven and returns the structured per-dimension verdict.
+        assert dim in low, f"evaluate node is missing the {dim!r} dimension"
+    # It is knob-driven and is an explicit publish gate with a per-dimension verdict.
     assert "{{MIN_SOURCES}}" in text
-    for token in ("{{OUTLINE}}", "{{LEDGER}}", "{{DRAFT}}", "{{STYLE_GUIDE}}"):
-        assert token in text, f"evaluate prompt dropped {token}"
-    assert "failing_dimensions" in text
-    assert '"dimensions"' in text
+    assert "gate" in low
+    assert "pass" in low and "revise" in low
 
 
-def test_workflow_lists_the_step_order_with_knobs():
-    text = _journalist("workflow.md")
-    low = text.lower()
-    # The steps appear in order. Anchor on the bold step headings so the {{RESPIN_PASSES}}
-    # knob placeholder in the intro does not match the "respin" step early.
-    order = [
-        "**research",
-        "**outline",
-        "**draft",
-        "**evaluate",
-        "**respin",
-        "**factcheck",
-        "**finalize",
-    ]
-    positions = [low.index(step) for step in order]
-    assert positions == sorted(positions), "workflow steps are out of order"
-    # All three knob placeholders are present.
-    for token in ("{{MIN_SOURCES}}", "{{RESPIN_PASSES}}", "{{TOPIC_CAP}}"):
-        assert token in text, f"workflow prompt dropped {token}"
-    # The stop conditions are explicit.
-    assert "stop respinning" in low
-    assert "do not publish" in low
+def test_draft_node_enforces_the_anti_slop_discipline():
+    # The drafting node carries the say-each-idea-once / no-over-hedging rule that every
+    # author writes under.
+    low = _flat("50-draft.md")
+    assert "say each idea once" in low
+    assert "synonyms for the same hedge" in low
+    assert "over-hedging" in low
 
 
-def test_get_prompts_lists_workflow_on_a_fresh_box(tmp_path):
-    # Fresh personas.db, shipped prompts dir: the union now lists workflow.md too.
+def test_get_prompts_lists_the_workflow_nodes_on_a_fresh_box(tmp_path):
+    # Fresh personas.db, shipped prompts dir: the union lists the workflow step-gate nodes
+    # and persona/synthesize, each served from disk (version 0, created_by "disk").
     settings = Settings(persona_db_path=tmp_path / "brain.db")
     client = TestClient(create_app(settings=settings))
     listing = client.get("/prompts").json()
     assert listing["total"] >= 12
     by_key = {t["key"]: t for t in listing["templates"]}
-    assert "journalist/workflow.md" in by_key
-    assert by_key["journalist/workflow.md"]["version"] == 0
-    assert by_key["journalist/workflow.md"]["created_by"] == "disk"
+    for key in ("workflow/50-draft.md", "workflow/90-finalize.md", "persona/synthesize.md"):
+        assert key in by_key, f"fresh-box listing dropped {key}"
+        assert by_key[key]["version"] == 0
+        assert by_key[key]["created_by"] == "disk"

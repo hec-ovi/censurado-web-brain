@@ -16,7 +16,7 @@ the read path is untouched.
 
 Every handler reads the shared ``PersonaStore`` and the single connection lock off
 ``request.app.state`` (the store shares the one SQLite connection the rest of the brain
-uses); writes go under the lock so a console edit and a concurrent request never race on
+uses); writes go under the lock so a panel edit and a concurrent request never race on
 the connection. The router holds NO SQL: it calls the store's existing methods
 (``create``/``update``/``delete``/``get``) and maps the store's ``ValueError``/``KeyError``
 to problem responses (404 ``persona_not_found`` -- the resource-specific code the inline
@@ -155,7 +155,7 @@ async def patch_persona(persona_id: str, body: PersonaPatch, request: Request):
     """Partial update: only the fields the body NAMES (non-``None``) are applied. 404 if
     the persona is missing; 422 on a value the store rejects (e.g. an invalid ``beat``).
     An empty body is a no-op read that returns the current persona without bumping
-    ``updated_at`` (so a console "save" with no edits is idempotent)."""
+    ``updated_at`` (so a panel "save" with no edits is idempotent)."""
     changes = body.model_dump(exclude_none=True)
     state = request.app.state
     if not changes:

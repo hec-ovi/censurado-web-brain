@@ -47,12 +47,12 @@ CREATE TABLE IF NOT EXISTS personas (
   updated_at    TEXT NOT NULL
 );
 
--- ----- Operator-editable editorial config (the console's settings panel). -----
+-- ----- Operator-editable editorial config (the panel's settings). -----
 -- These three carry what an operator tunes at runtime without a redeploy: WHERE the
 -- news comes from (location + the portal allowlist) and HOW it is written (the house
--- style guide). They are read by the manager/research seams and the journalist
--- pipeline, and edited over the brain HTTP API. config.Settings still provides the
--- boot SEED; the live, editable copy lives here so a console edit takes effect without
+-- style guide). They are read by the workflow step-gate nodes (batch planning,
+-- research, and drafting), and edited over the brain HTTP API. config.Settings still provides the
+-- boot SEED; the live, editable copy lives here so a panel edit takes effect without
 -- restarting the process.
 
 -- Single-row publication location (id is pinned to 1). Drives place-scoped discovery
@@ -109,11 +109,11 @@ CREATE TABLE IF NOT EXISTS style_guide_active (
   version INTEGER NOT NULL REFERENCES style_guide(version)
 );
 
--- The prompt library (the journalist/manager/etc. prompt .md files) lifted into the SAME
+-- The prompt library (the workflow step-gate prompt .md files) lifted into the SAME
 -- immutable-versions + active-pointer shape as the style guide: an edit inserts a new
 -- version and promote/rollback just moves the pointer, so every prompt is auditable and
 -- restorable. UNLIKE style_guide_active's single id=1 row, the active pointer is KEYED by
--- the prompt's key (its relative path, e.g. 'journalist/research.md'), so each key tracks
+-- the prompt's key (its relative path, e.g. 'workflow/30-research.md'), so each key tracks
 -- its own live version. open_db enables foreign_keys, so a version row is inserted BEFORE
 -- the active pointer that references it.
 CREATE TABLE IF NOT EXISTS prompt_template (

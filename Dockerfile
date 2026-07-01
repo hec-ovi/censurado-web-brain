@@ -1,5 +1,5 @@
 # The brain image: the FastAPI config-plane surface, served by uvicorn.
-# Buildless on the frontend side; this side is a plain Python package install.
+# A plain Python package install, no build toolchain.
 FROM python:3.11-slim
 
 # uv, the project's toolchain, copied from its official image rather than
@@ -25,5 +25,5 @@ ENV NEWSROOM_PERSONA_DB_PATH=/data/personas.db \
 EXPOSE 8000
 
 # create_app is a factory (it reads settings from the environment); uvicorn builds it
-# with --factory. Port 8000 is the console's reverse-proxy upstream (brain:8000).
+# with --factory. Port 8000 is what the operator panel reaches in-network (brain:8000).
 CMD ["uvicorn", "newsroom.brain:create_app", "--factory", "--host", "0.0.0.0", "--port", "8000"]
