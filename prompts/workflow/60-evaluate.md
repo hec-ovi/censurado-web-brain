@@ -18,12 +18,16 @@ dimensions PASS or REVISE, with a short, specific note on what to fix when it is
    (promise kept by the body, no withheld subject, no overclaim, numbers in context, no
    fake urgency, earned emotion) and lands at least two hooks (a front-loaded concrete
    fact, a strong active present-tense verb, visible stakes, or a tension or reversal). The
-   subtitle does NOT repeat the title's words or subject. Any failed honesty gate, fewer
-   than two hooks, or a parroting subtitle is a REVISE.
+   subtitle does NOT repeat the title's words or subject, and neither is spliced by a `;`,
+   a `:`, or a dash. Any failed honesty gate, fewer than two hooks, a spliced title or
+   subtitle, or a parroting subtitle is a REVISE.
 5. **Compression and density.** Each layer is dense, high information per word. Padding,
    filler, or a coasting layer is a REVISE, naming the slack passages.
-6. **Non-redundancy.** No layer restates an earlier one, no repeated wording, no AI-slop
-   tells, and the close does not restate the opening. Any of these is a REVISE.
+6. **Non-redundancy and slop.** No layer restates an earlier one, no repeated wording, and
+   the close does not restate the opening. No AI-slop tell survives: an em or en dash, a
+   "no es X, es Y" inversion or an aphorism built on a negation, a candor tic ("la verdad
+   es que", "seamos honestos"), three adjectives standing in for a fact, a thing (a market,
+   a law, a country) given feelings or will. Any of these is a REVISE.
 
 Record the per-dimension verdict and the overall one: PASS only when every dimension
 passes. If the overall verdict is REVISE, the next step (respin) fixes it; you will run

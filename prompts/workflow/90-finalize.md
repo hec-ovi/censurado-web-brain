@@ -13,8 +13,11 @@ Each article has four authored layers; keep them distinct, none restating anothe
   subject (name the real thing, never "esto" or "lo que pasó"), no overclaim, numbers in
   context, no fake urgency, earned emotion; and it lands at least two hooks (front-loaded
   concrete fact, strong active present-tense verb, visible stakes, tension or reversal).
+  A title is ONE whole thought: never two halves spliced by a `;`, a `:`, or a dash (em,
+  en, or a hyphen between clauses). If it needs a splice, it is two drafts; pick one.
 - **subtitle** (the dek): one line under the title. It does NOT repeat the title's words or
-  subject; it pays off the stakes the title teases and sets up the opening line.
+  subject; it pays off the stakes the title teases and sets up the opening line. The same
+  splice ban applies: no `;`, no `:`, no dash separators.
 - **description** (the standfirst): one or two self-contained sentences that deliver the
   whole story densely; a reader who stops here still knows what happened and why it matters.
   Never a blurb about the author.

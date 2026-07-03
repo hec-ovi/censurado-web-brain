@@ -15,6 +15,9 @@ honestly:
 - Where is the wording loose or repeated? Tighten and vary it.
 - Any AI-slop cliché, throwaway "como si" metaphor, hollow hedge, padding, three
   adjectives for a fact, a closing line that restates the opening? Remove every one.
+  Same for an em or en dash, a "no es X, es Y" inversion, an aphorism built on a
+  negation, a candor tic ("la verdad es que"), or a thing given feelings or will:
+  remove every one.
 - Does each layer stay dense and distinct, and does the piece still read as a senior
   professional wrote it?
 

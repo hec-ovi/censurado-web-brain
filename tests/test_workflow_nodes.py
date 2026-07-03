@@ -29,7 +29,7 @@ def test_manifest_json_is_served_as_a_prompt(tmp_path):
     resp = client.get("/prompts/template", params={"key": "workflow/manifest.json"})
     assert resp.status_code == 200
     manifest = json.loads(resp.json()["body"])
-    assert "modes" in manifest and "on-demand" in manifest["modes"]
+    assert "modes" in manifest and "single-article" in manifest["modes"]
     assert resp.json()["created_by"] == "disk"  # served from disk, not the store
 
 
@@ -53,7 +53,7 @@ def test_orphan_enrich_is_wired_into_the_article_loop(tmp_path):
     )
     # The former orphan (journalist/enrich.md) is now the compression/proofread node and
     # sits in the per-article sequence, between factcheck and finalize.
-    seq = manifest["modes"]["on-demand"]
+    seq = manifest["modes"]["single-article"]
     assert "80-enrich" in seq
     assert seq.index("75-factcheck") < seq.index("80-enrich") < seq.index("90-finalize")
 
@@ -86,7 +86,7 @@ def test_normalize_topics_is_a_single_node_maintenance_mode(tmp_path):
     )
     assert manifest["modes"]["normalize-topics"] == ["normalize-topics"]
     # It must not have leaked into an article mode's sequence.
-    assert "normalize-topics" not in manifest["modes"]["on-demand"]
+    assert "normalize-topics" not in manifest["modes"]["single-article"]
     node = client.get("/prompts/template", params={"key": "workflow/normalize-topics.md"})
     assert node.status_code == 200 and "profile-topics" in node.json()["body"]
 
@@ -100,7 +100,7 @@ def test_portal_review_is_a_single_node_maintenance_mode(tmp_path):
     )
     assert manifest["modes"]["portal-review"] == ["portal-review"]
     # It must not have leaked into the article-drafting sequence.
-    assert "portal-review" not in manifest["modes"]["on-demand"]
+    assert "portal-review" not in manifest["modes"]["single-article"]
     node = client.get("/prompts/template", params={"key": "workflow/portal-review.md"})
     assert node.status_code == 200 and "portada" in node.json()["body"]
 
@@ -114,6 +114,6 @@ def test_deploy_node_is_wired_last_but_disabled_by_default(tmp_path):
     manifest = json.loads(
         client.get("/prompts/template", params={"key": "workflow/manifest.json"}).json()["body"]
     )
-    assert manifest["modes"]["on-demand"][-1] == "deploy"          # wired as the last step
-    assert manifest["disabled"]["on-demand"] == ["deploy"]         # but off by default
+    assert manifest["modes"]["single-article"][-1] == "deploy"     # wired as the last step
+    assert manifest["disabled"]["single-article"] == ["deploy"]    # but off by default
     assert manifest["modes"]["deploy"] == ["deploy"]               # the deploy-once mode

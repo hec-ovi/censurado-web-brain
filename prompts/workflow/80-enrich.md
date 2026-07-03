@@ -8,9 +8,10 @@ list) where it genuinely aids the reader. Cut the last repetition, filler, and a
 tell the earlier passes missed, and separate signal from noise so every line earns its
 place.
 
-Then proofread end to end: spelling, grammar, and punctuation are correct, and the Markdown
-is clean (well-formed headings, lists, and links; no stray syntax; each widget marker on
-its own line). This is the last plain read before the desk sees it.
+Then proofread end to end: spelling, grammar, and punctuation are correct, no em or en
+dash slipped in (commas, periods, or parentheses instead), and the Markdown is clean
+(well-formed headings, lists, and links; no stray syntax; each widget marker on its own
+line). This is the last plain read before the desk sees it.
 
 Keep every existing citation; add no citation to a source not in your ledger; introduce no
 new factual claim. There is no length limit; do not shorten by dropping substance, only by

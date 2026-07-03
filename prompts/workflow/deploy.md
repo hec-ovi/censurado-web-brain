@@ -8,7 +8,7 @@ were explicitly told to run unattended.
 **Deploy ONCE, not per article.** This regenerates the entire site from the local DB and
 pushes it, so a batch does NOT deploy after every piece. Publish all the articles first,
 then run this a single time (its own `deploy` mode: `python3 cli/censurado.py step deploy
---mode deploy`). For a single on-demand article, one deploy at the end is fine.
+--mode deploy`). For a single article (a `single-article` walk), one deploy at the end is fine.
 
 Preconditions (best-effort: if either is missing, tell the human and STOP here rather than
 failing the article, which is already safely published locally):

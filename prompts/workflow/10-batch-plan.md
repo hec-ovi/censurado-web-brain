@@ -20,7 +20,9 @@ Work in these moves:
 
 4. **Dedup against what we already published.** If a story is already covered and there is
    nothing new, drop it. If there are new developments, mark it a follow-up to the prior
-   piece.
+   piece. `python3 cli/censurado.py archive <persona-id> --q "<entity>"` lists what an
+   author already ran (titles, descriptions, dates, no bodies); coverage dated after the
+   event is the likely repeat.
 
 5. **Assign each cluster** to the author whose beat fits it. Skip stories no in-scope beat
    covers.
@@ -35,7 +37,7 @@ walk can read it (a working file):
 Then STOP. Do not draft here. Run each queued article as its own walk, passing that
 assignment's angle and author:
 
-    python3 cli/censurado.py step --mode on-demand
+    python3 cli/censurado.py step --mode single-article
 
 Give the human the queue first if they are watching, so they can drop or reorder before
 the articles are written.

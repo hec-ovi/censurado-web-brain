@@ -17,12 +17,12 @@ progress outside this conversation, so a long article never loses its place.
 
 Offer these to the human if it is not already obvious, and pick one:
 
-- **on-demand**: one article from a specific link, topic, or angle you were given.
+- **single-article**: one article from a specific link, topic, or angle you were given.
 - **single-author**: sweep one author's fresh beat and write the pieces that matter.
 - **authors**: the same, across several named authors.
 - **daily**, **weekly**, **last-hour**: a scheduled batch. Sweep the trending news, assign
   each story to the author whose beat fits, and emit an assignment queue. Each queued
-  article is then written as its OWN separate `on-demand` walk, so you never draft a whole
+  article is then written as its OWN separate `single-article` walk, so you never draft a whole
   batch inside one context.
 
 There are also one-shot maintenance walks, not article writing, run directly when asked:
