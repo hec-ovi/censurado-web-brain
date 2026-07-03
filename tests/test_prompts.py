@@ -47,7 +47,7 @@ def test_finalize_prompt_carries_headline_discipline():
     text = load_prompt(load_settings().prompts_dir, "workflow", "90-finalize.md")
     # Collapse whitespace so a phrase that wraps across a markdown line break still matches.
     low = " ".join(text.lower().split())
-    # The topic cap is a client-filled knob, never a hardcoded number.
+    # The topic cap is a client-filled parameter, never a hardcoded number.
     assert "{{TOPIC_CAP}}" in text
     # The honesty gate and the pull hooks are present.
     assert "a headline is a promise" in low

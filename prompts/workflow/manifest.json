@@ -14,5 +14,9 @@
     "single-article": ["deploy"],
     "single-author": ["deploy"],
     "authors": ["deploy"]
+  },
+  "produces": {
+    "30-research": "ledger.md",
+    "50-draft": "draft.md"
   }
 }

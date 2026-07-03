@@ -1,10 +1,13 @@
 """The prompt-library management API: typed CRUD over the versioned prompt templates.
 
-The workflow step-gate prompt ``.md`` files live in a versioned store (immutable
-versions plus a per-key active pointer), mirroring the house style guide. This router
-exposes them so an operator can read, edit, and roll back a prompt over HTTP without a
-code change, mirroring the editorial router's shape (typed In/Out models, a
-``response_model`` + ``status_code`` on every route, the shared ``_problem`` body).
+Two prompt families share this router. The AGENTIC WORKFLOW nodes (keys under
+``workflow/``, e.g. ``workflow/30-research.md``, plus ``workflow/manifest.json``) are plain
+FILES in the shipped prompt library: a read serves the file, a publish WRITES the file in
+place, and they are versioned by git, not the DB. The author-voice and house-style prompts
+(e.g. ``persona/synthesize.md``) use the versioned store (immutable versions plus a per-key
+active pointer), so an operator can edit and roll them back over HTTP without a code change.
+Both mirror the editorial router's shape (typed In/Out models, a ``response_model`` +
+``status_code`` on every route, the shared ``_problem`` body).
 
 A prompt's key is its relative path with forward slashes (e.g. ``workflow/30-research.md``).
 Because a key contains a slash, it never sits in the URL path: it rides as a ``key`` query
@@ -127,7 +130,9 @@ async def list_prompts(request: Request):
         actives = {key: state.prompt_store.active(key) for key in keys}
         templates: list[PromptOut] = []
         for key in sorted(keys):
-            stored = actives[key]
+            # Workflow nodes are file-based: always serve the disk file, never a store row
+            # (a stale seeded version must never shadow the git-versioned file).
+            stored = None if _is_workflow(key) else actives[key]
             if stored is not None:
                 templates.append(_prompt_out(stored))
                 continue
@@ -163,6 +168,34 @@ def _read_shipped_prompt(prompts_dir: Path | str, key: str) -> str | None:
         return None
 
 
+_WORKFLOW_PREFIX = "workflow/"
+
+
+def _is_workflow(key: str) -> bool:
+    """Agentic-workflow node keys (``workflow/<node>.md`` and ``workflow/manifest.json``) are
+    file-based: served and edited straight on disk, never through the versioned store."""
+    return key.startswith(_WORKFLOW_PREFIX)
+
+
+def _write_shipped_prompt(prompts_dir: Path | str, key: str, body: str) -> None:
+    """Write a workflow node ``key`` back to the on-disk prompt library (an edit in place; the
+    file is git-versioned, so there is no DB version). Same path-traversal guard as the read
+    side: the key must be an EXISTING ``.md``/``.json`` file that resolves inside
+    ``prompts_dir``. Raises ``ValueError`` on a bad key, so the route maps it to 422; adding a
+    brand-new node is a code change (it needs a manifest entry too), not an API write."""
+    if not (key.endswith(".md") or key.endswith(".json")):
+        raise ValueError(f"workflow key must be a .md or .json file: {key!r}")
+    root = Path(prompts_dir).resolve()
+    candidate = root.joinpath(*key.split("/")).resolve()
+    if not candidate.is_relative_to(root):
+        raise ValueError(f"key escapes the prompt library: {key!r}")
+    if not candidate.is_file():
+        raise ValueError(
+            f"no workflow prompt {key!r} to edit; adding a new node is a code change"
+        )
+    candidate.write_text(body, encoding="utf-8")
+
+
 @router.get("/prompts/template", status_code=200, response_model=PromptOut)
 async def get_active_prompt(request: Request, key: str):
     """The ACTIVE version of one prompt ``key``. Prefers the versioned store (an operator's
@@ -173,10 +206,12 @@ async def get_active_prompt(request: Request, key: str):
     on-disk library has the key. The on-disk fallback is reported as ``version`` 0, ``created_by``
     ``"disk"`` so a client can tell a shipped default from a stored version."""
     state = request.app.state
-    with state.lock:
-        template = state.prompt_store.active(key)
-    if template is not None:
-        return _prompt_out(template)
+    # Workflow nodes are file-based: serve the on-disk file directly, never the store.
+    if not _is_workflow(key):
+        with state.lock:
+            template = state.prompt_store.active(key)
+        if template is not None:
+            return _prompt_out(template)
     body = _read_shipped_prompt(state.settings.prompts_dir, key)
     if body is None:
         return _problem(404, "prompt_not_found", detail=f"no active prompt for key {key!r}")
@@ -200,12 +235,23 @@ async def list_prompt_versions(request: Request, key: str, limit: int = 100, off
 
 @router.post("/prompts/template", status_code=201, response_model=PromptOut)
 async def publish_prompt(body: PromptIn, request: Request):
-    """Publish a NEW immutable version of a prompt ``key`` from the body. Because the store
-    is versioned, this never overwrites: it inserts a new version and (when ``activate``,
-    the default) makes it the live version of the key, so the prior version stays auditable
-    and restorable via promote. 422 ``invalid_prompt`` on a blank key. Returns 201 + the
-    stored version."""
+    """Publish a prompt edit. A WORKFLOW node (key under ``workflow/``) is file-based: this
+    WRITES the ``.md``/``.json`` in place (git is the version history), returning it as
+    ``version`` 0 / ``created_by`` ``"disk"``. Any other key (author voice, house style) is
+    stored VERSIONED: it inserts a new immutable version and (when ``activate``, the default)
+    makes it live, so the prior version stays auditable and restorable via promote. 422
+    ``invalid_prompt`` on a blank key or an unknown workflow file. Returns 201."""
     state = request.app.state
+    if _is_workflow(body.key):
+        if not body.body.strip():
+            return _problem(422, "invalid_prompt", detail="a workflow node body cannot be blank")
+        try:
+            _write_shipped_prompt(state.settings.prompts_dir, body.key, body.body)
+        except ValueError as exc:
+            return _problem(422, "invalid_prompt", detail=str(exc))
+        return PromptOut(
+            key=body.key, version=0, body=body.body, created_by="disk", created_at="", is_active=True
+        )
     try:
         with state.lock:
             stored = state.prompt_store.add_version(

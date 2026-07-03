@@ -1,4 +1,4 @@
-"""The workflow step-gate library is knob-driven and gates the editorial bar.
+"""The workflow step-gate library is parameter-driven and gates the editorial bar.
 
 These assertions pin the prompt TEXT of the LIVE step-gate nodes (the ``workflow/*``
 prompts the CLI ``step`` verb walks one at a time) against the editorial bar: the
@@ -28,7 +28,7 @@ def _flat(name: str) -> str:
     return " ".join(_workflow(name).lower().split())
 
 
-def test_research_uses_min_sources_and_per_lean_knobs_not_hardcoded_numbers():
+def test_research_uses_min_sources_and_per_lean_parameters_not_hardcoded_numbers():
     text = _workflow("30-research.md")
     low = _flat("30-research.md")
     # The floor and the per-lean minimum are client-filled placeholders, never literals.
@@ -41,7 +41,7 @@ def test_research_uses_min_sources_and_per_lean_knobs_not_hardcoded_numbers():
     assert "web search" in low
 
 
-def test_finalize_uses_topic_cap_knob_and_themes_plus_entities():
+def test_finalize_uses_topic_cap_parameter_and_themes_plus_entities():
     text = _workflow("90-finalize.md")
     low = _flat("90-finalize.md")
     assert "{{TOPIC_CAP}}" in text
@@ -51,7 +51,7 @@ def test_finalize_uses_topic_cap_knob_and_themes_plus_entities():
     assert "sharp tags" in low
 
 
-def test_respin_states_the_pass_budget_knob():
+def test_respin_states_the_pass_budget_parameter():
     text = _workflow("70-respin.md")
     low = _flat("70-respin.md")
     assert "{{RESPIN_PASSES}}" in text
@@ -73,7 +73,7 @@ def test_evaluate_gates_all_six_dimensions():
         "non-redundancy",
     ):
         assert dim in low, f"evaluate node is missing the {dim!r} dimension"
-    # It is knob-driven and is an explicit publish gate with a per-dimension verdict.
+    # It is parameter-driven and is an explicit publish gate with a per-dimension verdict.
     assert "{{MIN_SOURCES}}" in text
     assert "gate" in low
     assert "pass" in low and "revise" in low

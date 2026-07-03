@@ -915,7 +915,7 @@ def _editorial_lexicon_main(argv: list[str], *, style_store: StyleStore) -> int:
 def _editorial_sourcing_main(argv: list[str], *, style_store: StyleStore) -> int:
     """``censurado-brain editorial sourcing get|set``: read/edit the sourcing block of the
     active style (the ``min_sources`` corroboration floor plus the attribution flags).
-    ``set`` derives a NEW active version with the named knobs MERGED onto the active
+    ``set`` derives a NEW active version with the named parameters MERGED onto the active
     sourcing, so ``--min-sources 3`` keeps the other flags. ``--json`` replaces the whole
     block first, then the flags override. Returns 0 on success, 1 on no active guide / bad
     input / unknown sub-verb."""

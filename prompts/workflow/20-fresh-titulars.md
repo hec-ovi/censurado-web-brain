@@ -10,9 +10,10 @@ newest-first and self-windowed to about 48 hours, so the top entries are the fre
 Treat "newest by timestamp" as latest, not automatically as the editorial lead; use a
 portada or home feed for the true lead where one exists.
 
-Some outlets in the list are X accounts, not portals. Pull those accounts' latest posts
-with your X tools (the X API MCP) instead of a feed; a fresh post by an account your
-author follows is a titular too, and often the earliest one.
+Some outlets in the list are X accounts, not portals. They have no feed, so web search what
+the account posted on your beat (the handle plus the topic, or its public page); a fresh post
+by an account your author follows is a titular too, and often the earliest one. Capture one
+you want to quote later with `python3 cli/censurado.py tweet <status-url-or-id>` (keyless).
 
 From the fresh items, pick the few stories that matter most for this beat, and dedup
 against what is already on the front page. Carry the lead story (or stories) you chose into

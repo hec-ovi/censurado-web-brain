@@ -1,7 +1,7 @@
 """The editorial-config management API: typed CRUD over the operator's house style and
 publication place (infra chunk 5).
 
-Two operator-owned editorial knobs had stores but NO management surface: the house STYLE
+Two operator-owned editorial parameters had stores but NO management surface: the house STYLE
 GUIDE (the "model of redaction + rules": voice, exemplars, rules, the banned-term
 ``lexicon``, the ``sourcing`` block with ``min_sources``, and the ``structure`` hints)
 and the publication LOCATION (region/language/city that scopes discovery). This router

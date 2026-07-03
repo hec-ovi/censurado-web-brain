@@ -141,13 +141,13 @@ def test_publish_wrong_typed_body_is_validation_envelope_422(tmp_path):
     assert resp.json()["code"] == "validation_failed"
 
 
-# ----- structure knobs: the default-style defaults + the PUT round-trip -----
+# ----- structure parameters: the default-style defaults + the PUT round-trip -----
 
 
-def test_default_style_structure_knobs_round_trip(tmp_path):
+def test_default_style_structure_parameters_round_trip(tmp_path):
     # Publishing the tracked DEFAULT_STYLE and reading it back through the API carries the
-    # numeric structure knobs (respin_passes, topic_cap) and the corroboration floor
-    # (sourcing.min_sources) unchanged: the structure field is a free dict, so the knobs
+    # numeric structure parameters (respin_passes, topic_cap) and the corroboration floor
+    # (sourcing.min_sources) unchanged: the structure field is a free dict, so the parameters
     # round-trip with no schema change.
     from newsroom.editorial.seeds import DEFAULT_STYLE
 
@@ -174,7 +174,7 @@ def test_default_style_structure_knobs_round_trip(tmp_path):
 
 def test_structure_respin_passes_put_persists(tmp_path):
     # A fresh publish with structure.respin_passes=3 round-trips through GET, so an operator
-    # can retune the knob over HTTP without a code change.
+    # can retune the parameter over HTTP without a code change.
     client = _client(tmp_path)
     client.post("/editorial/style", json=_guide())
 

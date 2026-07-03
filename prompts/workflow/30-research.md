@@ -21,10 +21,11 @@ outlets. Never invent a source, a statistic, or a quote, and never keep a URL yo
 actually use.
 
 If a named post is part of the story (a politician's announcement, a company's release, a
-notable reaction, one of Trump's truths), find the real one now and note its status URL so
-you can embed it later as a card. Some of your author's outlets are X accounts: sweep what
-those accounts posted about this story with your X tools (the X API MCP), and treat a
-protagonist's post as a primary source of intent, not just a quote. Establish what the
+notable reaction, one of Trump's truths), find the real one now with a web search (a news page
+that embeds it exposes its `x.com/.../status/<id>` URL) and note that status URL so you can
+embed it later as a card. Some of your author's outlets are X accounts: web search what those
+accounts posted about this story (the handle plus the topic), and treat a protagonist's post
+as a primary source of intent, not just a quote. Establish what the
 post is doing (whom it answers, what it announces, what it buries) so the article can
 report that intention with the post embedded as its evidence. A post in English gets an
 exact Spanish translation in the prose plus a one-time note that the original is in

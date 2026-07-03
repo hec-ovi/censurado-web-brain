@@ -15,9 +15,8 @@ This is a two-step tool flow, do not hand-build it:
   `:8188` (the GPU box); the text lane does not need it, only this step does. Heroes
   render wide (landscape, ~16:9) by default to fill the site's hero band; do not pass
   `--width/--height` to make them square or tall, compose for a wide frame instead.
-- **Attach:** pass `--image /media/<sha>.png --image-alt "..."` on the publish step, or, on
-  a piece already live, `python3 cli/censurado.py edit <slug> --meta image=/media/<sha>.png
-  --meta image_alt="..."` (the edit keeps the permalink).
+- **Attach:** the render saves the hero for you; the next preview step puts it on the piece.
+  Render here, then run the normal preview.
 
 Brief per beat: tech/AI is clean and futuristic, circuitry as landscape; politics and
 investigation are documentary and evidentiary; mystery and conspiracy are occult and

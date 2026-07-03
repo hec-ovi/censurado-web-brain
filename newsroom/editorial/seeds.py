@@ -165,17 +165,20 @@ def seed_style(conn: sqlite3.Connection, style: StyleGuide = DEFAULT_STYLE) -> b
 def seed_prompts(
     conn: sqlite3.Connection, prompts_dir: Path | str = DEFAULT_PROMPTS_DIR
 ) -> tuple[list[str], list[str]]:
-    """Lift each ``<role>/<name>.md`` prompt file into the versioned prompt store as the
-    active v1 of its key (the relative path with forward slashes, e.g.
-    ``workflow/30-research.md``). Find-or-create per key: a key that already has an active
-    version is never replaced, so an operator's later edit is preserved. Returns
-    (created_keys, skipped_keys)."""
+    """Lift each non-workflow ``<role>/<name>.md`` prompt file into the versioned prompt store
+    as the active v1 of its key (the relative path with forward slashes, e.g.
+    ``persona/synthesize.md``). The AGENTIC WORKFLOW nodes (``workflow/*``) are skipped: they
+    are file-based (served and edited straight on disk, git-versioned), never in the store.
+    Find-or-create per key: a key that already has an active version is never replaced, so an
+    operator's later edit is preserved. Returns (created_keys, skipped_keys)."""
     store = PromptStore(conn)
     root = Path(prompts_dir)
     created: list[str] = []
     skipped: list[str] = []
     for path in sorted(root.rglob("*.md")):
         key = path.relative_to(root).as_posix()
+        if key.startswith("workflow/"):
+            continue  # file-based, not stored
         if store.active(key) is not None:
             skipped.append(key)
             continue
