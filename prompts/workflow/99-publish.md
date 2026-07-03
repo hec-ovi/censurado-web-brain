@@ -19,9 +19,9 @@ Preview with the toolkit, which reads the operator token and builds the strict J
 Write a `--subtitle` and a one-line `--description`; preview needs both.
 
 The field contract (the exact request, the strict JSON keys, the response codes, the widget
-snapshots, and where the article lands on the portada) is in `cli/AGENTS.md`; follow it for
-the mechanics. Expect `201` and `{"id":...,"slug":...}` (`200` means an identical article
-already existed and nothing was written).
+snapshots, and where the article lands on the portada) is in the write-article skill
+(`cli/skills/write-article/SKILL.md`); follow it for the mechanics. Expect `201` and
+`{"id":...,"slug":...}` (`200` means an identical article already existed and nothing was written).
 
 On success the command prints the live link for you, so you do not build the URL yourself:
 

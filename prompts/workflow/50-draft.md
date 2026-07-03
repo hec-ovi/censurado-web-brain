@@ -33,9 +33,11 @@ earlier Censurado piece, drop its widget marker right there in the body, at that
 middle of the piece where it comes up, each on its own line: `{{tweet:<id>}}`,
 `{{video:<id-or-url>}}`, `{{relacionado:<older-slug>}}`. These belong inline where the reader
 meets them, so a related-note or a post card sits mid-article, next to the sentence it
-supports, and it is fine to place more than one through the body. For a post, capture it
-first with `python3 cli/censurado.py tweet <url>` (or `truth <url>`) and then write
-`{{tweet:<id>}}` where you discuss it; preview attaches the card for you.
+supports, and it is fine to place more than one through the body. A `{{tweet:<id>}}` for a
+live X post needs nothing extra, exactly like `{{relacionado:}}` and `{{video:}}`: just write
+the marker with the post's numeric id and preview auto-fetches the card. Only run
+`python3 cli/censurado.py tweet <url>` (or `truth <url>`) to PIN a snapshot the auto-fetch
+cannot reach: a since-deleted X post, or a Truth Social post (auto-fetch is X-only).
 
 A post card must earn its spot: quote a post only when the post itself is part of the
 story (the announcement, the claim you dissect, the reaction that caused the news), never
