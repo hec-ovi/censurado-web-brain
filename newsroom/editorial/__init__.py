@@ -20,7 +20,6 @@ from __future__ import annotations
 
 from newsroom.editorial.location import DEFAULT_LOCATION, Location, LocationStore
 from newsroom.editorial.portals import Portal, PortalStore, normalize_domain, portal_slug
-from newsroom.editorial.prompts_store import PromptStore, PromptTemplate
 from newsroom.editorial.style import StyleGuide, StyleStore
 
 __all__ = [
@@ -33,6 +32,4 @@ __all__ = [
     "normalize_domain",
     "StyleGuide",
     "StyleStore",
-    "PromptStore",
-    "PromptTemplate",
 ]

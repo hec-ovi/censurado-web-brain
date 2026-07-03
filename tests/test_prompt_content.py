@@ -89,8 +89,8 @@ def test_draft_node_enforces_the_anti_slop_discipline():
 
 
 def test_get_prompts_lists_the_workflow_nodes_on_a_fresh_box(tmp_path):
-    # Fresh personas.db, shipped prompts dir: the union lists the workflow step-gate nodes
-    # and persona/synthesize, each served from disk (version 0, created_by "disk").
+    # Fresh personas.db, shipped prompts dir: the listing serves every prompt file, the
+    # workflow step-gate nodes and persona/synthesize, each just {key, body} from disk.
     settings = Settings(persona_db_path=tmp_path / "brain.db")
     client = TestClient(create_app(settings=settings))
     listing = client.get("/prompts").json()
@@ -98,5 +98,5 @@ def test_get_prompts_lists_the_workflow_nodes_on_a_fresh_box(tmp_path):
     by_key = {t["key"]: t for t in listing["templates"]}
     for key in ("workflow/50-draft.md", "workflow/90-finalize.md", "persona/synthesize.md"):
         assert key in by_key, f"fresh-box listing dropped {key}"
-        assert by_key[key]["version"] == 0
-        assert by_key[key]["created_by"] == "disk"
+        assert set(by_key[key]) == {"key", "body"}
+        assert by_key[key]["body"].strip()

@@ -26,21 +26,20 @@ The FastAPI app: the config-plane API. Authors, sources, editorial style, the pr
 Typed CRUD over the brain's SQLite. A persona's `id` becomes the article `author` at the publish seam. Created via `POST /personas/direct` (pure persist, no model); an empty database has zero personas.
 - → `newsroom/personas/store.py` (`Persona`, `PersonaStore`, `open_store`, `slugify`)
 
-### Editorial (sources, style, location, the prompt store, the seeders)
-The source registry and per-author source links, the versioned house style guide (voice, exemplars, the vetoed-term lexicon, the sourcing floor), the publication location, and the versioned prompt store. The seeders load the defaults on bootstrap (style, location, the on-disk prompt library) and create no authors or portals.
+### Editorial (sources, style, location, the seeders)
+The source registry and per-author source links, the versioned house style guide (voice, exemplars, the vetoed-term lexicon, the sourcing floor), and the publication location. The seeders load the defaults on bootstrap (style and location) and create no authors or portals.
 - → `newsroom/editorial/portals.py` (`Portal`, `PortalStore`)
 - → `newsroom/editorial/style.py` (`StyleGuide`, `StyleStore`) + `default_style.json`
 - → `newsroom/editorial/location.py` (`Location`, `LocationStore`, `DEFAULT_LOCATION`)
-- → `newsroom/editorial/prompts_store.py` (`PromptStore`, `PromptTemplate`)
-- → `newsroom/editorial/seeds.py` (`seed_all`, `seed_prompts`; `DEFAULT_PERSONAS=()`, `DEFAULT_PORTALS=()`)
+- → `newsroom/editorial/seeds.py` (`seed_all`; `DEFAULT_PERSONAS=()`, `DEFAULT_PORTALS=()`)
 
 ### Prompts (the agnostic workflow text)
-`.md` files with `{{TOKEN}}` placeholders, no length caps, split by key prefix into two families. The `prompts/workflow` set is the editorial step-gate loop the CLI `step` verb walks one node at a time (research, outline, draft, the six-dimension `60-evaluate`, respin, factcheck, enrich, accents-and-entities, finalize, image), ordered by `workflow/manifest.json`; it reads the style parameters via `{{MIN_SOURCES}}` / `{{RESPIN_PASSES}}` / `{{TOPIC_CAP}}`. Those workflow nodes are FILE-BASED: `GET /prompts/template` serves the file, a publish WRITES it in place, and git is their history (no DB versions), so the brain is their single source of truth and the CLI `step` walk fetches them live. `persona/synthesize.md` (author voice) is the only non-workflow prompt; it uses the versioned store (`GET /prompts/template` falls back to the on-disk file when the store has no version, a publish inserts a new active version). `GET /prompts` lists the union of both. The brain serves the text raw; the CLI agent fills the placeholders.
+`.md` files with `{{TOKEN}}` placeholders, no length caps, split by key prefix into two families. The `prompts/workflow` set is the editorial step-gate loop the CLI `step` verb walks one node at a time (research, outline, draft, the six-dimension `60-evaluate`, respin, factcheck, enrich, accents-and-entities, finalize, image), ordered by `workflow/manifest.json`; it reads the style parameters via `{{MIN_SOURCES}}` / `{{RESPIN_PASSES}}` / `{{TOPIC_CAP}}`. Those workflow nodes are FILE-BASED: `GET /prompts/template` serves the file, a publish WRITES it in place, and git is their history (no DB versions), so the brain is their single source of truth and the CLI `step` walk fetches them live. `persona/synthesize.md` (author voice) is the only non-workflow prompt; like the workflow nodes it is FILE-BASED (a read serves the file, a publish writes it in place, git is its history). `GET /prompts` lists them all. The brain serves the text raw; the CLI agent fills the placeholders.
 - → `newsroom/prompts.py` (`load_prompt`, `render`)
 - → `prompts/workflow/*.md`, `prompts/workflow/manifest.json`, `prompts/persona/synthesize.md`
 
 ### Database
-The brain-owned SQLite: connection + schema (personas, editorial config, the versioned style/prompt tables). The persona content hash that derives slugs lives in `contracts/hashing.py`.
+The brain-owned SQLite: connection + schema (personas, editorial config, the versioned style table). The persona content hash that derives slugs lives in `contracts/hashing.py`.
 - → `newsroom/db.py` (`SCHEMA`, `open_db`)
 
 ### Mirror + cleanse
@@ -69,7 +68,7 @@ No auth; treat it as a trusted-network service. In the harness it is published o
 - **Authors:** `GET /personas`, `GET /personas/{id}` (the full record: `who_i_am`, `about`, `style`, `few_shots_*`, `sources`, ...), `POST /personas/direct` (create), `PATCH` / `DELETE /personas/{id}`.
 - **Sources:** `/portals` (registry CRUD + enable/disable), `GET|PUT /personas/{id}/sources` (the per-author pool). Co-owned outlets share an `ownership_group` and count once in the corroboration gate.
 - **Editorial:** `/editorial/style` (versioned house style; the `structure` block carries the `respin_passes` and `topic_cap` workflow parameters, changed by publishing a full version with `POST /editorial/style`), `/editorial/style/lexicon` (the vetoed terms), `/editorial/style/sourcing` (the `min_sources` floor plus the `require_attribution` and `no_fabricated_quotes` flags), `/editorial/location`.
-- **Prompts:** `/prompts` (list), `GET /prompts/template?key=...` (the active version, with the on-disk fallback), `POST /prompts/template` (publish a version), `/prompts/versions` + `/prompts/versions/{version}/promote`.
-- **Lifecycle:** `POST /bootstrap` (seed style/location/prompts; idempotent; creates no authors or sources), `POST /mirror/authors` (backfill), `GET /status/backend`, `GET /health`.
+- **Prompts:** `/prompts` (list), `GET /prompts/template?key=...` (serves the current file body), `POST /prompts/template` (writes the `.md`/`.json` in place; git is its history).
+- **Lifecycle:** `POST /bootstrap` (seed style/location; idempotent; creates no authors or sources), `POST /mirror/authors` (backfill), `GET /status/backend`, `GET /health`.
 
-To AUTHOR and publish an article, use the harness `cli/AGENTS.md`: the publish contract, the editorial bar, and the operator token live there.
+To AUTHOR and publish an article, use the harness `cli/SKILL.md` (the resolver) and its `write-article` sub-skill: the publish contract, the editorial bar, and the operator token live there.

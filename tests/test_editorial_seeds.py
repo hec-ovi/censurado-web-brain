@@ -2,8 +2,8 @@
 
 The shipped defaults are EMPTY of authors and news sources: ``DEFAULT_PERSONAS`` and
 ``DEFAULT_PORTALS`` are empty, so a fresh DB gets only the author-agnostic config
-(location, an active house style, the prompt library) and zero personas/portals until
-an operator adds them. Explicit ``*_seed`` overrides let a caller (or an operator's
+(location, an active house style) and zero personas/portals until an operator adds
+them. Explicit ``*_seed`` overrides let a caller (or an operator's
 private seed script) populate a subset; a re-run creates nothing and never overwrites an
 edit. Drives the seeders and the stores' public API only.
 """
@@ -46,7 +46,7 @@ def test_defaults_ship_empty_of_authors_and_sources():
 
 
 def test_seed_all_with_empty_defaults_creates_no_authors_or_sources():
-    # The shipped defaults seed location + style + prompts, but zero personas/portals.
+    # The shipped defaults seed location + style, but zero personas/portals.
     conn = open_db(":memory:")
     result = seed_all(conn)
 

@@ -1,10 +1,11 @@
-"""Versioned prompt loading.
+"""Prompt loading.
 
-Prompts are plain ``.md`` files under ``prompts/`` (architecture doc B.6). They
-carry no output-length cap and no "in N words" phrasing; a generation finishes on
-its own. This loader reads a prompt by path parts and substitutes ``{{TOKEN}}``
-placeholders. Tokens use double braces (not ``str.format``) so a prompt can show
-literal JSON braces in its instructions without escaping.
+Prompts are plain ``.md`` files under ``prompts/`` (architecture doc B.6), and git is
+their version history: there is no database copy. They carry no output-length cap and no
+"in N words" phrasing; a generation finishes on its own. This loader reads a prompt by
+path parts and substitutes ``{{TOKEN}}`` placeholders. Tokens use double braces (not
+``str.format``) so a prompt can show literal JSON braces in its instructions without
+escaping.
 """
 
 from __future__ import annotations
@@ -17,19 +18,10 @@ __all__ = ["load_prompt", "render"]
 _TOKEN = re.compile(r"\{\{(\w+)\}\}")
 
 
-def load_prompt(
-    prompts_dir: Path | str, *parts: str, overrides: dict[str, str] | None = None
-) -> str:
-    """Read a prompt's raw text, e.g. ``load_prompt(dir, "persona", "synthesize.md")``.
-
-    ``overrides`` is an optional ``{key: body}`` map keyed by the prompt's path joined with
-    ``/`` (e.g. ``persona/synthesize.md``); when a key is present its body is returned in
-    place of the file, so a versioned store can override the on-disk prompt. A missing key
-    (or no ``overrides`` at all) falls back to reading the file."""
-    if overrides is not None:
-        body = overrides.get("/".join(parts))
-        if body is not None:
-            return body
+def load_prompt(prompts_dir: Path | str, *parts: str) -> str:
+    """Read a prompt's raw text by path parts, e.g. ``load_prompt(dir, "persona",
+    "synthesize.md")``. The on-disk file IS the prompt (git is the version history), so
+    this is a straight file read."""
     return Path(prompts_dir).joinpath(*parts).read_text(encoding="utf-8")
 
 

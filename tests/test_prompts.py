@@ -2,7 +2,7 @@
 
 ``render`` must substitute ``{{TOKEN}}`` placeholders in ONE pass, so a value that
 itself contains a placeholder is never re-expanded, and unknown tokens are left
-alone. ``load_prompt`` reads the real versioned prompt files.
+alone. ``load_prompt`` reads the real on-disk prompt files.
 """
 
 from __future__ import annotations
@@ -75,22 +75,3 @@ def test_draft_prompt_enforces_say_each_idea_once():
     # The explicit "do not stack N synonyms for the same hedge" guardrail.
     assert "synonyms for the same hedge" in low
     assert "over-hedging" in low
-
-
-def test_load_prompt_overrides_returns_override_and_falls_back_to_fs():
-    prompts_dir = load_settings().prompts_dir
-    overrides = {"persona/synthesize.md": "OVERRIDDEN BODY"}
-
-    # A key present in the overrides map short-circuits the file read.
-    assert load_prompt(prompts_dir, "persona", "synthesize.md", overrides=overrides) == (
-        "OVERRIDDEN BODY"
-    )
-
-    # A key NOT in the map falls back to the real on-disk prompt.
-    workflow = load_prompt(prompts_dir, "workflow", "30-research.md", overrides=overrides)
-    assert workflow == load_prompt(prompts_dir, "workflow", "30-research.md")
-
-    # No overrides at all behaves exactly as before (FS read).
-    assert load_prompt(prompts_dir, "persona", "synthesize.md", overrides=None) == load_prompt(
-        prompts_dir, "persona", "synthesize.md"
-    )

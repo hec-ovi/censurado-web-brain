@@ -1,10 +1,10 @@
 """One command that makes a fresh box a working newsroom: seed the editorial config.
 
 ``python -m newsroom bootstrap`` (or ``censurado-brain bootstrap``) opens the brain
-database, idempotently seeds the editorial config (location, style, the prompt library,
-plus any default portals/personas), and mirrors the platform author registry into the
-local personas. Safe to run on every container start: seeding is find-or-create, so a
-re-run never clobbers an operator's edits.
+database, idempotently seeds the editorial config (location, style, plus any default
+portals/personas), and mirrors the platform author registry into the local personas.
+Safe to run on every container start: seeding is find-or-create, so a re-run never
+clobbers an operator's edits.
 """
 
 from __future__ import annotations
@@ -70,11 +70,10 @@ def bootstrap(
     The reconcile runs AFTER the seed, so a soft-deactivated author is reflected.
     ``fetch_authors`` defaults to production; tests inject a double to assert the wiring
     without a real platform. ``seed_overrides`` are forwarded to ``seed_all``
-    (location/portals/personas/style/prompts_dir)."""
+    (location/portals/personas/style)."""
     conn = open_db(settings.persona_db_path, check_same_thread=False)
-    # Seed the prompt library from the configured prompts_dir, and the publication place
-    # from the configured presentation defaults, unless a caller overrode them.
-    seed_overrides.setdefault("prompts_dir", settings.prompts_dir)
+    # Seed the publication place from the configured presentation defaults, unless a
+    # caller overrode it.
     seed_overrides.setdefault(
         "location",
         Location(

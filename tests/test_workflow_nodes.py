@@ -30,7 +30,7 @@ def test_manifest_json_is_served_as_a_prompt(tmp_path):
     assert resp.status_code == 200
     manifest = json.loads(resp.json()["body"])
     assert "modes" in manifest and "single-article" in manifest["modes"]
-    assert resp.json()["created_by"] == "disk"  # served from disk, not the store
+    assert set(resp.json()) == {"key", "body"}  # served from disk, no DB version fields
 
 
 def test_every_manifest_node_exists_on_disk(tmp_path):

@@ -38,7 +38,7 @@ from newsroom.brain.routes import (
 from newsroom.brain.routes.personas import PersonaOut
 from newsroom.config import Settings, load_settings
 from newsroom.db import open_db
-from newsroom.editorial import LocationStore, PortalStore, PromptStore, StyleStore
+from newsroom.editorial import LocationStore, PortalStore, StyleStore
 from newsroom.personas import PersonaStore
 
 __all__ = ["create_app"]
@@ -92,7 +92,6 @@ def create_app(
     portal_store: PortalStore | None = None,
     style_store: StyleStore | None = None,
     location_store: LocationStore | None = None,
-    prompt_store: PromptStore | None = None,
     auth_dependency: Callable | None = None,
 ) -> FastAPI:
     """Build the brain app. A test passes a ``settings`` pointed at a temp DB, or injects
@@ -158,13 +157,6 @@ def create_app(
     if location_store is None and conn is not None:
         location_store = LocationStore(conn)
 
-    # The prompt-library API (the versioned workflow step-gate prompt templates) shares
-    # the same one connection. Built from the shared conn when not injected; a test that
-    # injects a pre-built persona store (conn is None) injects it alongside when the prompt
-    # routes are exercised.
-    if prompt_store is None and conn is not None:
-        prompt_store = PromptStore(conn)
-
     # The full settings ride on app.state so the status router can read the backend base
     # URL + operator token (the env-driven publish/mirror/read seam config) to probe the
     # backend connection. The other routers read their own stores off state.
@@ -173,7 +165,6 @@ def create_app(
     app.state.portal_store = portal_store
     app.state.style_store = style_store
     app.state.location_store = location_store
-    app.state.prompt_store = prompt_store
     app.state.lock = lock
 
     @app.get("/health", status_code=200, response_model=HealthOut, tags=["system"])
@@ -218,8 +209,10 @@ def create_app(
     # lexicon + sourcing sub-resources) and the publication location, under /editorial.
     app.include_router(editorial_router)
 
-    # The prompt-library MANAGEMENT API: the versioned workflow step-gate prompt
-    # templates, under /prompts. Keys carry a slash, so the key rides as a query/body param.
+    # The prompt-library MANAGEMENT API: the on-disk prompt files (workflow step-gate nodes
+    # plus the author-voice / house-style prompts), under /prompts. A read serves the file, a
+    # publish writes it in place, and git is the version history (no DB copy). Keys carry a
+    # slash, so the key rides as a query/body param.
     app.include_router(prompts_router)
 
     # The backend-connection STATUS API: GET /status/backend reports the configured backend

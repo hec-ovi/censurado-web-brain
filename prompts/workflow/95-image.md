@@ -22,7 +22,7 @@ Brief per beat: tech/AI is clean and futuristic, circuitry as landscape; politic
 investigation are documentary and evidentiary; mystery and conspiracy are occult and
 chiaroscuro; world and geopolitics are maps, borders, weathered terrain; literatura and
 fiction are oneiric and dreamlike. The full brief and prompt-ordering rules are in
-`cli/ART-DIRECTOR.md`, for this step only.
+`cli/skills/media/SKILL.md`, for this step only.
 
 **Best-effort:** if ComfyUI is down or times out, publish the piece text-only rather than
 holding it for art.
