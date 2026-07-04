@@ -1341,6 +1341,10 @@ def cmd_step(a):
         _gate(key, seq, produces, workdir, a.mode)  # may print a directive and exit non-zero
 
     body = fill_params(_fetch_prompt_body(f"workflow/{key}.md"), params)
+    if a.mode and key in seq:
+        # Stamp the CURRENT node key + position so a small-model driver always knows where it is
+        # in the walk (the NEXT line only names the next node); it must not have to guess its id.
+        sys.stdout.write(f"STEP {key}  [{a.mode}, node {seq.index(key) + 1} of {len(seq)}]\n\n")
     sys.stdout.write(body.rstrip() + "\n\n")
     if workdir is not None and produces.get(key):
         sys.stdout.write(f"ARTIFACT: before you run NEXT, save this step's output to "

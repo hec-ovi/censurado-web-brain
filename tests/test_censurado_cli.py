@@ -872,6 +872,17 @@ def test_step_serves_first_node_and_next_from_the_recipe(monkeypatch, capsys, tm
     assert "step 30-research --mode single-article" in out       # NEXT computed from the manifest
 
 
+def test_step_stamps_the_current_node_key_and_position(monkeypatch, capsys, tmp_path):
+    # A small-model driver must know which node it is ON, not only the NEXT one; the served node
+    # stamps its own key + position (the Haiku end-to-end run showed a driver guessing node 1's id).
+    monkeypatch.delenv("CENSURADO_WORK", raising=False)
+    monkeypatch.setattr(cz, "PROMPTS_DIR", _recipe(tmp_path))
+    assert cz.cmd_step(_ns(mode="single-article")) == 0
+    out = capsys.readouterr().out
+    assert "STEP 15-pick-author" in out          # the CURRENT node id, stamped up front
+    assert "node 1 of" in out                     # and its position in the walk
+
+
 def test_step_no_key_no_mode_serves_the_mode_picker(monkeypatch, capsys, tmp_path):
     monkeypatch.setattr(cz, "PROMPTS_DIR", _recipe(tmp_path))
     assert cz.cmd_step(_ns()) == 0
