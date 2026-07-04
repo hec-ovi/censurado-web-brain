@@ -230,10 +230,18 @@ def test_mirror_authors_pushes_public_fields_with_a_token(tmp_path, monkeypatch)
     body = resp.json()
     assert body["pushed"] == ["ada-lovelace"]
     assert body["dry_run"] is False
-    # Only the PUBLIC fields cross the boundary (no private prompt); the beat rides in the
-    # metadata blob so the generator can theme an article-less author's roster card.
+    # The push now carries the FULL author record (the platform owns all of it): the scalar
+    # columns first-class, the source join as a pointer, and the private tail (who_i_am,
+    # language, few_shots, beat) in the metadata blob the platform stores verbatim.
     assert captured == [
-        {"handle": "ada-lovelace", "name": "Ada Lovelace", "bio": "A bio.", "avatar": "", "metadata": {"beat": "tech"}}
+        {
+            "handle": "ada-lovelace", "name": "Ada Lovelace", "bio": "A bio.", "avatar": "",
+            "gender": "", "about": "A bio.", "style": "dry", "sources": [],
+            "metadata": {
+                "beat": "tech", "who_i_am": "I cover chips.",
+                "language": "español neutro", "few_shots_pos": [], "few_shots_neg": [],
+            },
+        }
     ]
 
 

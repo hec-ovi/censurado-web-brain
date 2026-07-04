@@ -59,7 +59,7 @@ def test_backfill_pushes_public_fields_and_collects_failures():
 # ----- push client: POST /authors mapping -----
 
 
-def test_push_web_author_posts_public_body_and_maps_200(monkeypatch):
+def test_push_web_author_posts_full_scalar_body_and_maps_200(monkeypatch):
     captured: dict = {}
 
     def fake_post(url, headers=None, json=None, timeout=None):
@@ -70,16 +70,22 @@ def test_push_web_author_posts_public_body_and_maps_200(monkeypatch):
 
     monkeypatch.setattr("newsroom.mirror.client.httpx.post", fake_post)
     res = push_web_author(
-        "http://web:8080/", "tok-admin", handle="ada", name="Ada", bio="Bio.", avatar="a.png"
+        "http://web:8080/", "tok-admin", handle="ada", name="Ada", bio="Bio.",
+        avatar="a.png", gender="femenino", about="Bio.", style="Declarativa.",
     )
 
     assert captured["url"] == "http://web:8080/authors"
     assert captured["headers"]["Authorization"] == "Bearer tok-admin"
-    assert captured["json"] == {"handle": "ada", "name": "Ada", "bio": "Bio.", "avatar": "a.png"}
+    # The six scalar columns are ALWAYS sent, because the upsert replaces them wholesale:
+    # a partial body would blank a column.
+    assert captured["json"] == {
+        "handle": "ada", "name": "Ada", "bio": "Bio.", "avatar": "a.png",
+        "gender": "femenino", "about": "Bio.", "style": "Declarativa.",
+    }
     assert res.ok is True and res.status == 200
 
 
-def test_push_web_author_carries_curated_profile_topics_in_metadata(monkeypatch):
+def test_push_web_author_sends_topics_first_class_and_metadata_tail(monkeypatch):
     captured: dict = {}
 
     def fake_post(url, headers=None, json=None, timeout=None):
@@ -88,19 +94,21 @@ def test_push_web_author_carries_curated_profile_topics_in_metadata(monkeypatch)
 
     monkeypatch.setattr("newsroom.mirror.client.httpx.post", fake_post)
     res = push_web_author(
-        "http://web:8080/", "tok-admin",
-        handle="ada", name="Ada", bio="Bio.", avatar="a.png",
-        profile_topics=["politica", "economia"],
+        "http://web:8080/", "tok-admin", handle="ada", name="Ada",
+        topics=["politica", "economia"],
+        metadata={"beat": "politics", "who_i_am": "Soy Ada.", "few_shots_pos": ["ej"]},
     )
 
-    # The curated topics ride in the registry metadata blob; the public scalar fields stay
-    # exactly where they were, so the platform stores them alongside name/bio/avatar.
-    assert captured["json"]["metadata"] == {"profile_topics": ["politica", "economia"]}
-    assert captured["json"]["handle"] == "ada" and captured["json"]["avatar"] == "a.png"
+    # Curated topics are a first-class column now; the private tail (beat/who_i_am/few_shots)
+    # rides in the metadata blob the platform stores verbatim.
+    assert captured["json"]["topics"] == ["politica", "economia"]
+    assert captured["json"]["metadata"] == {
+        "beat": "politics", "who_i_am": "Soy Ada.", "few_shots_pos": ["ej"]
+    }
     assert res.ok is True
 
 
-def test_push_web_author_omits_metadata_when_no_curated_topics(monkeypatch):
+def test_push_web_author_omits_topics_sources_metadata_when_empty(monkeypatch):
     captured: dict = {}
 
     def fake_post(url, headers=None, json=None, timeout=None):
@@ -108,11 +116,26 @@ def test_push_web_author_omits_metadata_when_no_curated_topics(monkeypatch):
         return httpx.Response(200, json={"handle": "ada"})
 
     monkeypatch.setattr("newsroom.mirror.client.httpx.post", fake_post)
-    push_web_author("http://web:8080", "tok", handle="ada", name="Ada", profile_topics=[])
+    push_web_author("http://web:8080", "tok", handle="ada", name="Ada")
 
-    # An uncurated author sends NO metadata key, so an existing registry blob is untouched
-    # and the wire shape matches the pre-feature body byte for byte.
-    assert "metadata" not in captured["json"]
+    # With nothing curated the body is exactly the seven scalar keys: no topics, no metadata
+    # blob, and no sources key (a nil pointer leaves the author_sources join untouched).
+    assert set(captured["json"]) == {"handle", "name", "bio", "avatar", "gender", "about", "style"}
+    assert "sources" not in captured["json"]
+
+
+def test_push_web_author_sources_empty_list_is_an_explicit_detach(monkeypatch):
+    captured: dict = {}
+
+    def fake_post(url, headers=None, json=None, timeout=None):
+        captured["json"] = json
+        return httpx.Response(200, json={"handle": "ada"})
+
+    monkeypatch.setattr("newsroom.mirror.client.httpx.post", fake_post)
+    push_web_author("http://web:8080", "tok", handle="ada", sources=[])
+
+    # An explicit empty list is sent (detach everything), distinct from None (leave the join).
+    assert captured["json"]["sources"] == []
 
 
 def test_push_web_author_maps_a_problem_response(monkeypatch):

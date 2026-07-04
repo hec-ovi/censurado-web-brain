@@ -39,6 +39,7 @@ from newsroom.editorial import (
     StyleGuide,
     StyleStore,
 )
+from newsroom.migrate import MoveReport, author_fields, run_move, should_tombstone
 from newsroom.mirror import (
     AuthorPush,
     BackendProbe,
@@ -120,21 +121,72 @@ def _dry_run_push(persona: Persona) -> PushResult:
     return PushResult(handle=persona.id, ok=True, status=0)
 
 
+def _migrate_main(
+    argv: list[str],
+    *,
+    personas: list[Persona] | None = None,
+    portals: list | None = None,
+    seams: dict | None = None,
+) -> int:
+    """``censurado-brain migrate [--dry-run]``: the ONE-TIME data move that ends the
+    brain's ownership of content. Reads every persona (incl. inactive) + portal from
+    personas.db and pushes them to the platform backend (sources, then authors carrying
+    their source join, then tombstones for retired identities), then reads the registry
+    back and VERIFIES a full-field round-trip. Prints the ``MoveReport`` JSON and returns 0
+    ONLY when every write succeeded and the read-back found no discrepancy (report ``ok``);
+    a non-zero exit means the platform does not yet hold a faithful copy, so personas.db
+    must NOT be deleted. ``--dry-run`` lists what would move and contacts nothing. The DB
+    rows + the HTTP seams are injectable so the verb is tested without a network."""
+    parser = argparse.ArgumentParser(
+        prog="censurado-brain migrate",
+        description="One-time move: personas.db -> the platform backend, then verify.",
+    )
+    parser.add_argument(
+        "--dry-run", action="store_true", help="list what would move; contact nothing"
+    )
+    args = parser.parse_args(argv)
+
+    settings = load_settings()
+    if personas is None or portals is None:
+        conn = open_db(settings.persona_db_path, check_same_thread=False)
+        if personas is None:
+            personas = PersonaStore(conn).list(include_inactive=True)
+        if portals is None:
+            portals = PortalStore(conn).list()
+
+    if args.dry_run:
+        report = MoveReport(dry_run=True, ok=True)
+        report.sources_pushed = [p.id for p in portals]
+        for persona in personas:
+            if persona.active:
+                report.authors_pushed.append(persona.id)
+            elif should_tombstone(persona):
+                report.tombstoned.append(persona.id)
+            else:
+                report.skipped_inactive.append(persona.id)
+        _emit(report.as_dict())
+        return 0
+
+    token = settings.admin_token or settings.operator_token
+    if not token:
+        _emit({"error": "no operator token configured (need admin:write to write authors/sources)"})
+        return _EXIT["failed"]
+    base = str(settings.publish_base_url).rstrip("/")
+    report = run_move(personas, portals, base_url=base, token=token, **(seams or {}))
+    _emit(report.as_dict())
+    return _EXIT["done"] if report.ok else _EXIT["failed"]
+
+
 def _env_author_push(settings: Settings) -> AuthorPush:
-    """The production push: upsert a persona's public fields to the platform with the
-    operator key. The key must carry the admin:write scope."""
+    """The production push: upsert a persona's full field set to the platform with the
+    operator key (the same column map the one-time ``migrate`` uses). The key must carry
+    the admin:write scope."""
 
     def push(persona: Persona) -> PushResult:
         return push_web_author(
             settings.publish_base_url,
             settings.admin_token or settings.operator_token,
-            handle=persona.id,
-            name=persona.display_name,
-            bio=persona.about,
-            avatar=persona.avatar_path,
-            beat=persona.beat,
-            gender=persona.gender,
-            profile_topics=persona.profile_topics,
+            **author_fields(persona),
         )
 
     return push
@@ -1075,6 +1127,9 @@ def main(
     if argv and argv[0] == "mirror-authors":
         # The one-time author backfill: push local personas to the platform registry.
         return _mirror_authors_main(argv[1:])
+    if argv and argv[0] == "migrate":
+        # The one-time full data move: personas.db -> the platform backend, then verify.
+        return _migrate_main(argv[1:])
     if argv and argv[0] == "status":
         # Report the brain<->backend connection (live probe), the CLI parity of
         # GET /status/backend.
@@ -1099,5 +1154,5 @@ def main(
         # Re-check stored tweet/youtube snapshots and refresh their availability flags
         # (deleted tweet -> erased, pulled video -> unavailable).
         return _embeds_main(argv[1:])
-    _emit({"error": "usage: bootstrap|mirror-authors|status|sources|authors|editorial|topics|embeds"})
+    _emit({"error": "usage: bootstrap|mirror-authors|migrate|status|sources|authors|editorial|topics|embeds"})
     return _EXIT["failed"]

@@ -19,9 +19,12 @@ from newsroom.mirror.client import (
     BackendProbe,
     PushResult,
     WebAuthor,
+    delete_web_author,
     fetch_web_authors,
     probe_backend,
     push_web_author,
+    push_web_source,
+    set_author_sources,
 )
 from newsroom.mirror.reconcile import SHELL_BEAT, ReconcileResult, reconcile_personas
 
@@ -30,6 +33,9 @@ __all__ = [
     "fetch_web_authors",
     "PushResult",
     "push_web_author",
+    "push_web_source",
+    "set_author_sources",
+    "delete_web_author",
     "DEFAULT_TIMEOUT",
     "PROBE_TIMEOUT",
     "BackendProbe",

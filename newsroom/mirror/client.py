@@ -24,6 +24,8 @@ __all__ = [
     "fetch_web_authors",
     "PushResult",
     "push_web_author",
+    "push_web_source",
+    "set_author_sources",
     "DEFAULT_TIMEOUT",
     "PROBE_TIMEOUT",
     "BackendProbe",
@@ -88,15 +90,41 @@ def fetch_web_authors(
 
 @dataclass(frozen=True)
 class PushResult:
-    """The typed outcome of one author upsert against the platform. ``ok`` is True on
-    a 200; otherwise ``code``/``detail`` carry the platform's problem (or
-    ``transport_error`` when the POST never reached it)."""
+    """The typed outcome of one upsert against the platform. ``handle`` is the upserted
+    key (an author handle, or a source slug for ``push_web_source``). ``ok`` is True on a
+    200; otherwise ``code``/``detail`` carry the platform's problem (or ``transport_error``
+    when the request never reached it)."""
 
     handle: str
     ok: bool
     status: int
     code: str = ""
     detail: str = ""
+
+
+def _post_upsert(base_url: str, token: str, path: str, key: str, body: dict, timeout: float) -> PushResult:
+    """POST a JSON body to an operator upsert endpoint and map the reply to a PushResult.
+    A transport fault returns a typed failure rather than raising, so a migration loop
+    reports per-row and never aborts mid-way."""
+    try:
+        resp = httpx.post(
+            f"{base_url.rstrip('/')}{path}",
+            headers={"Authorization": f"Bearer {token}"},
+            json=body,
+            timeout=timeout,
+        )
+    except httpx.HTTPError as exc:
+        return PushResult(handle=key, ok=False, status=0, code="transport_error", detail=str(exc))
+    if resp.status_code == 200:
+        return PushResult(handle=key, ok=True, status=200)
+    parsed: object = {}
+    try:
+        parsed = resp.json()
+    except ValueError:
+        parsed = {}
+    code = str(parsed.get("code", "")) if isinstance(parsed, dict) else ""
+    detail = str(parsed.get("detail", "")) if isinstance(parsed, dict) else ""
+    return PushResult(handle=key, ok=False, status=resp.status_code, code=code, detail=detail)
 
 
 def push_web_author(
@@ -107,50 +135,154 @@ def push_web_author(
     name: str = "",
     bio: str = "",
     avatar: str = "",
-    beat: str = "",
     gender: str = "",
-    profile_topics: list[str] | None = None,
+    about: str = "",
+    style: str = "",
+    topics: list[str] | None = None,
+    sources: list[str] | None = None,
+    metadata: dict[str, object] | None = None,
     timeout: float = DEFAULT_TIMEOUT,
 ) -> PushResult:
-    """POST one author's PUBLIC fields to the platform operator registry (POST /authors,
-    keyed on handle), the one-time backfill that makes the platform authoritative. The
-    operator key must carry the ``admin:write`` scope. The upsert is idempotent, so a
-    re-run is a no-op. A transport fault returns a typed failure rather than raising, so
-    the backfill loop reports per-handle and never aborts mid-way.
+    """Upsert one author to the platform registry (POST /authors, keyed on handle), the
+    one-time move that makes the platform authoritative. The operator key must carry the
+    ``admin:write`` scope. Idempotent (a re-run replaces the row), so re-running repairs
+    without dupes.
 
-    Curated ``profile_topics`` and the author's ``beat`` ride in the registry's ``metadata``
-    blob (the platform stores it verbatim and the generator reads it there: profile_topics
-    for the author page's topic list, beat to theme the Nosotros roster card of an author
-    that has no articles yet). Each is sent ONLY when non-empty, so an author with neither
-    leaves the metadata untouched and existing callers keep their exact wire shape."""
-    body: dict[str, object] = {"handle": handle, "name": name, "bio": bio, "avatar": avatar}
-    metadata: dict[str, object] = {}
-    if profile_topics:
-        metadata["profile_topics"] = list(profile_topics)
-    if beat:
-        metadata["beat"] = beat
-    if gender:
-        metadata["gender"] = gender
+    The body maps 1:1 to the platform's ``authorInput``: the six scalar columns
+    (name/bio/avatar/gender/about/style) are ALWAYS sent, because the upsert replaces them
+    wholesale, so a caller must send the COMPLETE row or blank a column. ``topics`` and
+    ``metadata`` are sent only when non-empty; ``metadata`` (the private tail: beat,
+    who_i_am, language, few_shots, the layer-1 profile_topics copy) REPLACES the stored
+    blob wholesale, so it too must be complete. ``sources`` is a pointer-like field: None
+    leaves the author_sources join untouched, an explicit list (even empty) replaces it, so
+    the join is set in the same request the source rows already exist for."""
+    body: dict[str, object] = {
+        "handle": handle, "name": name, "bio": bio, "avatar": avatar,
+        "gender": gender, "about": about, "style": style,
+    }
+    if topics:
+        body["topics"] = list(topics)
+    if sources is not None:
+        body["sources"] = list(sources)
     if metadata:
-        body["metadata"] = metadata
+        body["metadata"] = dict(metadata)
+    return _post_upsert(base_url, token, "/authors", handle, body, timeout)
+
+
+def push_web_source(
+    base_url: str,
+    token: str,
+    *,
+    domain: str,
+    slug: str = "",
+    homepage: str = "",
+    description: str = "",
+    feed_urls: list[str] | None = None,
+    feed_type: str = "",
+    language: str = "",
+    ownership_group: str = "",
+    lean: str = "",
+    enabled: bool | None = None,
+    status: str = "",
+    last_checked: str = "",
+    last_ok: str = "",
+    metadata: dict[str, object] | None = None,
+    timeout: float = DEFAULT_TIMEOUT,
+) -> PushResult:
+    """Upsert one source to the platform registry (POST /sources, keyed on slug), the
+    portals -> sources half of the move. ``domain`` is required; ``slug`` is sent
+    explicitly so the exact id an author's source-join resolves against is preserved (the
+    server would otherwise re-derive it from the domain). ``enabled`` is sent explicitly
+    when given because the platform's flag is a pointer defaulting to TRUE, so a disabled
+    portal pushed without ``enabled=False`` would come back silently re-enabled. The other
+    operational fields (feed_type/lean/language/status) carry their real values so the
+    server keeps them instead of falling back to a default."""
+    body: dict[str, object] = {"domain": domain}
+    if slug:
+        body["slug"] = slug
+    if homepage:
+        body["homepage"] = homepage
+    if description:
+        body["description"] = description
+    if feed_urls:
+        body["feed_urls"] = list(feed_urls)
+    if feed_type:
+        body["feed_type"] = feed_type
+    if language:
+        body["language"] = language
+    if ownership_group:
+        body["ownership_group"] = ownership_group
+    if lean:
+        body["lean"] = lean
+    if enabled is not None:
+        body["enabled"] = bool(enabled)
+    if status:
+        body["status"] = status
+    if last_checked:
+        body["last_checked"] = last_checked
+    if last_ok:
+        body["last_ok"] = last_ok
+    if metadata:
+        body["metadata"] = dict(metadata)
+    return _post_upsert(base_url, token, "/sources", slug or domain, body, timeout)
+
+
+def delete_web_author(
+    base_url: str,
+    token: str,
+    *,
+    handle: str,
+    timeout: float = DEFAULT_TIMEOUT,
+) -> PushResult:
+    """Tombstone an author (DELETE /authors/{handle}); the stored row and its source
+    links survive, it just stops being public. Used by the move to carry a retired local
+    persona (active=0) across as a tombstoned author rather than a live one. A 204 (no
+    content) is success; a 404 (already absent) is treated as success too, so a re-run is
+    idempotent."""
     try:
-        resp = httpx.post(
-            f"{base_url.rstrip('/')}/authors",
+        resp = httpx.delete(
+            f"{base_url.rstrip('/')}/authors/{handle}",
             headers={"Authorization": f"Bearer {token}"},
-            json=body,
+            timeout=timeout,
+        )
+    except httpx.HTTPError as exc:
+        return PushResult(handle=handle, ok=False, status=0, code="transport_error", detail=str(exc))
+    if resp.status_code in (204, 404):
+        return PushResult(handle=handle, ok=True, status=resp.status_code)
+    return PushResult(handle=handle, ok=False, status=resp.status_code, code=f"http_{resp.status_code}")
+
+
+def set_author_sources(
+    base_url: str,
+    token: str,
+    *,
+    handle: str,
+    sources: list[str],
+    timeout: float = DEFAULT_TIMEOUT,
+) -> PushResult:
+    """Replace an author's attached-source set (PUT /authors/{handle}/sources), the
+    author_sources join half of the move. Wholesale replace; the source rows must already
+    exist. A missing author is a 404 (mapped to a typed failure, not raised). Used when the
+    join is set separately from the author upsert; the author push can also carry a
+    ``sources`` pointer to do both in one request."""
+    try:
+        resp = httpx.put(
+            f"{base_url.rstrip('/')}/authors/{handle}/sources",
+            headers={"Authorization": f"Bearer {token}"},
+            json={"sources": list(sources)},
             timeout=timeout,
         )
     except httpx.HTTPError as exc:
         return PushResult(handle=handle, ok=False, status=0, code="transport_error", detail=str(exc))
     if resp.status_code == 200:
         return PushResult(handle=handle, ok=True, status=200)
-    body: object = {}
+    parsed: object = {}
     try:
-        body = resp.json()
+        parsed = resp.json()
     except ValueError:
-        body = {}
-    code = str(body.get("code", "")) if isinstance(body, dict) else ""
-    detail = str(body.get("detail", "")) if isinstance(body, dict) else ""
+        parsed = {}
+    code = str(parsed.get("code", "")) if isinstance(parsed, dict) else ""
+    detail = str(parsed.get("detail", "")) if isinstance(parsed, dict) else ""
     return PushResult(handle=handle, ok=False, status=resp.status_code, code=code, detail=detail)
 
 

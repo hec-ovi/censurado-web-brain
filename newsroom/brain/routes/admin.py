@@ -28,6 +28,7 @@ from pydantic import BaseModel
 
 from newsroom.bootstrap import bootstrap
 from newsroom.brain.problems import _problem
+from newsroom.migrate import author_fields
 from newsroom.mirror import PushResult, backfill_web_authors, push_web_author
 from newsroom.personas import Persona
 
@@ -76,13 +77,7 @@ def _build_push(settings):
         return push_web_author(
             settings.publish_base_url,
             settings.admin_token or settings.operator_token,
-            handle=persona.id,
-            name=persona.display_name,
-            bio=persona.about,
-            avatar=persona.avatar_path,
-            beat=persona.beat,
-            gender=persona.gender,
-            profile_topics=persona.profile_topics,
+            **author_fields(persona),
         )
 
     return push
