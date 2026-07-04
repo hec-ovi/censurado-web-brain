@@ -723,6 +723,27 @@ def cmd_edit(a):
     return 0 if st == 200 else 1
 
 
+def cmd_unpublish(a):
+    """Remove an article from the site (DELETE /articles/<slug>). SOFT delete: the article is
+    tombstoned, so it drops from every listing (latest, its day bucket, its section, the
+    author's profile) and its permalink 404s after the next regenerate, but it stays restorable
+    (POST /articles/<slug>/restore). Guarded by --yes. Response: 204 removed; 404 no such article."""
+    if not a.yes:
+        sys.exit(f"REFUSED: confirm removing an article with --yes:\n"
+                 f"  python3 cli/censurado.py unpublish {a.slug} --yes")
+    st, body = api("DELETE", "/articles/" + a.slug)
+    if st == 204:
+        sys.stderr.write(f"unpublish {a.slug} -> tombstoned (204). It leaves the site on the next "
+                         f"regenerate. Restore with `POST /articles/{a.slug}/restore` if needed.\n")
+        return 0
+    if st == 404:
+        sys.stderr.write(f"unpublish {a.slug} -> no such article (404)\n")
+        return 1
+    sys.stdout.write(body.decode("utf-8", "replace") + "\n")
+    sys.stderr.write(f"unpublish {a.slug} -> HTTP {st}\n")
+    return 1
+
+
 def cmd_portada(a):
     """Write or read the per-day front-page plan (the portada) in the publish backend
     (admin:write, Bearer-authenticated). With --set-json, POST the
@@ -1384,6 +1405,13 @@ def build_parser():
     e.add_argument("--published-at", dest="published_at", default="")
     e.add_argument("--dry-run", action="store_true", help="print the payload, do not PUT")
     e.set_defaults(fn=cmd_edit)
+
+    up = sub.add_parser("unpublish",
+                        help="remove an article from the site (needs --yes; soft tombstone, restorable)")
+    up.add_argument("slug", help="article slug to take down")
+    up.add_argument("--yes", action="store_true",
+                    help="confirm the removal (soft-delete; restorable via the API)")
+    up.set_defaults(fn=cmd_unpublish)
 
     m = sub.add_parser("media", help="upload an image/video, print {url}")
     m.add_argument("file")

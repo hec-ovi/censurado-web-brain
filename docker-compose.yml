@@ -98,8 +98,8 @@ services:
     volumes:
       # Persistent host bind mounts (survive `docker compose down -v`): the sqlite
       # source of truth and the uploaded images, owned by uid 65532 (init-perms).
-      - ./data/db:/data
-      - ./data/media:/srv/media
+      - ${CENSURADO_DATA_DIR:-../censurado-data}/db:/data
+      - ${CENSURADO_DATA_DIR:-../censurado-data}/media:/srv/media
       # Seed as an empty JSON array FIRST (bootstrap.sh does this); a missing host
       # file makes Docker create a directory here and breaks startup.
       - ./keys.json:/etc/censurado/keys.json:ro
@@ -132,7 +132,7 @@ services:
     command: ["sh", "-c", "mkdir -p /site/.generated /gocache/tmp && chown -R 65532:65532 /site /data-host /gocache"]
     volumes:
       - site-data:/site
-      - ./data:/data-host
+      - ${CENSURADO_DATA_DIR:-../censurado-data}:/data-host
       # The generate watcher runs as uid 65532 and writes its Go build/module cache
       # here; a fresh named volume is root-owned, so chown it to the writer too.
       - gocache-data:/gocache
@@ -181,7 +181,7 @@ services:
     volumes:
       - ../censurado-web:/work/censurado-web:ro
       - ../censurado-web-backend:/work/censurado-web-backend:ro
-      - ./data/db:/data
+      - ${CENSURADO_DATA_DIR:-../censurado-data}/db:/data
       - site-data:/site
       - gocache-data:/gocache
     networks: [censurado]
@@ -200,7 +200,7 @@ services:
       # Serve uploaded images at /media/ from the same persistent store publish
       # writes to. Mounted OUTSIDE the read-only html root (you cannot create a
       # mountpoint inside a read-only volume); nginx maps /media/ here via alias.
-      - ./data/media:/srv/media:ro
+      - ${CENSURADO_DATA_DIR:-../censurado-data}/media:/srv/media:ro
       - ./nginx/site.conf:/etc/nginx/conf.d/default.conf:ro
     ports:
       - "${SITE_PORT:-8080}:80"

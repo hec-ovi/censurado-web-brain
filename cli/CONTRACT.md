@@ -1,9 +1,11 @@
 # Seam C: the agent-facing contract
 
 This repo is driven by an agent that tool-calls the CLI off `cli/SKILL.md` alone, never by
-reading code. The eventual driver is a small or remote model (a phone, a Pi), so the surface it
-sees has to be stable: the set of verbs, the routes that name those verbs, the recipe files the
-verbs read, and the workflow gate's knobs. That surface is the contract frozen here.
+reading code. The target driver is a lean skill-loading agent harness on a small model (for
+example Pi, `earendil-works/pi`, driving a local Gemma model; see `../pi-gemma/`), or a phone
+agent over MCP. So the surface it sees has to be stable: the set of verbs, the routes that name
+those verbs, the recipe files the verbs read, and the workflow gate's knobs. That surface is the
+contract frozen here.
 
 There is no compiler to catch a break. If a verb is renamed, or a sub-skill points the driver at
 a verb or a recipe file that no longer exists, the agent dead-ends at runtime with a soft error.
@@ -39,6 +41,7 @@ recipe/local-file and capture verbs noted.
 | `archive <author>` | List an author's articles (light; for the repeat-news sweep). |
 | `preview` / `publish` | Stage an article to the LOCAL preview site (POST /articles). Not public. |
 | `edit <slug>` | Read-modify-write an existing article in place. |
+| `unpublish <slug> --yes` | Soft-delete (tombstone) an article; it leaves the site on regen, restorable. |
 | `media <file>` | Upload an image/video, print its URL. |
 | `image` | Render an art-directed FLUX.2 hero through ComfyUI and attach it (best-effort). |
 | `tweet <ref>` | Capture an X post as a `{{tweet:id}}` snapshot (keyless, fxtwitter). |

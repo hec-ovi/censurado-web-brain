@@ -145,12 +145,13 @@ def test_persistent_state_is_host_bind_mounts(tmp_path):
                 return v
         raise AssertionError(f"{svc} has no mount at {target}")
 
-    # sqlite db: bind mount under ./data/db for publish (writer) and the generate reader.
+    # sqlite db: bind mount under the data dir (default ../censurado-data/db, OUTSIDE the repo)
+    # for publish (writer) and the generate reader.
     for svc in ("publish", "generate"):
         m = mount(svc, "/data")
-        assert m["type"] == "bind" and m["source"].endswith("/data/db")
-    # images: bind mount under ./data/media on publish.
-    assert mount("publish", "/srv/media")["source"].endswith("/data/media")
+        assert m["type"] == "bind" and m["source"].endswith("/censurado-data/db")
+    # images: bind mount under <data-dir>/media on publish.
+    assert mount("publish", "/srv/media")["source"].endswith("/censurado-data/media")
 
 
 def test_publish_media_store_enabled_and_regen_moved_to_generate(tmp_path):
@@ -174,7 +175,7 @@ def test_site_serves_media(tmp_path):
     # image URLs (/media/<hash>.<ext>) resolve on the portal.
     site = _config(tmp_path)["services"]["site"]
     m = next((v for v in site["volumes"] if v["target"] == "/srv/media"), None)
-    assert m is not None and m["source"].endswith("/data/media")
+    assert m is not None and m["source"].endswith("/censurado-data/media")
 
 
 def test_site_is_the_only_public_port(tmp_path):

@@ -47,7 +47,7 @@ def _argparse_verbs():
 # The FROZEN verb set. `publish` is the documented alias of `preview`. Changing this set is a
 # contract change: update cli/CONTRACT.md in the same commit. (Add/rename/remove all land here.)
 FROZEN_VERBS = {
-    "get", "archive", "preview", "publish", "edit", "media", "image", "tweet", "truth",
+    "get", "archive", "preview", "publish", "edit", "unpublish", "media", "image", "tweet", "truth",
     "personas", "persona", "create-author", "remove-author", "sources", "profile-topics",
     "portada", "portals", "prompt", "set-prompt", "style", "set-floor", "doctor", "step",
 }

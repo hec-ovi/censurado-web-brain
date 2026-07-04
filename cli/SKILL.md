@@ -48,6 +48,7 @@ for its exact flags.
 | list authors / read one author's voice and beat (quick) | `python3 cli/censurado.py personas` ; `python3 cli/censurado.py persona <id>` |
 | show / set an author's public profile topics | `python3 cli/censurado.py profile-topics <id> [--set ...]` |
 | edit an article already on the preview site | `python3 cli/censurado.py edit <slug> --meta k=v --body-file ...` |
+| take an article down / remove it from the site (soft, restorable) | `python3 cli/censurado.py unpublish <slug> --yes` |
 | read the editorial voice/rules or a prompt | `python3 cli/censurado.py style` (voice/lexicon/rules) ; `python3 cli/censurado.py prompt <key>` |
 | read or change the enforced numeric bar (how many sources, tag cap) | read `cli/skills/sources/SKILL.md`; the floor/cap live in `cli/workflow/parameters.json` (`set-floor`, `step`), NOT in `style` |
 | change how the newsroom writes: a workflow WALK node or a library prompt (dev) | read `cli/skills/prompts/SKILL.md` |
