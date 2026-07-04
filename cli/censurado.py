@@ -965,9 +965,10 @@ def cmd_style(a):
     """Read the newsroom's editorial style guide (voice, lexicon, house rules): the prose
     recipe at `editorial/style.md` under the prompts dir. NOTE: this is the QUALITATIVE guide,
     NOT the numeric floor the WALK enforces. The enforced parameters (MIN_SOURCES/
-    MIN_PER_TYPE/RESPIN_PASSES/TOPIC_CAP) live in cli/workflow/parameters.json (set with
-    `set-floor`, read with `step`), which is what fills the node placeholders. Use `style`
-    for the voice/rules; use parameters.json for the enforced numeric bar."""
+    MIN_PER_TYPE/RESPIN_PASSES/TOPIC_CAP) live in cli/workflow/parameters.json, which `step`
+    fills into the node placeholders; `set-floor` sets MIN_SOURCES/MIN_PER_TYPE, and the tag
+    cap and respin budget are edited in parameters.json directly. Use `style` for the
+    voice/rules; use parameters.json for the enforced numeric bar."""
     path = _prompt_path("editorial/style.md")
     if path is None or not path.is_file():
         fail(f"no editorial style guide at {PROMPTS_DIR / 'editorial' / 'style.md'}. It is a "
@@ -1056,7 +1057,8 @@ def cmd_doctor(a):
       2. the skill package (the resolver routes only to sub-skills that exist and carry
          frontmatter whose name matches the directory),
       3. the agentic recipe (the prompts dir exists; workflow/manifest.json parses; every
-         manifest node file is present on disk; cli/workflow/parameters.json parses).
+         manifest node file is present on disk; cli/workflow/parameters.json parses; the
+         editorial/style.md and persona/synthesize.md files the verbs read are present).
     Exits 1 if any check FAILs, 0 otherwise (warnings do not fail). Never raises: an
     unreachable service or a missing file is reported, not thrown."""
     rows = []
@@ -1130,6 +1132,15 @@ def cmd_doctor(a):
         add("OK", "parameters.json parses: " + ", ".join(f"{k}={v}" for k, v in params.items()))
     except Exception as exc:
         add("FAIL", f"parameters.json does not parse: {exc}")
+    # recipe files a wired verb reads directly (style -> editorial/style.md, the persona-synthesis
+    # prompt create-author follows). A missing one is a silent verb dead-end, so surface it here.
+    for label, key in (("editorial/style.md (the `style` verb)", "editorial/style.md"),
+                       ("persona/synthesize.md (author synthesis)", "persona/synthesize.md")):
+        fp = _prompt_path(key)
+        if fp is not None and fp.is_file() and fp.read_text(encoding="utf-8").strip():
+            add("OK", f"recipe file {label} present")
+        else:
+            add("FAIL", f"recipe file {label} missing/empty under {PROMPTS_DIR}")
 
     for level, text in rows:
         sys.stdout.write(f"  [{level}] {text}\n")
@@ -1197,8 +1208,8 @@ def _fetch_params():
 
 
 def fill_params(text, params):
-    """Substitute {{MIN_SOURCES}} / {{RESPIN_PASSES}} / {{TOPIC_CAP}} with the live values.
-    Pure and null-safe: an absent parameter leaves its placeholder untouched."""
+    """Substitute {{MIN_SOURCES}} / {{MIN_PER_TYPE}} / {{RESPIN_PASSES}} / {{TOPIC_CAP}} with the
+    live values. Pure and null-safe: an absent parameter leaves its placeholder untouched."""
     for name, val in params.items():
         text = text.replace("{{" + name + "}}", str(val))
     return text
@@ -1279,8 +1290,9 @@ def _gate(key, seq, produces, workdir, mode):
 def cmd_step(a):
     """Serve one workflow node (the step gate). No key + no mode: the mode picker (node 00).
     --mode with no key: the first node of that mode. A key: that node, plus the NEXT line. The
-    recipe is read from cli/workflow/ (bundled); no brain is involved. When the driver sets
-    $CENSURADO_WORK, the gate ENFORCES the walk (artifact gate + loop shield) instead of only
+    node bodies and manifest are read from this repo's prompts/workflow/ (PROMPTS_DIR) and the
+    numeric parameters from cli/workflow/parameters.json; no server is involved. When the driver
+    sets $CENSURADO_WORK, the gate ENFORCES the walk (artifact gate + loop shield) instead of only
     describing it, and tells each producing node where to save its artifact."""
     if a.list:
         manifest = _json(_fetch_prompt_body("workflow/manifest.json"), "the workflow manifest", want=dict)
@@ -1408,7 +1420,7 @@ def build_parser():
     ca = sub.add_parser("create-author",
                         help="persist an agent-authored persona into the backend author registry")
     ca.add_argument("--file", default="",
-                    help="persona JSON (display_name/beat/who_i_am/style required); omit or '-' to read stdin")
+                    help="persona JSON path (display_name/beat/who_i_am/style required), or '-' to read stdin; required (omitting it errors)")
     ca.set_defaults(fn=cmd_create_author)
 
     rma = sub.add_parser("remove-author", help="tombstone an author in the backend (needs --yes; soft, restorable)")
@@ -1471,7 +1483,8 @@ def build_parser():
     stp.add_argument("key", nargs="?", default="",
                      help="node key, e.g. 30-research; omit for the mode picker (or the first node with --mode)")
     stp.add_argument("--mode", default="",
-                     help="workflow mode: single-article, single-author, authors, daily, weekly, last-hour")
+                     help="workflow mode (run `step --list` to see all): single-article, single-author, "
+                          "authors, daily, weekly, last-hour, deploy, normalize-topics, portal-review")
     stp.add_argument("--list", action="store_true",
                      help="print the node sequence for the mode (or all modes), without serving a body")
     stp.set_defaults(fn=cmd_step)

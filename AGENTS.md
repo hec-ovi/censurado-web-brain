@@ -134,6 +134,10 @@ CLI (`cli/censurado.py`) reads and writes them directly from disk (verbs `step`,
   `sources`/`portals`). There is no `personas.db` and no separate config service.
 - Contract files: `prompts/` (the recipe), `cli/workflow/parameters.json` (the numeric
   floor), `cli/censurado.py` (the reader: `_prompt_path`, `cmd_step`).
+- The agent-facing surface (the verb set, the routes that name verbs, the recipe files a verb
+  reads, and the knobs) is frozen in `cli/CONTRACT.md` and enforced by
+  `tests/test_cli_contract.py`. To change a verb, a routed reference, or a knob, edit both in
+  the same commit.
 
 ### 4. Generate then serve (the "CDN" seam)
 

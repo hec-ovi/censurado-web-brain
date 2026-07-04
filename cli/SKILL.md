@@ -23,7 +23,9 @@ for its exact flags.
   (that is the backend, which owns all content data and serves the panel). If not, ask the
   user to start it (from the repo root, no GPU needed):
   `docker compose up -d publish generate site`. ComfyUI (images) is optional. The workflow
-  and persona prompts are on-disk files in this repo's `prompts/` (no server to start).
+  and persona prompts are on-disk files in this repo's `prompts/` (no server to start). One
+  command self-checks all of this at once: `python3 cli/censurado.py doctor` prints an
+  [OK]/[WARN]/[FAIL] report over the stack, the skill package, and the on-disk recipe.
 - **Auth is automatic.** `censurado.py` reads the operator token from `.env`. Never print,
   invent, or pass a token.
 - **Preview is local, deploy is public.** `censurado.py preview` stages an article to the

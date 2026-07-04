@@ -93,8 +93,9 @@ X post, or a Truth Social post (auto-fetch is X-only). Then run `censurado.py tw
 `truth <url>` (Truth Social) and pass `--tweets-file` so the `{{tweet:<id>}}` id matches a captured
 snapshot. Embed a post whenever your prose names one. Crafting counts (guidance, not enforced):
 `{{relacionado:}}` at most two, `{{video:}}` at most three, `{{tweet:}}` no cap but every card
-must earn its place; `topics` up to the `structure.topic_cap` (read with `censurado.py style`),
-always naming the proper-noun entities the piece is about, not only abstract themes.
+must earn its place; `topics` up to `TOPIC_CAP` (the tag cap in `cli/workflow/parameters.json`,
+which the `step` walk fills into the finalize node), always naming the proper-noun entities the
+piece is about, not only abstract themes.
 
 ## Reading X and Truth Social posts (keyless)
 When the story names a public post, or an author's outlet is an X account, read it with NO API
