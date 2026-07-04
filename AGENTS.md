@@ -131,13 +131,13 @@ CLI (`cli/censurado.py`) reads and writes them directly from disk (verbs `step`,
   `cli/workflow/parameters.json` (verb `set-floor`), not with the prompts.
 - Authors and their sources are NOT here: they live in the backend (`publish`) and the CLI
   reads/writes them over HTTP with the operator token (`personas`/`persona`/`create-author`/
-  `sources`/`portals`). There is no `personas.db` and no separate config service.
+  `sources`/`portals`).
 - Contract files: `prompts/` (the recipe), `cli/workflow/parameters.json` (the numeric
   floor), `cli/censurado.py` (the reader: `_prompt_path`, `cmd_step`).
-- The agent-facing surface (the verb set, the routes that name verbs, the recipe files a verb
-  reads, and the knobs) is frozen in `cli/CONTRACT.md` and enforced by
-  `tests/test_cli_contract.py`. To change a verb, a routed reference, or a knob, edit both in
-  the same commit.
+- The agent-facing surface is the morphable inner: reshape it by editing the prompt, skill, and
+  tool FILES by hand. `tests/test_cli_surface.py` guards only the coherence a hand edit can break
+  (a skill naming a verb that does not exist, a missing recipe file, a workflow node using an
+  undefined `parameters.json` parameter), so nothing dead-ends the driver.
 
 ### 4. Generate then serve (the "CDN" seam)
 
