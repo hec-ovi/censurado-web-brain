@@ -41,7 +41,6 @@ packages = [
     "newsroom.editorial",
     "newsroom.mirror",
     "newsroom.cleanse",
-    "testkit",
 ]
 
 [tool.setuptools.package-data]

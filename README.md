@@ -1,6 +1,6 @@
 # censurado-web-brain
 
-The newsroom config plane for Censurado. It stores the authors (their personas), the source outlets each one reads, the editorial style guide, and the versioned prompt library, and serves all of it over an HTTP API to a CLI agent that does the actual writing and to the harness operator panel. The brain runs no model of its own.
+The newsroom config plane for Censurado. It stores the authors (their personas), the source outlets each one reads, and the editorial style guide, and serves those plus the file-based prompt library over an HTTP API to a CLI agent that does the actual writing and to the harness operator panel. The brain runs no model of its own.
 
 A CLI agent (Claude, Codex, or similar) reads an author and the workflow prompts from here, writes the article with its own model, and publishes it straight to the [backend](https://github.com/hec-ovi/censurado-web-backend)'s `POST /articles`. The [generator](https://github.com/hec-ovi/censurado-web) renders the backend's store into the static public site, and the whole stack runs together via the [harness](https://github.com/hec-ovi/censurado-web-harness).
 
@@ -20,7 +20,7 @@ The backend has no concept of personas (its article schema takes only an `author
 ## How it fits the rest of the system
 
 - The brain serves authors, sources, prompts, and style over HTTP; in the harness the CLI agent calls its routes on `127.0.0.1:8085` and the operator panel reaches it in-network as `brain:8000`. It writes nothing to the public site.
-- A CLI agent reads an author (`GET /personas/{id}`) and the prompts (`GET /prompts/template?key=...`), writes the article itself, and publishes to the backend's `POST /articles`. The editorial bar and the art direction live with the agent (the harness `cli/AGENTS.md`), not here.
+- A CLI agent reads an author (`GET /personas/{id}`) and the prompts (`GET /prompts/template?key=...`), writes the article itself, and publishes to the backend's `POST /articles`. The editorial bar and the art direction live with the agent (the harness `cli/SKILL.md`), not here.
 - One operator token (the `articles:write` + `articles:publish-any` + `admin:write` key) is the only coupling between the brain and the backend.
 
 ## Run it
@@ -32,7 +32,7 @@ cd deploy && cp .env.example .env   # set NEWSROOM_OPERATOR_TOKEN and the URLs
 docker compose up --build           # brain on http://127.0.0.1:8000
 ```
 
-Seed a fresh box once with `POST /bootstrap` (idempotent): it loads the default style and location and lifts the prompt library into the editable store. It creates no authors and no sources; those stay operator-owned. The shipped prompts serve from disk even before you bootstrap, so a CLI agent can read them on a clean box. For the full stack (backend, generator, site, ComfyUI) use the [harness](https://github.com/hec-ovi/censurado-web-harness); to author a single article from a CLI agent, follow the harness `cli/AGENTS.md`.
+Seed a fresh box once with `POST /bootstrap` (idempotent): it loads the default style and location. It creates no authors and no sources; those stay operator-owned. The shipped prompts serve from disk even before you bootstrap, so a CLI agent can read them on a clean box. For the full stack (backend, generator, site, ComfyUI) use the [harness](https://github.com/hec-ovi/censurado-web-harness); to author a single article from a CLI agent, follow the harness `cli/SKILL.md`.
 
 ## Layout
 
@@ -40,13 +40,12 @@ Seed a fresh box once with `POST /bootstrap` (idempotent): it loads the default 
 newsroom/
   brain/        the FastAPI app: authors, sources, editorial, prompts, status, bootstrap
   personas/     the persona store (own SQLite, brain-owned)
-  editorial/    portals and sources, the style guide, location, the prompt store, the seeders
+  editorial/    portals and sources, the style guide, location, the seeders
   mirror/       the brain-to-backend author backfill and reconcile
   cleanse/      topic-tag cleanup
   contracts/    the vendored publish contracts, section enum, content hash, slug derivation
   cli.py        the operator CLI entry point (censurado-brain)
-prompts/        versioned .md prompts (workflow step-gate + persona)
-testkit/        the shared in-repo fake (publish seam + chat backend), used by the tests
+prompts/        .md prompts (workflow step-gate + persona)
 tests/          end-to-end tests that drive the real entry points
 deploy/         docker compose (brain) and the trigger example
 AGENTS.md       the operational map of the codebase

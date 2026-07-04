@@ -22,9 +22,9 @@ The default `NEWSROOM_PUBLISH_BASE_URL` points at the host platform via `host.do
 
 ## Seed a fresh box
 
-Once the brain is up, `POST /bootstrap` (idempotent) loads the default style and location and lifts the prompt library into the editable store. It creates no authors and no sources; those stay operator-owned. An operator, or a CLI agent, creates authors via `POST /personas/direct`.
+Once the brain is up, `POST /bootstrap` (idempotent) loads the default style and location. It creates no authors and no sources; those stay operator-owned. An operator, or a CLI agent, creates authors via `POST /personas/direct`.
 
-Authoring and publishing are done by a CLI agent against the platform's `POST /articles`, following the harness `cli/AGENTS.md`. The brain does no writing of its own.
+Authoring and publishing are done by a CLI agent against the platform's `POST /articles`, following the harness `cli/SKILL.md`. The brain does no writing of its own.
 
 ## Build the image alone
 

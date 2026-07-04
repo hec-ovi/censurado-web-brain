@@ -2,7 +2,7 @@
 
 A map of `censurado-web-brain` for an agent (human or model) working in it. It says what each part does and points at the file that is the contract; it does not restate the code.
 
-The brain is the newsroom CONFIG PLANE. It runs no model. It stores the authors, the sources each one reads, the editorial style, and the versioned prompt library in one SQLite, and serves them over an HTTP API to a CLI agent and to the harness operator panel. The CLI agent does the writing and publishes to the platform's `POST /articles` itself; the editorial bar and the publish contract live in the harness `cli/AGENTS.md`.
+The brain is the newsroom CONFIG PLANE. It runs no model. It stores the authors, the sources each one reads, and the editorial style in one SQLite, and serves them plus the file-based prompt library over an HTTP API to a CLI agent and to the harness operator panel. The CLI agent does the writing and publishes to the platform's `POST /articles` itself; the editorial bar and the publish contract live in the harness `cli/SKILL.md`.
 
 One process boundary matters: the brain serves HTTP. Everything else is in-process packages whose contract is the function signature.
 
@@ -11,7 +11,7 @@ One process boundary matters: the brain serves HTTP. Everything else is in-proce
 ```
 
 Two invariants, enforced by tests:
-- **No output-length cap, ever.** No `max_tokens` / `max_words` / "in N words" anywhere. The brain calls no model, but the guard in `testkit/assertions.py` stays so any future call is checked.
+- **No output-length cap, ever.** No `max_tokens` / `max_words` / "in N words" anywhere. The brain calls no model, so there is nothing to cap; the rule still stands if that ever changes.
 - **One publish seam.** The brain and the platform meet only at the platform HTTP API. The brain owns authors and prompts; the platform stores `author` as a free string and has no persona concept.
 
 ## Components
@@ -52,9 +52,8 @@ The article and batch shapes are pinned copies of the platform schemas, governed
 - → `newsroom/contracts/article.py`, `schema.py`, `hashing.py`, `slug.py`, `sections.py`
 - → `newsroom/contracts/vendored/v1/*.schema.json` (do not hand-edit)
 
-### Tests + the shared fake
-Every test drives a real entry point through to its side effect against one in-repo fake that stands in for the platform publish seam (`/articles`, `/articles:batch`) and the chat backend (carrying the no-output-cap guard).
-- → `testkit/fake_server.py`, `testkit/assertions.py` (the no-cap guard)
+### Tests
+Every test drives a real entry point through to its side effect: the brain's FastAPI app in-process via `TestClient`, with the outbound backend calls (the platform publish/read seam) checked against the pinned contract.
 - → `tests/`
 
 ### Infra
