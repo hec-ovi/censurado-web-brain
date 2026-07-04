@@ -118,7 +118,7 @@ Open the operator panel at http://localhost:8082 (log in with the panel token fr
 
 **7. Operate.** The panel (served by the backend on 8082) is the single operator surface: it lists and edits articles, curates the portada, creates and edits authors (name, voice/style, gender, topics, attached sources), derives topics, and manages sources, all against the backend behind one login. It talks to the backend directly and binds `127.0.0.1`.
 
-**8. Tear down.** `docker compose down` stops everything but keeps the data (the db and media are host bind mounts under `./data`, at `./data/db` and `./data/media`). To wipe the named volumes too: `docker compose down -v`, then `docker compose run --rm init-perms` before the next `up` so the site volume is writable again.
+**8. Tear down.** `docker compose down` stops everything but keeps the data (the db and media are host bind mounts under the neutral data dir `${CENSURADO_DATA_DIR:-../censurado-data}`, at `.../db` and `.../media`, which lives outside every code repo). To wipe the named volumes too: `docker compose down -v`, then `docker compose run --rm init-perms` before the next `up` so the site volume is writable again.
 
 `bootstrap.sh` is safe to re-run; it mints a fresh operator key and panel login each time.
 
@@ -159,6 +159,16 @@ All config lives in `.env` (see `.env.example`). The non-secret defaults target 
 
 - The litestream backup sidecar that `censurado-web-backend` ships for production. Add it from that repo's own compose if you want off-site backups; this compose keeps to the running system.
 - TLS and auth in front of the operational ports. They bind `127.0.0.1` instead. Put a real auth layer in front before exposing any of them.
+
+## Pending features (roadmap)
+
+Not built yet, captured here so we can pick them up. Nothing below blocks the current pipeline.
+
+- **Topic normalization as a skill** (brain). A CLI + skill pass that reads an author's articles, has the model detect topic variants of one entity ("milei" / "Milei" / "Javier-Milei"), and merges them to a single canonical tag across the articles and the author's main topics. The rewrite mechanics exist today (`censurado-brain topics cleanse --map-file --apply`); what is missing is the skill wiring and the automatic variant detection (today the map is supplied by hand).
+- **Agentic importance arrange at the end of a batch** (brain). When a driver runs the full scheduler batch, the last step arranges the portada by importance, laid out against an importance matrix. This is agent-driven, not an automatic ranking function. Open: the importance-matrix design is still to be defined.
+- **Drag-and-drop layout organizer** (backend panel). The portada organizer reorders with up/down buttons today; a visual drag-and-drop swap is a nice-to-have.
+- **Analytics / BI dashboard** (backend panel). One surface for growth: a most-popular-topics chart (filtered totals, built to scale to thousands of topics), authors ranked by likes, authors with the fewest articles, and statistical/growth modeling. Note: author-likes needs a reactions data source the backend does not hold yet (reactions live in the downstream Cloudflare Pages reactions function).
+- **Rebel Forge integration** (scope TBD). Integrate Rebel Forge functionality. Scope and the layer it lands in are still to be defined.
 
 ## Tests
 
