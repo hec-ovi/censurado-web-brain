@@ -18,8 +18,8 @@ in Go is the BYTE length of the UTF-8 string, reproduced here as
 ``len(field.encode("utf-8"))``. Go's ``strings.TrimSpace`` and Python's
 ``str.strip`` both trim Unicode whitespace, so they agree on the article fields.
 
-This is the single source of truth for the hash inside the harness: the publish
-client and the test fake both import it, so the idempotency key the harness mints
+This is the single source of truth for the hash inside the newsroom: the publish
+client and the test fake both import it, so the idempotency key the newsroom mints
 and the dedup the platform performs agree by construction. Cross-repo equality
 with the live Go implementation is exercised end to end at the publish seam
 (Step 7).
@@ -33,7 +33,7 @@ __all__ = ["content_hash", "idempotency_key"]
 
 
 def idempotency_key(assignment_id: str, content_hash_hex: str) -> str:
-    """The harness's content-derived idempotency key (architecture doc B.0).
+    """The newsroom's content-derived idempotency key (architecture doc B.0).
 
     Keyed on the assignment id (a collision-free PK, so the manager assigning one
     persona two angles in a run never collides) COMBINED with the finalized

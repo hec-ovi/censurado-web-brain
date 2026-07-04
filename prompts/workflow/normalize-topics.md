@@ -23,14 +23,9 @@ Do it author by author. For each active author:
    To clear a bad set and fall back to the computed union, pass `--set ""`.
    Read the current value any time with `python3 cli/censurado.py profile-topics <id>`.
 
-When every author is done, push the curated topics to the platform so the generator can
-read them (they travel in the author registry, not in the articles):
-
-    curl -fsS -X POST "$CENSURADO_BRAIN/mirror/authors"
-
-(`$CENSURADO_BRAIN` defaults to http://127.0.0.1:8085, the brain config plane, which
-upserts every author to the backend using its own operator token.) A dry run that lists
-the handles without pushing is `.../mirror/authors?dry_run=true`.
+`profile-topics --set` writes straight to the backend author registry (the topics travel
+with the author, not with the articles), so once step 4 succeeds for an author the curated
+list is already stored. There is nothing to push separately.
 
 The change shows up on the site only after a regenerate. In the running stack the generate
 service repaints the front pages on its own; the sealed author pages are rewritten on the

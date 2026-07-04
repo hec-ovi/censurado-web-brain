@@ -10,19 +10,38 @@ venv/
 .coverage
 htmlcov/
 
-# Secrets and local config
+# Secrets and local config (bootstrap.sh mints these per host; ship .env.example instead)
 .env
 .env.*
 !.env.example
 keys.json
+session
 *.secret
 
-# Local persona/data stores
+# Local data + runtime state (host-specific, regenerable)
+# sqlite DBs + uploaded media, owned by the containers
+data/
 *.db
 *.db-wal
 *.db-shm
 *.sqlite
 *.sqlite3
+# persona/avatar snapshots used by local seeding
+snapshots/
+# token-usage accounting written at runtime
+metrics/
+# generated static site (output of `generate`)
+dist/
+
+# Cloudflare / wrangler local state
+.wrangler/
+# Pages config written by deploy/deploy-cdn.sh from .env (embeds the D1 id)
+wrangler.toml
+# JS test dependencies (vitest for functions/)
+node_modules/
+
+# Local operator tooling (seeds/edits the running stack; embeds persona text + host paths)
+scripts/
 
 # Local model weights (large; never commit)
 models/
@@ -32,6 +51,22 @@ models/
 .DS_Store
 .idea/
 .vscode/
+.codex/
+.agents/
+
+# Private marketing assets (name personas; kept local)
+brochure/
+
+# Internal working notes (kept local)
+goalproject.md
+UI-RESOLVER.md
+console-cockpit-plan.md
+deepdive-findings.md
+split-plan.md
+refactor.md
+
+# CI is intentionally not shipped (workflows email on every push; the stack is validated locally)
+.github/
 
 # Research store (private working notes; may hold proprietary insight)
 .research/

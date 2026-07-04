@@ -13,11 +13,11 @@ then run this a single time (its own `deploy` mode: `python3 cli/censurado.py st
 Preconditions (best-effort: if either is missing, tell the human and STOP here rather than
 failing the article, which is already safely published locally):
 
-- `CLOUDFLARE_ACCOUNT_ID` is set in the harness `.env` (a host identifier, kept out of git).
+- `CLOUDFLARE_ACCOUNT_ID` is set in this repo's `.env` (a host identifier, kept out of git).
 - wrangler is authenticated once on this host (`wrangler login`); the deploy uses that
   OAuth session, no API token.
 
-Then run the deploy from the harness repo:
+Then run the deploy from the repo root:
 
     make deploy        # or: ./deploy/deploy-cdn.sh
 

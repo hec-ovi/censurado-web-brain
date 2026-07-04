@@ -2,7 +2,7 @@
 
 The vendored platform contracts MUST stay byte-equal (structurally) to the live
 platform schemas. If the platform adds a required field or tightens a constraint,
-this test fails loudly so the harness is updated deliberately rather than breaking
+this test fails loudly so the newsroom is updated deliberately rather than breaking
 silently at publish time. It covers the single-article contract and the batch
 publish request/response contracts (``POST /articles:batch``).
 

@@ -1,18 +1,15 @@
-"""Harness configuration.
+"""Newsroom CLI configuration.
 
-One settings object, environment-driven (prefix ``NEWSROOM_``), read once at
-startup. It carries the brain's HTTP surface, its stores and prompt assets, and the
-publish seam credentials.
+One settings object, environment-driven (prefix ``NEWSROOM_``), read once. It carries only
+the publish-seam credentials the maintenance sweeps need: where the backend is and the
+operator key(s). The CLI holds no data and runs no server, so there is nothing else to
+configure.
 """
 
 from __future__ import annotations
 
-from pathlib import Path
-
-from pydantic import Field, field_validator
+from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
-
-_REPO_ROOT = Path(__file__).resolve().parent.parent
 
 
 class Settings(BaseSettings):
@@ -23,63 +20,14 @@ class Settings(BaseSettings):
         extra="ignore",
     )
 
-    # HTTP surface (the brain's own API, consumed by the CLI agent, the panel, and the trigger).
-    host: str = "127.0.0.1"
-    port: int = 8722
-
-    # Browser CORS allow-list for the brain API, so a browser admin/mobile-web client
-    # (served from another origin) clears the preflight and can call the brain. Driven by
-    # ``NEWSROOM_CORS_ORIGINS`` as a comma-separated list (or ``*`` for any origin); the
-    # default is the local dev origins a Vite/Next admin UI runs on. ``create_app`` reads
-    # this and, when the list is exactly ``*``, drops credentialed CORS (the spec forbids
-    # ``*`` with credentials), since the brain authenticates by header, not cookie.
-    cors_origins: list[str] = Field(
-        default_factory=lambda: [
-            "http://localhost:5173",
-            "http://127.0.0.1:5173",
-            "http://localhost:3000",
-            "http://127.0.0.1:3000",
-            "http://localhost:8722",
-            "http://127.0.0.1:8722",
-        ]
-    )
-
-    @field_validator("cors_origins", mode="before")
-    @classmethod
-    def _split_cors_origins(cls, value: object) -> object:
-        """Accept ``NEWSROOM_CORS_ORIGINS`` as a comma-separated string (the natural env
-        form) as well as a JSON/list. A bare ``*`` means any origin; a blank value clears
-        the list. A real list (e.g. a test passing ``cors_origins=[...]``) is returned
-        unchanged."""
-        if isinstance(value, str):
-            stripped = value.strip()
-            if not stripped:
-                return []
-            return [part.strip() for part in stripped.split(",") if part.strip()]
-        return value
-
-    # Brain-owned stores and prompt assets.
-    persona_db_path: Path = _REPO_ROOT / "data" / "personas.db"
-    prompts_dir: Path = _REPO_ROOT / "prompts"
-
-    # ----- Presentation defaults (seeded into the editable location row on bootstrap). -----
-    # The publication place is operator config, not baked-in: a fresh deploy sets these so
-    # the newsroom is not locked to one country. ``region`` is ISO-3166-1 alpha-2 (Google
-    # News ``gl``), ``ui_lang`` is BCP47 (``hl``), ``language`` is ISO-639-1 (websearch
-    # scope), ``gdelt_country`` is FIPS-10-4 (optional GDELT feed; differs from ISO for some
-    # countries). The panel can change them later; this is only the first-boot seed.
-    default_region: str = "AR"
-    default_ui_lang: str = "es-419"
-    default_language: str = "es"
-    default_gdelt_country: str = "AR"
-
-    # Publish seam. The platform requires the operator key scope(s).
-    publish_base_url: str = "http://127.0.0.1:8080"
+    # Publish seam: the platform backend the sweeps read + edit over HTTP. This is the write
+    # API (localhost:8082 in the local stack), the SAME endpoint cli/censurado.py uses. The
+    # operator token MUST hold the admin:write scope for the edit passes (topic cleanse and
+    # embeds recheck edit articles in place via PUT /articles).
+    publish_base_url: str = "http://127.0.0.1:8082"
     operator_token: str = Field(default="", repr=False)
-    # The operator EDIT key (admin:write scope), used by maintenance passes that mutate
-    # existing articles in place (the topic cleanse remaps via PUT /articles, which the
-    # append-only operator_token cannot reach). Falls back to operator_token when unset,
-    # so a deployment that mints one key with all scopes needs no extra config.
+    # The operator EDIT key (admin:write scope). Falls back to operator_token when unset, so a
+    # deployment that mints one key with all scopes needs no extra config.
     admin_token: str = Field(default="", repr=False)
 
 

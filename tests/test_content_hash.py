@@ -3,7 +3,7 @@
 The golden vector below was produced by an INDEPENDENT Go program that replicates
 ``internal/domain/article.go`` ``ContentHash`` exactly, run against the platform's
 own hash construction. Python and Go agree on it byte for byte, which is what lets
-the harness mint an idempotency key the platform will accept as identical.
+the newsroom mint an idempotency key the platform will accept as identical.
 """
 
 from __future__ import annotations

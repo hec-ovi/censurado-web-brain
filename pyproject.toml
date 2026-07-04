@@ -1,14 +1,12 @@
 [project]
 name = "censurado-web-brain"
 version = "0.0.0"
-description = "Newsroom config plane for the censurado-web platform: stores the authors, sources, prompts, and editorial style and serves them to a CLI agent and the harness operator panel. Runs no model."
+description = "The Censurado agentic newsroom: a CLI plus a prompt recipe that drives the censurado-web-backend over HTTP (write articles, curate authors and sources) with maintenance sweeps (topic cleanse, embeds recheck). Holds no data, runs no server or model."
 readme = "README.md"
 requires-python = ">=3.11"
 license = { text = "MIT" }
 authors = [{ name = "Hector Oviedo" }]
 dependencies = [
-    "fastapi>=0.115",
-    "uvicorn>=0.30",
     "httpx>=0.27",
     "pydantic>=2.7",
     "pydantic-settings>=2.3",
@@ -24,8 +22,9 @@ dev = [
 ]
 
 [project.scripts]
-# The brain's management CLI: command-line parity of the config-plane HTTP API
-# (authors, sources, prompts, editorial style). See newsroom.cli.
+# The newsroom maintenance CLI: a backend health probe plus the topic-cleanse and
+# embeds-recheck sweeps over the platform backend. See newsroom.cli. (Article authoring
+# is the dependency-free cli/censurado.py, run as a script.)
 censurado-brain = "newsroom.cli:main"
 
 [build-system]
@@ -36,11 +35,8 @@ build-backend = "setuptools.build_meta"
 packages = [
     "newsroom",
     "newsroom.contracts",
-    "newsroom.brain",
-    "newsroom.personas",
-    "newsroom.editorial",
-    "newsroom.mirror",
     "newsroom.cleanse",
+    "newsroom.embeds",
 ]
 
 [tool.setuptools.package-data]
@@ -53,3 +49,9 @@ addopts = "-q"
 [tool.ruff]
 line-length = 100
 target-version = "py311"
+
+[tool.ruff.lint.per-file-ignores]
+# cli/censurado.py is a deliberately compact, stdlib-only operator CLI: it uses one-line
+# `if x: y` payload builders (E701) and a single grouped stdlib import (E401). Real defects
+# (e.g. f-string syntax that is invalid on the declared 3.11 floor) are still caught.
+"cli/censurado.py" = ["E701", "E401"]

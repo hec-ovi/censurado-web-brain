@@ -7,8 +7,12 @@ alone. ``load_prompt`` reads the real on-disk prompt files.
 
 from __future__ import annotations
 
-from newsroom.config import load_settings
+from pathlib import Path
+
 from newsroom.prompts import load_prompt, render
+
+# The prompt recipe is on-disk files in this repo's prompts/ dir (git is their history).
+PROMPTS_DIR = Path(__file__).resolve().parent.parent / "prompts"
 
 
 def test_render_substitutes_tokens():
@@ -33,7 +37,7 @@ def test_render_preserves_literal_json_braces():
 
 
 def test_load_prompt_reads_the_role_play_synthesis_prompt():
-    text = load_prompt(load_settings().prompts_dir, "persona", "synthesize.md")
+    text = load_prompt(PROMPTS_DIR, "persona", "synthesize.md")
     assert "You ARE {{DISPLAY_NAME}}" in text
     assert "few_shots_neg" in text
     assert "no length limit" in text.lower()
@@ -44,7 +48,7 @@ def test_finalize_prompt_carries_headline_discipline():
     # the honest-but-arresting headline rubric (promise kept, name the concrete noun, the
     # dek does not repeat the title), keep the body uncapped, and lift the standfirst into
     # the live `description` field (the retired `summary` field is gone).
-    text = load_prompt(load_settings().prompts_dir, "workflow", "90-finalize.md")
+    text = load_prompt(PROMPTS_DIR, "workflow", "90-finalize.md")
     # Collapse whitespace so a phrase that wraps across a markdown line break still matches.
     low = " ".join(text.lower().split())
     # The topic cap is a client-filled parameter, never a hardcoded number.
@@ -67,7 +71,7 @@ def test_draft_prompt_enforces_say_each_idea_once():
     # lives there once and applies to all of them: a caveat/disclaimer is stated a
     # single compact time, never stacked into three-to-five synonyms, never echoed
     # in every paragraph.
-    text = load_prompt(load_settings().prompts_dir, "workflow", "50-draft.md")
+    text = load_prompt(PROMPTS_DIR, "workflow", "50-draft.md")
     # Collapse whitespace so a phrase that wraps across a markdown line break still matches.
     low = " ".join(text.lower().split())
     assert "say each idea once" in low

@@ -1,0 +1,123 @@
+"""Structural tests for the unified skill package (cli/SKILL.md resolver + cli/skills/*).
+
+These guard the agent-facing contract, not Python behavior: every sub-skill the resolver
+routes to must actually exist, and every sub-skill must carry valid agentskills.io frontmatter
+whose `name` matches its directory. A driving agent reads these files by path, so a dangling
+route or a name/dir mismatch is a real break even though no code imports them. Stdlib only."""
+import re
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[1]
+CLI = ROOT / "cli"
+RESOLVER = CLI / "SKILL.md"
+SKILLS_DIR = CLI / "skills"
+
+
+def _frontmatter(md_path):
+    """The YAML frontmatter block of a SKILL.md as a {key: value} map, values as raw strings.
+    Minimal (name/description are simple scalars here), so no YAML dependency is needed."""
+    text = md_path.read_text(encoding="utf-8")
+    m = re.match(r"^---\n(.*?)\n---\n", text, re.S)
+    assert m, f"{md_path} has no --- frontmatter block"
+    block = m.group(1)
+    out, key = {}, None
+    for line in block.splitlines():
+        top = re.match(r"^([A-Za-z_][\w-]*):\s?(.*)$", line)
+        if top:
+            key = top.group(1)
+            out[key] = top.group(2).strip()
+        elif key and line.strip():                      # folded/continued scalar (e.g. >- blocks)
+            out[key] = (out[key] + " " + line.strip()).strip()
+    return out
+
+
+def test_every_subskill_has_valid_frontmatter_matching_its_dir():
+    skill_files = sorted(SKILLS_DIR.glob("*/SKILL.md"))
+    assert skill_files, "no sub-skills found under cli/skills/"
+    for sk in skill_files:
+        fm = _frontmatter(sk)
+        assert fm.get("name") == sk.parent.name, \
+            f"{sk}: frontmatter name {fm.get('name')!r} != dir {sk.parent.name!r}"
+        assert fm.get("description"), f"{sk}: missing/empty description"
+        assert len(fm["description"]) > 30, f"{sk}: description too thin to route on"
+
+
+def test_resolver_routes_only_to_subskills_that_exist():
+    refs = set(re.findall(r"skills/([\w-]+)/SKILL\.md", RESOLVER.read_text(encoding="utf-8")))
+    assert refs, "the resolver routes to no sub-skills"
+    for name in refs:
+        assert (SKILLS_DIR / name / "SKILL.md").is_file(), \
+            f"resolver routes to skills/{name}/ but it does not exist"
+
+
+def test_the_operations_surface_is_present_and_routed():
+    # The acceptance surface: a fresh agent given only cli/SKILL.md can reach each of these.
+    # deploy + prompts complete the plan's target layout (go-live and prompt-editing).
+    expected = {"write-article", "daily-batch", "authors", "sources", "portada", "media",
+                "websearch", "deploy", "prompts"}
+    on_disk = {p.parent.name for p in SKILLS_DIR.glob("*/SKILL.md")}
+    assert expected <= on_disk, f"missing sub-skills: {expected - on_disk}"
+    routed = set(re.findall(r"skills/([\w-]+)/SKILL\.md", RESOLVER.read_text(encoding="utf-8")))
+    assert expected <= routed, f"present but not routed from the resolver: {expected - routed}"
+
+
+def _body(md_path):
+    """A SKILL.md's content BELOW the frontmatter block, so a rail is verified in the prose the
+    agent acts on, not merely satisfied by the one-line frontmatter description (which would let a
+    gutted body still pass)."""
+    text = md_path.read_text(encoding="utf-8")
+    return re.sub(r"^---\n.*?\n---\n", "", text, count=1, flags=re.S)
+
+
+def test_deploy_skill_carries_its_safety_rails():
+    # Deploy is the one public, irreversible action. Assert the rails in the BODY, not the whole
+    # file: the frontmatter description alone must not satisfy these, or a gutted body would pass.
+    body = _body(SKILLS_DIR / "deploy" / "SKILL.md").lower()
+    assert "localhost:8080" in body, "deploy body must contrast the local preview"
+    assert "make deploy" in body, "deploy body must name the real command"
+    assert "elcensuradoweb.com" in body, "deploy body must name the public target"
+    assert "explicit yes" in body, "deploy body must require an explicit yes"
+    assert any(p in body for p in ("unattended", "never deploy on your own")), \
+        "deploy body must keep the do-not-self-deploy rail"
+    assert any(p in body for p in ("front page", "what will go live")), \
+        "deploy body must keep the show-what-goes-live step"
+
+
+def test_resolver_carries_the_public_deploy_rail():
+    # cli/SKILL.md is always loaded; an agent can run `make deploy` from the resolver row alone,
+    # so the preview-is-local + get-a-yes-before-deploy rail must live on the always-loaded surface.
+    low = RESOLVER.read_text(encoding="utf-8").lower()
+    assert "localhost:8080" in low, "resolver must say preview is local"
+    assert "deploy" in low and any(p in low for p in ("get a yes", "confirm", "explicit yes")), \
+        "resolver must carry the confirm-before-public-deploy rail"
+
+
+def test_prompts_skill_treats_every_prompt_as_a_file_not_a_db():
+    # Prompts are MD files edited in place (git is the history); there is NO DB version store, no
+    # staging, no promote. The skill must reflect that single-store, file-only model.
+    text = (SKILLS_DIR / "prompts" / "SKILL.md").read_text(encoding="utf-8")
+    low = text.lower()
+    assert "workflow/" in text and "persona/" in text, "must name both prompt key shapes"
+    assert "set-prompt" in text, "must show the edit verb"
+    assert "in place" in low and "git" in low, "edits rewrite the file in place; git is the history"
+    assert any(p in low for p in ("no database", "never a database", "no version")), \
+        "must state there is no DB version store for prompts"
+    assert "--stage" not in text, "the --stage flag is removed; prompts are files, not DB versions"
+    # and steer numeric-floor edits away from prompts to the right place
+    assert "parameters.json" in text or "set-floor" in text, \
+        "prompts skill must send numeric-floor edits to parameters.json / set-floor, not a prompt"
+
+
+def test_retired_flat_docs_are_gone_and_unreferenced():
+    # ART-DIRECTOR / DAILY-SWEEP / TOOLKIT were folded into the sub-skills (media / daily-batch /
+    # write-article) and DELETED. Guard both that they stay gone AND that nothing under cli/ still
+    # points at them (a dangling reference the agent surface would follow into nothing).
+    gone = ("ART-DIRECTOR.md", "DAILY-SWEEP.md", "TOOLKIT.md")
+    for name in gone:
+        assert not (CLI / name).exists(), f"cli/{name} should be deleted, not resurrected"
+    pattern = re.compile("|".join(re.escape(n) for n in gone))
+    for path in CLI.rglob("*"):
+        if not path.is_file() or path.suffix not in (".py", ".md", ".json"):
+            continue
+        hits = set(pattern.findall(path.read_text(encoding="utf-8", errors="ignore")))
+        assert not hits, f"{path} still references a retired doc: {hits}"

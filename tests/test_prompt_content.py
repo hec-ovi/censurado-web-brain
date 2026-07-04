@@ -4,22 +4,24 @@ These assertions pin the prompt TEXT of the LIVE step-gate nodes (the ``workflow
 prompts the CLI ``step`` verb walks one at a time) against the editorial bar: the
 cross-source count, the topic cap, and the respin-pass count are client-filled
 placeholders, never hardcoded numbers; the evaluate node gates all six review
-dimensions; and the drafting nodes carry the anti-slop discipline. The last test starts
-the real brain app over a FRESH personas.db with the shipped prompts dir and proves
-GET /prompts lists the workflow nodes among the keys.
+dimensions; and the drafting nodes carry the anti-slop discipline. The last test reads the
+manifest off disk and proves every workflow node it references (plus persona/synthesize) is
+present, so the step gate never walks into a missing file.
 """
 
 from __future__ import annotations
 
-from fastapi.testclient import TestClient
+import json
+from pathlib import Path
 
-from newsroom.brain import create_app
-from newsroom.config import Settings, load_settings
 from newsroom.prompts import load_prompt
+
+# The prompt recipe is on-disk files in this repo's prompts/ dir (git is their history).
+PROMPTS_DIR = Path(__file__).resolve().parent.parent / "prompts"
 
 
 def _workflow(name: str) -> str:
-    return load_prompt(load_settings().prompts_dir, "workflow", name)
+    return load_prompt(PROMPTS_DIR, "workflow", name)
 
 
 def _flat(name: str) -> str:
@@ -88,15 +90,15 @@ def test_draft_node_enforces_the_anti_slop_discipline():
     assert "over-hedging" in low
 
 
-def test_get_prompts_lists_the_workflow_nodes_on_a_fresh_box(tmp_path):
-    # Fresh personas.db, shipped prompts dir: the listing serves every prompt file, the
-    # workflow step-gate nodes and persona/synthesize, each just {key, body} from disk.
-    settings = Settings(persona_db_path=tmp_path / "brain.db")
-    client = TestClient(create_app(settings=settings))
-    listing = client.get("/prompts").json()
-    assert listing["total"] >= 12
-    by_key = {t["key"]: t for t in listing["templates"]}
-    for key in ("workflow/50-draft.md", "workflow/90-finalize.md", "persona/synthesize.md"):
-        assert key in by_key, f"fresh-box listing dropped {key}"
-        assert set(by_key[key]) == {"key", "body"}
-        assert by_key[key]["body"].strip()
+def test_every_manifest_workflow_node_and_persona_synthesize_exist_on_disk():
+    # The step gate serves nodes straight off disk, so every node the manifest references
+    # (plus persona/synthesize, the author-synthesis prompt) must actually be present or a
+    # walk hits a missing file. This is the filesystem twin of the old GET /prompts listing.
+    manifest = json.loads((PROMPTS_DIR / "workflow" / "manifest.json").read_text())
+    need = {"00-mode"} | {k for keys in (manifest.get("modes") or {}).values() for k in keys}
+    assert len(need) >= 12, "the manifest lists suspiciously few workflow nodes"
+    for key in sorted(need):
+        node = PROMPTS_DIR / "workflow" / f"{key}.md"
+        assert node.is_file() and node.read_text().strip(), f"missing/empty workflow node {key}.md"
+    synth = PROMPTS_DIR / "persona" / "synthesize.md"
+    assert synth.is_file() and synth.read_text().strip(), "missing persona/synthesize.md"

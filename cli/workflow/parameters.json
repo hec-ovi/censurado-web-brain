@@ -1,0 +1,6 @@
+{
+  "MIN_SOURCES": 6,
+  "MIN_PER_TYPE": 2,
+  "RESPIN_PASSES": 2,
+  "TOPIC_CAP": 12
+}

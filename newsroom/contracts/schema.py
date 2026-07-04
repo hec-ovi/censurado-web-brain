@@ -1,6 +1,6 @@
 """Loader for the vendored platform article schema.
 
-The harness does NOT read the platform's schema file across repos (that would be
+The newsroom does NOT read the platform's schema file across repos (that would be
 filesystem coupling and break the isolated-repo claim) and does NOT keep an
 unmanaged copy (that drifts silently). It VENDORS a pinned copy under a contract
 version directory, anchored to the schema's ``$id``. A CI drift test

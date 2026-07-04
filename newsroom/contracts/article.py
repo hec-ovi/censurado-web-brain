@@ -4,8 +4,8 @@
 for field against ``vendored/v1/article.schema.json``): strict (unknown fields
 rejected, matching the platform's ``additionalProperties:false`` +
 ``DisallowUnknownFields``), ``body`` has NO maximum length (article bodies are
-never truncated), and ``section`` is validated against the harness's own closed
-enum (the platform treats section as a free string, so the harness pins its own
+never truncated), and ``section`` is validated against the newsroom's own closed
+enum (the platform treats section as a free string, so the newsroom pins its own
 vocabulary, see ``contracts.sections``).
 
 ``FinalizedDraft`` is the smaller shape the FINALIZE model authors: the content
@@ -80,7 +80,7 @@ class FinalizedDraft(BaseModel):
 
 class PublishArticleInput(BaseModel):
     """The full publish payload. Strict envelope (unknown fields rejected), body
-    unbounded, section pinned to the harness enum. Consumed by finalize (Step 5)
+    unbounded, section pinned to the newsroom enum. Consumed by finalize (Step 5)
     and the publish client (Step 7)."""
 
     model_config = ConfigDict(extra="forbid")

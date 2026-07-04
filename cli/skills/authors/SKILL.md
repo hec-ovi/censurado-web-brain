@@ -1,0 +1,59 @@
+---
+name: authors
+description: >-
+  Create, inspect, and remove the personas that write Censurado articles: list authors, read
+  one author's private voice and public bio, synthesize a new author from a seed brief, and
+  delete one. Use when the user wants to add a writer, change who covers a beat, audit the
+  roster, or retire an author. Authors live in the backend (the single content store), never in code.
+---
+
+# Manage authors (the personas)
+
+Every article is written AS one author, in the first person, in that author's voice. Authors
+are the newsroom's DATA: they live in the backend (via these `censurado.py` verbs, which hit
+the publish backend over HTTP), and these verbs are the whole surface. Never edit code to
+change an author.
+
+## Read the roster
+- List author ids: `python3 cli/censurado.py personas`
+- Read ONE author in full (voice + beat + outlets): `python3 cli/censurado.py persona <id>`
+
+The record has two halves. PRIVATE (the drafting voice, never shown to readers): `who_i_am`,
+`style`, `few_shots_pos`, `few_shots_neg`. PUBLIC (the byline + "Nosotros" page): `about`,
+`display_name`, `avatar_path`. Plus `beat` (the author's default `section`), `language` (the
+body language, Spanish for the current roster), and `sources` (the outlets it reads, see the
+`sources` sub-skill).
+
+## Create an author
+An author is a single JSON object you write yourself. Do NOT invent the shape from memory:
+read the current schema and write to it.
+
+1. Read the synthesize guide, which defines every key and how to voice it:
+   `python3 cli/censurado.py prompt persona/synthesize.md`
+2. From the user's seed brief (who this writer is, their beat, their politics), produce the
+   JSON with these keys: `display_name`, `beat`, `who_i_am`, `style` (all four REQUIRED),
+   plus `about`, `few_shots_pos`, `few_shots_neg`, `sources`, `avatar_path` (optional). Write
+   each field as long as it needs; there is no length limit on any of them. `who_i_am` and
+   `about` are first person, in the author's own voice, not described from outside.
+3. Persist it: `python3 cli/censurado.py create-author --file <persona.json>` (or pipe the
+   JSON on stdin with `--file -`). It returns the stored record; a missing required field is
+   rejected before any write.
+
+The voice fields are load-bearing: `few_shots_pos`/`few_shots_neg` are the pairs that stop the
+drafter collapsing into generic "helpful assistant" prose, so write real, beat-specific
+exemplars, not placeholders.
+
+## Edit an existing author
+The whole record is patchable in place (nothing is code):
+- Replace the outlets it reads: use the `sources` sub-skill (`sources <id> --set ...`).
+- Replace its public profile topics: `python3 cli/censurado.py profile-topics <id> --set a,b,c`.
+- Rewrite a field of the voice: `python3 cli/censurado.py prompt persona/synthesize.md` to
+  re-read the schema, then re-`create-author` the full JSON for that id (create-author upserts).
+
+## Remove an author (destructive)
+`python3 cli/censurado.py remove-author <id> --yes`
+
+It is not undoable through the API, so confirm with the user first, then pass `--yes`. Reponses:
+`204` removed, `404` no such author, `409` the author is still referenced by a queued
+assignment (finish or reassign that batch item first, the store refuses to orphan a run's
+authorship). Removing an author does NOT delete the articles they already published.

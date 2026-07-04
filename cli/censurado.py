@@ -1,0 +1,1510 @@
+#!/usr/bin/env python3
+"""censurado.py: the mechanical plumbing for the Censurado publish/edit lane.
+
+A CLI agent writes the article itself (see cli/SKILL.md, the editorial bar) and uses
+this helper ONLY for the boilerplate that is identical every time and easy to get wrong:
+reading the operator token from .env (never printed), building strict JSON, the
+POST /articles publish, the GET -> modify -> PUT edit round-trip, media upload, turning
+a tweet or a Trump "truth" into the exact snapshot object the {{tweet:id}} card needs,
+and rendering an art-directed hero image through ComfyUI.
+
+It re-implements no editorial judgement. WHAT to write, WHERE a widget marker goes, and
+HOW to art-direct an image stay with the agent (see cli/skills/media/SKILL.md for the
+image brief). This only removes the per-article throwaway script. Stdlib only, no install.
+
+It is also the agent's data-facing toolbox: all authors and sources live in the backend
+(the single content store), and the prompts are on-disk FILES, so an agent discovers them at
+runtime: `personas` lists the authors that exist, `persona <id>` fetches one author's full
+record (voice + beat + sources), `prompt <key>` reads a workflow prompt file, `portals`/
+`sources` read and wire an author's outlets, and `create-author` persists a new author the
+agent wrote from the synthesize prompt. An empty backend means zero authors until the
+operator (or an agent) creates one. Authors/sources go over the SAME publish backend as
+articles (Bearer-authed, admin:write), so there is no separate config service to run.
+
+The `step` verb is the workflow's step gate: it serves ONE newsroom node at a time (the
+`workflow/*` nodes, ordered by `workflow/manifest.json`), fills the numeric parameters, and
+prints the exact NEXT command, so the agent walks the editorial loop step by step instead of
+reading the whole brief and one-shotting it. The agentic-workflow prompts (the nodes + the
+manifest + the persona/editorial prompts) are the newsroom recipe: plain FILES under this
+repo's `prompts/` dir (git is their version history). `step`/`prompt`/`set-prompt` read
+and write those files directly (no server), resolving the dir from `CENSURADO_PROMPTS_DIR`
+(default: this repo's `prompts/`, a sibling of this cli/ dir). The numeric parameters travel
+WITH this package (`cli/workflow/parameters.json`). See cli/SKILL.md (the resolver + sub-skills)
+for the agent surface, `python3 cli/censurado.py <cmd> --help` for flags.
+"""
+import argparse, hashlib, html, json, os, re, sys, time, unicodedata, urllib.error, urllib.parse, urllib.request
+from datetime import datetime, timedelta
+from pathlib import Path
+
+PUBLISH = os.environ.get("CENSURADO_PUBLISH", "http://127.0.0.1:8082")
+COMFY = os.environ.get("CENSURADO_COMFY", "http://127.0.0.1:8188")
+# The generated static site (nginx). `preview` resolves a staged article's live permalink
+# here so the operator (and a driving agent) can open it; overridable for a non-local site.
+SITE = os.environ.get("CENSURADO_SITE", "http://127.0.0.1:8080")
+# Repo-relative defaults so a fresh clone runs with no edits: the repo root is the parent
+# of this cli/ dir, and the ComfyUI graph template ships beside this script under
+# cli/templates/. Both stay overridable by env, so a non-standard layout just sets the var.
+_REPO = Path(__file__).resolve().parent.parent
+ENV_FILE = Path(os.environ.get("CENSURADO_ENV", str(_REPO / ".env")))
+# The newsroom recipe (workflow nodes + manifest + persona/editorial prompts) is a set of
+# on-disk files in this repo's prompts/ dir, a sibling of this cli/ dir. The step gate reads
+# them locally (no server); override the dir for a non-standard layout.
+PROMPTS_DIR = Path(os.environ.get(
+    "CENSURADO_PROMPTS_DIR", str(_REPO / "prompts")))
+FLUX_TEMPLATE = Path(os.environ.get(
+    "CENSURADO_FLUX_TEMPLATE",
+    str(Path(__file__).resolve().parent / "templates" / "flux2_klein_t2i.json")))
+# flux2_klein node ids: positive prompt, noise seed, latent dims, scheduler.
+_N_POS, _N_NOISE, _N_LATENT, _N_SCHED = "4", "9", "6", "7"
+
+
+def token():
+    """Operator token from $NEWSROOM_OPERATOR_TOKEN or .env. Never printed."""
+    t = os.environ.get("NEWSROOM_OPERATOR_TOKEN", "")
+    if not t and ENV_FILE.exists():
+        for line in ENV_FILE.read_text().splitlines():
+            if line.startswith("NEWSROOM_OPERATOR_TOKEN="):
+                t = line.split("=", 1)[1].strip()
+                break
+    if not t:
+        sys.exit("FATAL: no NEWSROOM_OPERATOR_TOKEN (set it in the env or .env)")
+    return t
+
+
+class ToolError(Exception):
+    """An agent-facing failure: a short, ACTIONABLE message the model can read and correct from.
+    main() turns it into a single `ERROR: ...` line plus a non-zero exit, never a traceback and
+    never a hang. Raise it (via fail()) at every boundary that can meet bad input, an unreachable
+    service, or a malformed response. It subclasses Exception (not SystemExit) so the existing
+    best-effort `except Exception` guards still degrade gracefully around it."""
+
+
+def fail(msg):
+    """Abort the current verb with a clean agent-facing message (raises ToolError)."""
+    raise ToolError(msg)
+
+
+def _req(method, url, data=None, headers=None, timeout=60):
+    """One HTTP round-trip. Returns (status, body_bytes) for ANY HTTP response, including 4xx/5xx,
+    so callers branch on the code. A transport failure (service down, DNS, refused, timeout) is not
+    a status: it becomes a clean ToolError instead of a traceback or a hang (every call has a finite
+    timeout)."""
+    req = urllib.request.Request(url, data=data, method=method, headers=headers or {})
+    try:
+        with urllib.request.urlopen(req, timeout=timeout) as r:
+            return r.status, r.read()
+    except urllib.error.HTTPError as e:
+        return e.code, e.read()
+    except (urllib.error.URLError, TimeoutError, OSError) as e:
+        reason = getattr(e, "reason", None) or e
+        fail(f"cannot reach {url} ({reason}). Is the stack up? From the repo root run "
+             f"`docker compose up -d publish generate site` (plus the comfy "
+             f"service for image work), then retry.")
+
+
+def _read_file(path, what="file", binary=False):
+    """Read a caller-supplied file, turning the filesystem's exceptions into ONE clean, actionable
+    ToolError (empty path / missing / is-a-directory / unreadable / bad encoding). Never leaks a
+    traceback for a mistyped --*-file."""
+    if not path:
+        fail(f"no {what} path given.")
+    try:
+        p = Path(path)
+        return p.read_bytes() if binary else p.read_text(encoding="utf-8")
+    except FileNotFoundError:
+        fail(f"{what} not found: {path!r} (paths are read from where you run the CLI). "
+             f"Check the path and retry.")
+    except IsADirectoryError:
+        fail(f"{what} is a directory, not a file: {path!r}.")
+    except (PermissionError, OSError, UnicodeDecodeError) as e:
+        fail(f"cannot read {what} {path!r}: {e}.")
+
+
+def _json(data, what="value", want=None):
+    """Parse JSON (str or bytes) with a clean ToolError on failure, and OPTIONALLY assert the
+    top-level type (want=dict, want=list, or a tuple of types). This is the single guard for every
+    place that would otherwise `json.loads(...)` model-supplied text or a service response and
+    traceback on garbage, a non-JSON error page, or the wrong shape (a list where a dict is
+    expected). Returns the parsed value."""
+    if isinstance(data, (bytes, bytearray)):
+        data = data.decode("utf-8", "replace")
+    try:
+        val = json.loads(data)
+    except (json.JSONDecodeError, TypeError) as e:
+        snippet = data if isinstance(data, str) else str(data)
+        snippet = (snippet[:160] + "...") if len(snippet) > 160 else snippet
+        fail(f"{what} is not valid JSON ({e}). Got: {snippet!r}")
+    if want is not None and not isinstance(val, want):
+        names = want.__name__ if isinstance(want, type) else "/".join(t.__name__ for t in want)
+        fail(f"{what} must be a JSON {names}, but got a {type(val).__name__}.")
+    return val
+
+
+def api(method, path, payload=None, auth=True, base=None):
+    headers = {}
+    if auth:
+        headers["Authorization"] = "Bearer " + token()
+    data = None
+    if payload is not None:
+        data = json.dumps(payload).encode()
+        headers["Content-Type"] = "application/json"
+    return _req(method, (base or PUBLISH) + path, data=data, headers=headers)
+
+
+def _split(v):
+    """Comma-separated string or list -> a clean list of trimmed, non-empty items."""
+    if not v:
+        return []
+    out = v if isinstance(v, list) else re.split(r"\s*,\s*", v.strip())
+    return [x for x in (s.strip() for s in out) if x]
+
+
+def _slugify(text):
+    """A stable ASCII slug from a display name, for a NEW author's handle when the persona
+    JSON carries no explicit id: transliterate accents, lowercase, collapse every run of
+    non-alphanumerics to one hyphen, trim. Mirrors the platform's slug convention closely
+    enough for a fresh handle (existing authors already carry their id)."""
+    norm = unicodedata.normalize("NFKD", text or "")
+    ascii_ = norm.encode("ascii", "ignore").decode("ascii").lower()
+    return re.sub(r"-+", "-", re.sub(r"[^a-z0-9]+", "-", ascii_)).strip("-")
+
+
+def _authors(include_deleted=False):
+    """The backend author registry (GET /authors, Bearer-authed). Returns the list of author
+    records (authorJSON: handle/name/bio/avatar/gender/about/style/topics/sources/metadata).
+    The backend owns all authors now; there is no separate config service. It has no single-
+    author route, so a caller that wants one author filters this list by handle."""
+    path = "/authors" + ("?include_deleted=true" if include_deleted else "")
+    st, body = api("GET", path)
+    if st != 200:
+        fail(f"cannot read the author registry (GET /authors HTTP {st}). Is the backend up at "
+             f"{PUBLISH} and the operator token valid?")
+    return _json(body, "the authors response", want=dict).get("authors", [])
+
+
+def _author(handle, include_deleted=False):
+    """One author's full record by handle, or {} when absent. The backend has no single-
+    author GET, so this reads the registry and filters."""
+    for a in _authors(include_deleted=include_deleted):
+        if isinstance(a, dict) and a.get("handle") == handle:
+            return a
+    return {}
+
+
+def _author_json_to_input(rec):
+    """Map an author's read-back record (authorJSON) to a full authorInput for a READ-
+    MODIFY-WRITE re-send. The backend has no partial update: POST /authors replaces every
+    scalar column wholesale, so an edit must re-send the COMPLETE row (name/bio/avatar/
+    gender/about/style + topics + the metadata tail) or it blanks whatever it leaves out.
+    The sources pointer is OMITTED (a nil pointer leaves the author_sources join untouched;
+    edit the join with `sources --set`)."""
+    body = {
+        "handle": rec.get("handle", ""),
+        "name": rec.get("name", ""),
+        "bio": rec.get("bio", ""),
+        "avatar": rec.get("avatar", ""),
+        "gender": rec.get("gender", ""),
+        "about": rec.get("about", ""),
+        "style": rec.get("style", ""),
+    }
+    if rec.get("topics"):
+        body["topics"] = list(rec["topics"])
+    meta = rec.get("metadata")
+    if isinstance(meta, dict) and meta:
+        body["metadata"] = dict(meta)
+    return body
+
+
+def _frontmatter_map(text):
+    """The leading `--- ... ---` YAML frontmatter of a SKILL.md as a {key: scalar} map (only
+    the simple scalars name/description are needed, so no YAML dependency). `doctor` uses this
+    to check each sub-skill's name matches its directory."""
+    m = re.match(r"^---\n(.*?)\n---\n", text, re.S)
+    if not m:
+        return {}
+    out, key = {}, None
+    for line in m.group(1).splitlines():
+        top = re.match(r"^([A-Za-z_][\w-]*):\s?(.*)$", line)
+        if top:
+            key = top.group(1)
+            out[key] = top.group(2).strip()
+        elif key and line.strip():                      # a folded/continued scalar (>- block)
+            out[key] = (out[key] + " " + line.strip()).strip()
+    return out
+
+
+# ---- snapshot capture (the fiddly, generalistic part) -----------------------
+
+def _digits(ref):
+    m = re.search(r"(\d{6,})", str(ref))
+    return m.group(1) if m else str(ref)
+
+
+def _status_id(ref, kind="post"):
+    """The numeric status id from a raw id or an x.com / truthsocial.com status URL, or a clean
+    error if the ref carries none (a common model slip: a handle, a search phrase, an empty string).
+    Fails BEFORE any network call, so a bad ref never becomes a wasted request or a cryptic 404.
+    Accepts a bare numeric id of ANY length (real ids are 18-19 digits, but historic ones are short,
+    e.g. Jack's first tweet is id 20), and pulls the id out of a `.../status/<id>` (or Mastodon
+    `.../statuses/<id>`) URL."""
+    s = str(ref or "").strip()
+    if s.isdigit():
+        return s
+    m = re.search(r"/status(?:es)?/(\d+)", s) or re.search(r"(\d{6,})", s)
+    if not m:
+        fail(f"no {kind} id found in {ref!r}. Pass the numeric status id, or the full status URL "
+             f"(e.g. https://x.com/<user>/status/<id>).")
+    return m.group(1)
+
+
+def map_tweet(t):
+    """An fxtwitter `.tweet` object -> the {{tweet:id}} snapshot (X)."""
+    a = t.get("author") or {}
+    if not isinstance(a, dict):
+        a = {}
+    snap = {
+        "id": str(t.get("id", "")),
+        "handle": a.get("screen_name", ""),
+        "name": a.get("name", ""),
+        "text": t.get("text", ""),
+        "url": t.get("url", ""),
+        "avatar": a.get("avatar_url", ""),
+        "created_at": t.get("created_at", ""),
+        "created_timestamp": t.get("created_timestamp"),
+        "verified": bool((a.get("verification") or {}).get("verified", False)),
+        "erased": False,
+    }
+    for out, src in (("replies", "replies"), ("retweets", "retweets"),
+                     ("likes", "likes"), ("views", "views"), ("bookmarks", "bookmarks")):
+        if t.get(src) is not None:
+            snap[out] = t[src]
+    return {k: v for k, v in snap.items() if v is not None}
+
+
+def capture_tweet(ref, raw=None):
+    if raw is None:
+        st, body = _req("GET", "https://api.fxtwitter.com/i/status/" + _status_id(ref, "tweet"),
+                        headers={"User-Agent": "Mozilla/5.0"})
+        if st != 200:
+            fail(f"fxtwitter returned HTTP {st} for {ref!r}. Check the X post id/URL is real and "
+                 f"public (it may be deleted, private, or the id is wrong).")
+        raw = _json(body, "the fxtwitter response", want=dict)
+    if not isinstance(raw, dict):
+        fail("the saved fxtwitter snapshot must be a JSON object.")
+    t = raw.get("tweet", raw)
+    if not isinstance(t, dict):
+        fail("the fxtwitter response carries no usable tweet object.")
+    return map_tweet(t)
+
+
+def _strip_html(s):
+    s = s if isinstance(s, str) else ""
+    s = re.sub(r"<br\s*/?>", "\n", s)
+    s = re.sub(r"</p>\s*<p>", "\n\n", s)
+    s = re.sub(r"<[^>]+>", "", s)
+    return html.unescape(s).strip()
+
+
+def _iso_epoch(iso):
+    if not isinstance(iso, str) or not iso:
+        return None
+    s = re.sub(r"\.\d+", "", iso.replace("Z", "+00:00"))
+    try:
+        return int(datetime.fromisoformat(s).timestamp())
+    except ValueError:
+        return None
+
+
+def map_truth(s):
+    """A Truth Social (Mastodon) status -> the {{tweet:id}} snapshot.
+    Truth Social carries no views or bookmarks, so those stats are simply omitted."""
+    a = s.get("account") or {}
+    if not isinstance(a, dict):
+        a = {}
+    snap = {
+        "id": str(s.get("id", "")),
+        "handle": a.get("username", ""),
+        "name": a.get("display_name", ""),
+        "text": _strip_html(s.get("content", "")),
+        "url": s.get("url", ""),
+        "avatar": a.get("avatar", "") or a.get("avatar_static", ""),
+        "created_at": s.get("created_at", ""),
+        "created_timestamp": _iso_epoch(s.get("created_at", "")),
+        "verified": bool(a.get("verified", False)),
+        "erased": False,
+    }
+    for out, src in (("replies", "replies_count"), ("retweets", "reblogs_count"),
+                     ("likes", "favourites_count")):
+        if s.get(src) is not None:
+            snap[out] = s[src]
+    return {k: v for k, v in snap.items() if v is not None}
+
+
+def capture_truth(ref, raw=None):
+    if raw is None:
+        # Truth Social's read API is keyless but Cloudflare-gated on the user-agent.
+        st, body = _req("GET", "https://truthsocial.com/api/v1/statuses/" + _status_id(ref, "truth"),
+                        headers={"User-Agent": "Mozilla/5.0", "Accept": "application/json"})
+        if st != 200:
+            fail(f"truthsocial returned HTTP {st} for {ref!r} (Cloudflare may have escalated). "
+                 f"Fall back to the keyless trumpstruth.org feed for the id, or its JSON mirror.")
+        raw = _json(body, "the truthsocial response", want=dict)
+    if not isinstance(raw, dict):
+        fail("the saved Truth Social snapshot must be a JSON object.")
+    return map_truth(raw)
+
+
+def persona(author):
+    """One author's backend record (authorJSON, or {} when absent), used to fill the byline
+    and section from the author registry when the publish command omits them."""
+    return _author(author)
+
+
+# ---- art-directed hero image (ComfyUI / FLUX.2) -----------------------------
+
+def seed_for(text):
+    """A stable seed from the brief, so re-rendering the same prompt reproduces."""
+    return int(hashlib.sha256(text.encode("utf-8")).hexdigest()[:8], 16) % (2**31)
+
+
+def build_image_graph(template, prompt, seed, width=1344, height=768, steps=4):
+    """The flux2_klein graph with the art director's prompt, seed and dims injected.
+    Default 1344x768 is a wide landscape (~16:9) so heroes read wide, not tall, and
+    fill the site's hero band without top/bottom cropping. Pure: deep-copies the
+    template, never mutates it."""
+    g = json.loads(json.dumps(template))
+    try:
+        g[_N_POS]["inputs"]["text"] = prompt
+        g[_N_NOISE]["inputs"]["noise_seed"] = seed
+        for n in (_N_LATENT, _N_SCHED):
+            g[n]["inputs"]["width"] = width
+            g[n]["inputs"]["height"] = height
+        g[_N_SCHED]["inputs"]["steps"] = steps
+    except (KeyError, TypeError, IndexError):
+        fail(f"the ComfyUI template is valid JSON but missing the expected flux2_klein nodes "
+             f"({_N_POS}/{_N_NOISE}/{_N_LATENT}/{_N_SCHED}); check --template or {FLUX_TEMPLATE}.")
+    return g
+
+
+def render_image(prompt, seed=None, width=1344, height=768, steps=4, template_path=None):
+    """POST the graph to ComfyUI, poll history, fetch the PNG bytes. Returns (png, seed)."""
+    tpl = _json(_read_file(template_path or FLUX_TEMPLATE, "the ComfyUI template"),
+                "the ComfyUI template", want=dict)
+    if seed is None:
+        seed = seed_for(prompt)
+    graph = build_image_graph(tpl, prompt, seed, width, height, steps)
+    cid = hashlib.sha1(prompt.encode()).hexdigest()[:8]
+    st, body = _req("POST", COMFY + "/prompt",
+                    data=json.dumps({"prompt": graph, "client_id": cid}).encode(),
+                    headers={"Content-Type": "application/json"})
+    if st != 200:
+        sys.exit(f"FATAL: comfy /prompt HTTP {st}: {body.decode('utf-8', 'replace')[:200]}")
+    pid = _json(body, "the ComfyUI submit response", want=dict).get("prompt_id")
+    if not pid:
+        fail("ComfyUI accepted the graph but returned no prompt_id.")
+    deadline = time.time() + 600
+    while time.time() < deadline:
+        time.sleep(2)
+        _s, hb = _req("GET", f"{COMFY}/history/{pid}", timeout=30)
+        hist = _json(hb, "the ComfyUI history", want=dict)
+        if pid in hist and hist[pid].get("outputs"):
+            for node in hist[pid]["outputs"].values():
+                for img in node.get("images", []):
+                    q = urllib.parse.urlencode({"filename": img["filename"],
+                                                "subfolder": img.get("subfolder", ""),
+                                                "type": img.get("type", "output")})
+                    _s, png = _req("GET", f"{COMFY}/view?{q}", timeout=60)
+                    return png, seed
+            sys.exit("FATAL: comfy returned no image in outputs")
+    sys.exit("FATAL: comfy render timed out")
+
+
+# ---- payload builders -------------------------------------------------------
+
+# A real self-hosted media path is `/media/<sha256-hex>.<ext>` (the hash is 64 hex chars).
+# A small model that hand-copies it into a command truncates the opaque hash, e.g.
+# `/media/1921e193_..._efae.png`, which then 404s. This matches ONLY a well-formed path, so a
+# mistyped/elided one is rejected and the real one (saved by the `image` verb) is used instead.
+_MEDIA_RE = re.compile(r"^/media/[0-9a-f]{16,}\.[A-Za-z0-9]+$")
+
+
+def _hero_from_work():
+    """The hero the `image` verb saved to $CENSURADO_WORK/image.json (its full media path + alt),
+    or {}. This is how the long opaque filename reaches `preview` WITHOUT the model retyping it."""
+    w = _work_dir()
+    if not w:
+        return {}
+    p = w / "image.json"
+    if not p.is_file():
+        return {}
+    try:
+        d = json.loads(p.read_text(encoding="utf-8"))
+        return d if isinstance(d, dict) else {}
+    except Exception:
+        return {}
+
+
+def _resolve_hero(a):
+    """Decide the (image, image_alt) to publish. The media filename is an output the model must
+    never transcribe. So: honor a WELL-FORMED explicit --image; otherwise fall back to the hero
+    the `image` verb saved to $CENSURADO_WORK/image.json; and NEVER store a truncated/mistyped
+    path (drop it and warn instead, so a piece publishes text-only rather than with a broken img)."""
+    img = (getattr(a, "image", "") or "").strip()
+    alt = (getattr(a, "image_alt", "") or "").strip()
+    if img and _MEDIA_RE.match(img):
+        return img, alt
+    hero = _hero_from_work()
+    if hero.get("image"):
+        return hero["image"], (alt or hero.get("image_alt", "") or "")
+    if img:
+        sys.stderr.write(f"note: ignoring a malformed --image {img!r} (looks truncated); publishing "
+                         f"without a hero. Re-run `image` and it auto-attaches at preview.\n")
+    return "", ""
+
+
+def _save_snapshot_to_work(snap):
+    """Append a captured post snapshot (X or Truth) to $CENSURADO_WORK/tweets.json so `preview`
+    attaches its `{{tweet:id}}` card without the model handing the snapshot JSON around. Dedup by
+    id (a re-capture replaces the earlier one)."""
+    w = _work_dir()
+    if not w or not snap.get("id"):
+        return
+    w.mkdir(parents=True, exist_ok=True)
+    p = w / "tweets.json"
+    try:
+        arr = json.loads(p.read_text(encoding="utf-8")) if p.is_file() else []
+        if not isinstance(arr, list):
+            arr = []
+    except Exception:
+        arr = []
+    arr = [t for t in arr if str(t.get("id")) != str(snap["id"])]
+    arr.append(snap)
+    p.write_text(json.dumps(arr, ensure_ascii=False), encoding="utf-8")
+
+
+def _tweets_from_work(body):
+    """The post snapshots the `tweet`/`truth` verbs saved to $CENSURADO_WORK, kept to exactly the
+    ones the body embeds with `{{tweet:<id>}}`. This is how a captured card reaches `preview`
+    without the model retyping the snapshot (the same parameter-out trick as the hero image)."""
+    w = _work_dir()
+    if not w:
+        return []
+    p = w / "tweets.json"
+    if not p.is_file():
+        return []
+    try:
+        arr = json.loads(p.read_text(encoding="utf-8"))
+    except Exception:
+        return []
+    ids = set(re.findall(r"\{\{tweet:([0-9]+)\}\}", body or ""))
+    return [t for t in arr if str(t.get("id")) in ids]
+
+
+def build_publish_payload(a):
+    body = _read_file(a.body_file, "--body-file") if a.body_file else (a.body or "")
+    if not body.strip():
+        fail('no article body: pass the markdown with --body-file <path> (or --body "...").')
+    name, bio, avatar, section = a.author_name, a.author_bio, a.author_avatar, a.section
+    if a.author and (not name or not section):  # fill byline/section from the author registry
+        p = persona(a.author)
+        meta = p.get("metadata") or {}
+        name = name or p.get("name", "")
+        bio = bio or p.get("bio", "") or p.get("about", "")
+        avatar = avatar or p.get("avatar", "")
+        section = section or (meta.get("beat", "") if isinstance(meta, dict) else "")
+    if not (section or "").strip():
+        fail(f"no section for this article: pass --section, or use an --author whose beat sets it "
+             f"(author {a.author!r} resolved no beat).")
+    meta = {}
+    if a.subtitle: meta["subtitle"] = a.subtitle
+    if a.description: meta["description"] = a.description
+    if name: meta["author_name"] = name
+    if bio: meta["author_bio"] = bio
+    if avatar: meta["author_avatar"] = avatar
+    hero_img, hero_alt = _resolve_hero(a)   # never trust a hand-copied media hash
+    if hero_img: meta["image"] = hero_img
+    if hero_alt: meta["image_alt"] = hero_alt
+    if a.youtube: meta["youtube"] = a.youtube
+    if a.keywords: meta["keywords"] = _split(a.keywords)
+    tweets = (_json(_read_file(a.tweets_file, "--tweets-file"), "--tweets-file", want=list)
+              if a.tweets_file else _tweets_from_work(body))
+    if tweets and not all(isinstance(t, dict) for t in tweets):
+        fail("--tweets-file must be a JSON array of snapshot OBJECTS (each a captured post), not "
+             "ids or strings. Capture with `censurado.py tweet <url>`, or just put {{tweet:<id>}} "
+             "in the body and let preview auto-fetch the card.")
+    if tweets: meta["tweets"] = tweets
+    payload = {"title": a.title, "body": body, "author": a.author, "section": section}
+    if _split(a.topics): payload["topics"] = _split(a.topics)
+    if a.slug: payload["slug"] = a.slug
+    if a.published_at: payload["published_at"] = a.published_at
+    if meta: payload["metadata"] = meta
+    return payload
+
+
+# ---- commands ---------------------------------------------------------------
+
+def cmd_get(a):
+    st, body = api("GET", "/articles/" + a.slug)
+    sys.stdout.write(body.decode("utf-8", "replace"))
+    return 0 if st == 200 else 1
+
+
+def _day_bound(v, end=False):
+    """A --since/--until value to RFC3339. A bare YYYY-MM-DD gets the day's start; for
+    --until it becomes the NEXT day's start, because the backend `to` filter is exclusive
+    (published_at < to), so the whole named day stays included. A full timestamp passes
+    through untouched (for --until that is an exclusive bound)."""
+    if re.fullmatch(r"\d{4}-\d{2}-\d{2}", v):
+        if end:
+            return (datetime.fromisoformat(v) + timedelta(days=1)).strftime("%Y-%m-%dT00:00:00Z")
+        return v + "T00:00:00Z"
+    return v
+
+
+def cmd_archive(a):
+    """List an author's published articles from the backend read API, LIGHT (no bodies):
+    slug, published_at, title, subtitle, description, section, topics, has_media. This is
+    the repeat-news sweep's first stage: judge candidates by title, description, and DATE
+    against the event being covered, and read a candidate's full body with `get <slug>`
+    only when real doubt remains, so the sweep stays cheap on context. `has_media` (the
+    server-derived image/video flag) also feeds the portada layout: it says whether a
+    piece's card shows a picture or plain text, without opening each body."""
+    params = {"author": a.author}
+    if a.q: params["q"] = a.q
+    if a.since: params["from"] = _day_bound(a.since)
+    if a.until: params["to"] = _day_bound(a.until, end=True)
+    if a.limit: params["limit"] = str(a.limit)
+    st, body = api("GET", "/articles?" + urllib.parse.urlencode(params))
+    if st != 200:
+        sys.exit(f"FATAL: archive HTTP {st}: {body.decode('utf-8', 'replace')[:200]}")
+    data = _json(body, "the archive response", want=dict)
+    out = {"total": data.get("total", 0), "articles": []}
+    for it in data.get("articles", []):
+        if not isinstance(it, dict):
+            continue
+        md = it.get("metadata") or {}
+        if not isinstance(md, dict):
+            md = {}
+        out["articles"].append({
+            "slug": it.get("slug", ""),
+            "published_at": it.get("published_at", ""),
+            "title": it.get("title", ""),
+            "subtitle": md.get("subtitle", ""),
+            "description": md.get("description", ""),
+            "section": it.get("section", ""),
+            "topics": it.get("topics", []),
+            "has_media": it.get("has_media", False),
+        })
+    print(json.dumps(out, ensure_ascii=False, indent=2))
+    return 0
+
+
+def _await_preview_url(slug, tries=6, delay=1.0):
+    """Resolve the LOCAL permalink `/a/<slug>-<hash8>/` for a just-staged article and
+    best-effort wait for the static generator to render it. The publish response carries
+    only {id, slug}; the permalink's hash suffix is `content_hash[:8]` (generator rule in
+    censurado-web/internal/generate/url.go), fetched with one follow-up read. The generator
+    rebuilds the site a beat after the write, so we poll the URL briefly. Returns
+    (url, live): `url` is the correct permalink ("" if slug/hash cannot be resolved), and
+    `live` is True once the page returns 200."""
+    if not slug:
+        return "", False
+    try:
+        st, body = api("GET", "/articles/" + slug)
+    except (ToolError, urllib.error.URLError, ConnectionError, TimeoutError):
+        # A backend hiccup in the beat between the 201 and this read must not turn a
+        # SUCCESSFUL publish into a traceback: degrade to "URL not resolved yet" (the caller
+        # prints NEWEST and the piece is already staged), same guard as the site poll below.
+        return "", False
+    if st != 200:
+        return "", False
+    try:
+        ch = json.loads(body).get("content_hash", "")
+    except Exception:
+        ch = ""
+    if not ch:
+        return "", False
+    url = f"{SITE}/a/{slug}-{ch[:8]}/"
+    for _ in range(max(1, tries)):
+        try:
+            s, _b = _req("GET", url, timeout=10)
+        except Exception:
+            s = 0
+        if s == 200:
+            return url, True
+        time.sleep(delay)
+    return url, False
+
+
+def cmd_publish(a):
+    payload = build_publish_payload(a)
+    if a.dry_run:
+        print(json.dumps(payload, ensure_ascii=False, indent=2))
+        return 0
+    missing = [f for f, v in (("subtitle", a.subtitle), ("description", a.description))
+               if not (v or "").strip()]
+    if missing:
+        sys.stderr.write("preview needs both a --subtitle and a one-line --description. "
+                         "Add them, then run preview again.\n")
+        return 1
+    # Any tweet card the body embeds ({{tweet:id}}) whose snapshot is not attached yet: fetch it
+    # now from the id, so a correct marker always renders even if the model forgot to run `tweet`.
+    meta = payload.setdefault("metadata", {})
+    have = {str(t.get("id")) for t in (meta.get("tweets") or [])}
+    fetched = []
+    for tid in sorted(set(re.findall(r"\{\{tweet:([0-9]+)\}\}", payload.get("body", ""))) - have):
+        try:
+            snap = capture_tweet(tid)
+        except (SystemExit, Exception):
+            sys.stderr.write(f"note: could not fetch the card for tweet {tid}; publishing without it.\n")
+            continue
+        _save_snapshot_to_work(snap)
+        fetched.append(snap)
+    if fetched:
+        meta["tweets"] = (meta.get("tweets") or []) + fetched
+    idem = a.idempotency or f"{a.author}-{int(time.time())}-{os.getpid()}"
+    st, body = _req("POST", PUBLISH + "/articles", data=json.dumps(payload).encode(),
+                    headers={"Authorization": "Bearer " + token(),
+                             "Content-Type": "application/json", "Idempotency-Key": idem})
+    sys.stdout.write(body.decode("utf-8", "replace") + "\n")
+    if st not in (200, 201):
+        sys.stderr.write(f"preview FAILED -> HTTP {st} (nothing was staged)\n")
+        return 1
+    slug = ""
+    try:
+        slug = (json.loads(body) or {}).get("slug", "")
+    except Exception:
+        pass
+    url, live = _await_preview_url(slug)
+    sys.stderr.write(f"preview OK -> HTTP {st}. Staged to the LOCAL site {SITE} (NOT public; "
+                     f"going live is a separate `make deploy`).\n")
+    if url:
+        state = "live now" if live else "still rendering; give the generator a few seconds, then reload"
+        print(f"PREVIEW: {url}  [{state}]")
+    print(f"NEWEST: {SITE}/latest/")
+    return 0
+
+
+def cmd_edit(a):
+    st, body = api("GET", "/articles/" + a.slug)
+    if st != 200:
+        sys.exit(f"FATAL: cannot read {a.slug}: HTTP {st}")
+    art = _json(body, f"the article {a.slug!r}", want=dict)
+    if a.body_file:
+        art["body"] = _read_file(a.body_file, "--body-file")
+    for kv in a.set or []:
+        k, _, v = kv.partition("=")
+        art[k] = _split(v) if k == "topics" else v
+    meta = art.get("metadata") or {}
+    if not isinstance(meta, dict):
+        meta = {}
+    for kv in a.meta or []:
+        k, _, v = kv.partition("=")
+        meta[k] = v
+    if a.tweets_file:
+        meta["tweets"] = _json(_read_file(a.tweets_file, "--tweets-file"), "--tweets-file", want=list)
+    if a.published_at:
+        art["published_at"] = a.published_at
+    missing = [k for k in ("title", "body", "author", "section") if not art.get(k)]
+    if missing:
+        fail(f"the fetched article {a.slug!r} is missing required field(s): {', '.join(missing)}; "
+             f"cannot re-publish it as an edit.")
+    payload = {"title": art["title"], "body": art["body"],
+               "author": art["author"], "section": art["section"]}
+    if art.get("topics"): payload["topics"] = art["topics"]
+    if art.get("published_at"): payload["published_at"] = art["published_at"]
+    if meta: payload["metadata"] = meta
+    if a.dry_run:
+        print(json.dumps(payload, ensure_ascii=False, indent=2))
+        return 0
+    st, body = api("PUT", "/articles/" + a.slug, payload)
+    sys.stdout.write(body.decode("utf-8", "replace") + "\n")
+    sys.stderr.write(f"edit -> HTTP {st}\n")
+    return 0 if st == 200 else 1
+
+
+def cmd_portada(a):
+    """Write or read the per-day front-page plan (the portada) in the publish backend
+    (admin:write, Bearer-authenticated). With --set-json, POST the
+    day's ORDER to /portadas: the JSON object provides `entries` (a list of {"slug","role"}
+    where role is "" or "important") and an optional `recomendado` list of slugs; the
+    positional date is merged in and wins over any date in the JSON. Without --set-json, GET
+    /portadas and print the list (there is no single-date GET route; listing is fine)."""
+    if a.set_json is not None:
+        spec = _json(a.set_json, "--set-json", want=dict)
+        payload = {"date": a.date,
+                   "entries": spec.get("entries", []),
+                   "recomendado": spec.get("recomendado", [])}
+        st, body = api("POST", "/portadas", payload)
+    else:
+        st, body = api("GET", "/portadas")
+    sys.stdout.write(body.decode("utf-8", "replace") + "\n")
+    return 0 if 200 <= st < 300 else 1
+
+
+def cmd_media(a):
+    data = _read_file(a.file, "the media file", binary=True)
+    ext = a.file.rsplit(".", 1)[-1].lower()
+    ct = {"png": "image/png", "jpg": "image/jpeg", "jpeg": "image/jpeg", "webp": "image/webp",
+          "gif": "image/gif", "mp4": "video/mp4"}.get(ext, "application/octet-stream")
+    st, body = _req("POST", PUBLISH + "/media", data=data,
+                    headers={"Authorization": "Bearer " + token(), "Content-Type": ct})
+    sys.stdout.write(body.decode("utf-8", "replace") + "\n")
+    return 0 if st in (200, 201) else 1
+
+
+def cmd_image(a):
+    tpl_path = Path(a.template) if a.template else None
+    if a.dry_run:
+        tpl = _json(_read_file(tpl_path or FLUX_TEMPLATE, "the ComfyUI template"),
+                    "the ComfyUI template", want=dict)
+        seed = a.seed if a.seed is not None else seed_for(a.prompt)
+        print(json.dumps(build_image_graph(tpl, a.prompt, seed, a.width, a.height, a.steps), indent=1))
+        return 0
+    try:
+        png, seed = render_image(a.prompt, a.seed, a.width, a.height, a.steps, tpl_path)
+    except (ToolError, urllib.error.URLError, ConnectionError, TimeoutError) as exc:
+        # ComfyUI unreachable (the GPU-free lane runs no :8188). The hero step is
+        # best-effort by design, so skip cleanly instead of crashing: tell the caller to
+        # publish text-only and NOT pass --image. Exit 0 so a batch chain keeps going.
+        sys.stderr.write(
+            f"IMAGE SKIPPED: ComfyUI not reachable at {COMFY} ({exc}). Hero rendering is off "
+            f"in this lane; this step is best-effort. Publish the piece text-only and do NOT "
+            f"pass --image on the preview step.\n")
+        return 0
+    st, body = _req("POST", PUBLISH + "/media", data=png,
+                    headers={"Authorization": "Bearer " + token(), "Content-Type": "image/png"})
+    if st not in (200, 201):
+        sys.exit(f"FATAL: media upload HTTP {st}: {body.decode('utf-8', 'replace')[:200]}")
+    url = _json(body, "the media upload response", want=dict).get("url", "")
+    if not url:
+        fail("the media upload succeeded but the response carried no url.")
+    # Record the hero for `preview` to attach itself: the full media hash is opaque and a small
+    # model truncates it if asked to retype it, so it becomes a parameter-out, not model text.
+    w = _work_dir()
+    if w is not None:
+        w.mkdir(parents=True, exist_ok=True)
+        (w / "image.json").write_text(
+            json.dumps({"image": url, "image_alt": a.alt, "seed": seed}), encoding="utf-8")
+        sys.stderr.write("Hero saved. The next preview attaches it for you.\n")
+    print(json.dumps({"image": url, "image_alt": a.alt, "seed": seed, "bytes": len(png)},
+                     ensure_ascii=False))
+    return 0
+
+
+def cmd_tweet(a):
+    raw = _json(_read_file(a.from_json, "--from-json"), "--from-json", want=dict) if a.from_json else None
+    snap = capture_tweet(a.ref, raw)
+    _save_snapshot_to_work(snap)
+    print(json.dumps(snap, ensure_ascii=False, indent=2))
+    if _work_dir() and snap.get("id"):
+        sys.stderr.write("Saved. Put {{tweet:%s}} in the body where you discuss this post; "
+                         "preview attaches the card.\n" % snap["id"])
+    return 0
+
+
+def cmd_truth(a):
+    raw = _json(_read_file(a.from_json, "--from-json"), "--from-json", want=dict) if a.from_json else None
+    snap = capture_truth(a.ref, raw)
+    _save_snapshot_to_work(snap)
+    print(json.dumps(snap, ensure_ascii=False, indent=2))
+    if _work_dir() and snap.get("id"):
+        sys.stderr.write("Saved. Put {{tweet:%s}} in the body where you discuss this post; "
+                         "preview attaches the card.\n" % snap["id"])
+    return 0
+
+
+def cmd_personas(a):
+    """List the author ids (handles) that exist in the backend registry."""
+    for p in _authors():
+        print(p.get("handle") if isinstance(p, dict) else p)
+    return 0
+
+
+def cmd_persona(a):
+    """Fetch ONE author's full record (name/bio/avatar/gender/about/style/topics/sources +
+    the metadata tail beat/who_i_am/language/few_shots) so the agent writes in that voice.
+    All authors live in the backend; this reads the registry and prints the matching one
+    (the backend has no single-author route, so it filters the list by handle)."""
+    rec = _author(a.id)
+    if not rec:
+        sys.stderr.write(f"persona {a.id!r} -> not found in the author registry\n")
+        return 1
+    sys.stdout.write(json.dumps(rec, ensure_ascii=False, indent=2) + "\n")
+    return 0
+
+
+def _persona_json_to_author_input(payload):
+    """Transform an agent-written persona JSON (the synthesize-prompt shape: display_name/
+    beat/who_i_am/style/about/gender/few_shots_*/...) into the backend's authorInput. The
+    public scalars go first-class (about fills BOTH bio and about, the way the platform
+    renders bio publicly); the private tail (beat/who_i_am/language/few_shots) rides in the
+    metadata blob; the handle comes from an explicit id/handle, else it is slugified from the
+    display name. Returns (handle, body). Source outlets are NOT wired here: the persona
+    JSON's `sources` are free-text suggestions, while the backend join needs real source
+    slugs, so an author's outlets are attached separately with `sources <id> --set ...`."""
+    handle = (payload.get("handle") or payload.get("id") or _slugify(payload.get("display_name", ""))).strip()
+    about = payload.get("about", "")
+    raw_topics = payload.get("profile_topics")
+    topics = raw_topics if isinstance(raw_topics, list) else _split(raw_topics)
+    metadata = {}
+    for key in ("beat", "who_i_am", "language", "few_shots_pos", "few_shots_neg"):
+        val = payload.get(key)
+        if val not in (None, "", [], {}):
+            metadata[key] = val
+    if topics:
+        metadata["profile_topics"] = topics
+    body = {
+        "handle": handle,
+        "name": payload.get("display_name", ""),
+        "bio": about,
+        "about": about,
+        "avatar": payload.get("avatar_path", "") or payload.get("avatar", ""),
+        "gender": payload.get("gender", ""),
+        "style": payload.get("style", ""),
+    }
+    if topics:
+        body["topics"] = topics
+    if metadata:
+        body["metadata"] = metadata
+    return handle, body
+
+
+def cmd_create_author(a):
+    """Persist an agent-authored persona into the backend author registry (POST /authors),
+    the home for all authors. The agent writes the JSON itself following the synthesize
+    prompt (`prompt persona/synthesize.md`); no model runs server-side. Required fields:
+    display_name, beat, who_i_am, style; about/gender/avatar_path/few_shots are optional. The
+    handle is derived from the display name (or an explicit `id`). Wire the author's outlets
+    afterwards with `sources <handle> --set <slug,slug>` (real backend source slugs)."""
+    if a.file == "-":                       # explicit stdin only; a bare "" must never block on an
+        raw = sys.stdin.read()              # open pipe with no EOF (that would hang the agent)
+    elif a.file:
+        raw = _read_file(a.file, "the persona JSON file")
+    else:
+        fail("no persona JSON given: pass --file <path>, or --file - to read it from stdin.")
+    payload = _json(raw, "the persona JSON", want=dict)
+    missing = [k for k in ("display_name", "beat", "who_i_am", "style") if not payload.get(k)]
+    if missing:
+        sys.exit(f"FATAL: persona JSON missing required field(s): {', '.join(missing)}")
+    handle, body = _persona_json_to_author_input(payload)
+    if not handle:
+        fail('could not derive a handle: give an explicit "id", or a non-empty "display_name".')
+    st, rb = api("POST", "/authors", body)
+    sys.stdout.write(rb.decode("utf-8", "replace") + "\n")
+    sys.stderr.write(f"create-author {handle} -> HTTP {st}\n")
+    return 0 if st in (200, 201) else 1
+
+
+def cmd_sources(a):
+    """Show an author's attached source slugs, or with --set REPLACE them (a full set, not a
+    merge). The outlets an author reads live in the backend author_sources join, per author;
+    the slugs must be real backend source ids (list them with `portals`)."""
+    if a.set is not None:
+        st, body = api("PUT", "/authors/" + a.id + "/sources", {"sources": _split(a.set)})
+    else:
+        st, body = api("GET", "/authors/" + a.id + "/sources")
+    sys.stdout.write(body.decode("utf-8", "replace") + "\n")
+    return 0 if st == 200 else 1
+
+
+def cmd_profile_topics(a):
+    """Show an author's curated public-profile topics, or with --set REPLACE them (a full
+    set, not a merge; --set "" clears them). When present they override the generator's
+    auto-computed topic union on the author's profile page. The backend has no partial
+    update, so a set is a READ-MODIFY-WRITE: it reads the author's full record and re-sends
+    every field with the new topics, so the rest of the row (voice, bio, metadata tail) is
+    preserved, never blanked. Topics land first-class AND in metadata.profile_topics (the
+    public site still overlays from there). They reach the live site after it regenerates."""
+    rec = _author(a.id)
+    if not rec:
+        sys.stderr.write(f"profile-topics {a.id!r} -> not found in the author registry\n")
+        return 1
+    if a.set is None:
+        print(json.dumps(rec.get("topics", []), ensure_ascii=False))
+        return 0
+    topics = _split(a.set)
+    body = _author_json_to_input(rec)
+    meta = body.get("metadata") or {}
+    if topics:
+        body["topics"] = topics
+        meta["profile_topics"] = topics
+    else:
+        body.pop("topics", None)
+        meta.pop("profile_topics", None)
+    if meta:
+        body["metadata"] = meta
+    else:
+        body.pop("metadata", None)
+    st, rb = api("POST", "/authors", body)
+    sys.stdout.write(rb.decode("utf-8", "replace") + "\n")
+    sys.stderr.write(f"profile-topics {a.id} -> HTTP {st}\n")
+    return 0 if st in (200, 201) else 1
+
+
+def cmd_portals(a):
+    """List the source slugs available to attach to an author (GET /sources). These are the
+    ids `sources <handle> --set` links against."""
+    st, body = api("GET", "/sources")
+    if st != 200:
+        fail(f"cannot read the source registry (GET /sources HTTP {st}).")
+    for s in _json(body, "the sources response", want=dict).get("sources", []):
+        print(s.get("slug") if isinstance(s, dict) else s)
+    return 0
+
+
+def cmd_prompt(a):
+    """Read a prompt's body by key (e.g. workflow/50-draft.md or persona/synthesize.md). Every
+    prompt is a file in the recipe dir (PROMPTS_DIR; git is the version history), so a read
+    returns the current file. `step` walks the workflow/* nodes; `set-prompt` edits any prompt."""
+    sys.stdout.write(_fetch_prompt_body(a.key) + "\n")
+    return 0
+
+
+def cmd_style(a):
+    """Read the newsroom's editorial style guide (voice, lexicon, house rules): the prose
+    recipe at `editorial/style.md` under the prompts dir. NOTE: this is the QUALITATIVE guide,
+    NOT the numeric floor the WALK enforces. The enforced parameters (MIN_SOURCES/
+    MIN_PER_TYPE/RESPIN_PASSES/TOPIC_CAP) live in cli/workflow/parameters.json (set with
+    `set-floor`, read with `step`), which is what fills the node placeholders. Use `style`
+    for the voice/rules; use parameters.json for the enforced numeric bar."""
+    path = _prompt_path("editorial/style.md")
+    if path is None or not path.is_file():
+        fail(f"no editorial style guide at {PROMPTS_DIR / 'editorial' / 'style.md'}. It is a "
+             f"prompt file in the recipe; check this repo's prompts/ dir (or set "
+             f"CENSURADO_PROMPTS_DIR).")
+    sys.stdout.write(_read_file(path, "the editorial style guide").rstrip() + "\n")
+    return 0
+
+
+def cmd_remove_author(a):
+    """Tombstone an author in the backend (DELETE /authors/<handle>). It is a SOFT delete:
+    the author drops off the public roster, but its record and article bylines are kept, and
+    it is restorable (POST /authors/<handle>/restore, or by re-creating it). Guarded by
+    --yes. Response: 204 removed; 404 no such author."""
+    if not a.yes:
+        sys.exit(f"REFUSED: confirm removing an author with --yes:\n"
+                 f"  python3 cli/censurado.py remove-author {a.id} --yes")
+    st, body = api("DELETE", "/authors/" + a.id)
+    if st == 204:
+        sys.stderr.write(f"remove-author {a.id} -> tombstoned (204). Restore with "
+                         f"`POST /authors/{a.id}/restore` if needed.\n")
+        return 0
+    if st == 404:
+        sys.stderr.write(f"remove-author {a.id} -> no such author (404)\n")
+        return 1
+    sys.stdout.write(body.decode("utf-8", "replace") + "\n")
+    sys.stderr.write(f"remove-author {a.id} -> HTTP {st}\n")
+    return 1
+
+
+def cmd_set_floor(a):
+    """Set the sourcing floor the editorial WALK enforces: MIN_SOURCES (the cross-source
+    corroboration floor) and/or MIN_PER_TYPE (the per-lean minimum, left/neutral/right).
+    These are the numeric parameters bundled with this package (cli/workflow/parameters.json),
+    the SAME file `step` fills the {{MIN_SOURCES}}/{{MIN_PER_TYPE}} placeholders from, so the
+    change takes effect on the next walk. It rewrites a package file, so commit it to version the
+    parameters (they travel with the package, not as live server config)."""
+    if a.min_sources is None and a.min_per_type is None:
+        sys.exit("FATAL: nothing to set (pass --min-sources and/or --min-per-type)")
+    if a.min_sources is not None and a.min_sources < 1:
+        sys.exit("FATAL: --min-sources must be >= 1")
+    if a.min_per_type is not None and a.min_per_type < 0:
+        sys.exit("FATAL: --min-per-type must be >= 0")
+    path = _WORKFLOW_DIR / "parameters.json"
+    data = (_json(_read_file(path, "parameters.json"), "parameters.json", want=dict)
+            if path.is_file() else {})
+    changed = []
+    if a.min_sources is not None:
+        data["MIN_SOURCES"] = a.min_sources
+        changed.append(f"MIN_SOURCES={a.min_sources}")
+    if a.min_per_type is not None:
+        data["MIN_PER_TYPE"] = a.min_per_type
+        changed.append(f"MIN_PER_TYPE={a.min_per_type}")
+    path.write_text(json.dumps(data, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    sys.stdout.write(json.dumps(data, ensure_ascii=False, indent=2) + "\n")
+    sys.stderr.write(f"set-floor -> {', '.join(changed)} written to {path} "
+                     f"(commit it to version the parameters)\n")
+    return 0
+
+
+def cmd_set_prompt(a):
+    """Edit a prompt in place: WRITE the .md/.json under the recipe dir (PROMPTS_DIR; git is
+    its version history). The next read or `step` walk serves the edit. Editing a
+    `workflow/<node>` changes the walk; editing e.g. `persona/synthesize.md` changes the
+    author-synthesis guide. Commit the change in this repo. Adding a brand-new prompt is a
+    code change (create the file, and a manifest entry for a workflow node), not an edit."""
+    body = _read_file(a.body_file, "--body-file") if a.body_file else a.body
+    if not body:
+        sys.exit("FATAL: empty body (pass --body-file or --body)")
+    path = _prompt_path(a.key)
+    if path is None:
+        fail(f"invalid prompt key {a.key!r}: must be a .md or .json path under the recipe dir.")
+    if not path.is_file():
+        fail(f"no prompt {a.key!r} to edit under {PROMPTS_DIR}; adding a new one is a code "
+             f"change (create the file, plus a manifest entry for a workflow node).")
+    path.write_text(body, encoding="utf-8")
+    sys.stdout.write(json.dumps({"key": a.key, "bytes": len(body.encode("utf-8"))}, ensure_ascii=False) + "\n")
+    sys.stderr.write(f"set-prompt {a.key} -> wrote {path}\n")
+    return 0
+
+
+def cmd_doctor(a):
+    """Self-check the unified skill end to end and print an [OK]/[WARN]/[FAIL] report:
+      1. stack services up (the publish backend + site are core; ComfyUI is optional, image
+         lane only). Authors/sources are the backend; there is no separate config service.
+      2. the skill package (the resolver routes only to sub-skills that exist and carry
+         frontmatter whose name matches the directory),
+      3. the agentic recipe (the prompts dir exists; workflow/manifest.json parses; every
+         manifest node file is present on disk; cli/workflow/parameters.json parses).
+    Exits 1 if any check FAILs, 0 otherwise (warnings do not fail). Never raises: an
+    unreachable service or a missing file is reported, not thrown."""
+    rows = []
+
+    def add(level, text):
+        rows.append((level, text))
+
+    here = Path(__file__).resolve().parent
+
+    # 1) stack services
+    for label, method, url, ok_set, optional in (
+        ("publish backend", "GET", PUBLISH + "/healthz", {200}, False),
+        ("site", "GET", SITE + "/", {200, 301, 302}, False),
+        ("ComfyUI (image lane)", "GET", COMFY + "/system_stats", {200}, True),
+    ):
+        try:
+            st, _ = _req(method, url, timeout=5)
+            up, detail = st in ok_set, f"HTTP {st}"
+        except Exception as exc:
+            up, detail = False, str(exc)
+        add("OK" if up else ("WARN" if optional else "FAIL"),
+            f"{label} {url} ({detail})" + (" - optional" if optional and not up else ""))
+
+    # 2) skill package: resolver -> real sub-skills with valid frontmatter
+    resolver = here / "SKILL.md"
+    if not resolver.is_file():
+        add("FAIL", "resolver cli/SKILL.md is missing")
+        routed = []
+    else:
+        routed = sorted(set(re.findall(r"skills/([\w-]+)/SKILL\.md", resolver.read_text(encoding="utf-8"))))
+    for name in routed:
+        f = here / "skills" / name / "SKILL.md"
+        if not f.is_file():
+            add("FAIL", f"resolver routes to skills/{name}/ but the file is missing")
+            continue
+        fm = _frontmatter_map(f.read_text(encoding="utf-8"))
+        if fm.get("name") != name:
+            add("FAIL", f"skills/{name}/SKILL.md frontmatter name={fm.get('name')!r} != dir {name!r}")
+        elif not fm.get("description"):
+            add("FAIL", f"skills/{name}/SKILL.md has no description")
+        else:
+            add("OK", f"sub-skill {name} routed + valid")
+
+    # 3) the agentic recipe: on-disk files under the prompts dir (no server)
+    if PROMPTS_DIR.is_dir():
+        add("OK", f"recipe dir {PROMPTS_DIR}")
+    else:
+        add("FAIL", f"recipe dir {PROMPTS_DIR} is missing (expected this repo's prompts/; set "
+                    f"CENSURADO_PROMPTS_DIR to override)")
+    manifest = None
+    mpath = _prompt_path("workflow/manifest.json")
+    if mpath is not None and mpath.is_file():
+        try:
+            manifest = json.loads(mpath.read_text(encoding="utf-8"))
+            add("OK", "workflow/manifest.json parses")
+        except Exception as exc:
+            add("FAIL", f"workflow/manifest.json does not parse: {exc}")
+    else:
+        add("FAIL", f"no workflow/manifest.json under {PROMPTS_DIR}")
+    if manifest is not None:
+        need = {"00-mode"} | {k for keys in (manifest.get("modes") or {}).values() for k in keys}
+        missing = sorted(k for k in need
+                         if not (lambda p: p is not None and p.is_file())(_prompt_path(f"workflow/{k}.md")))
+        if missing:
+            add("FAIL", f"workflow node files missing on disk: {', '.join(missing)}")
+        else:
+            add("OK", f"workflow: {len(manifest.get('modes') or {})} modes, "
+                      f"{len(need)} node files all present")
+    try:
+        params = _fetch_params()
+        add("OK", "parameters.json parses: " + ", ".join(f"{k}={v}" for k, v in params.items()))
+    except Exception as exc:
+        add("FAIL", f"parameters.json does not parse: {exc}")
+
+    for level, text in rows:
+        sys.stdout.write(f"  [{level}] {text}\n")
+    fails = sum(1 for lv, _ in rows if lv == "FAIL")
+    warns = sum(1 for lv, _ in rows if lv == "WARN")
+    sys.stdout.write(f"  --- {fails} failure(s), {warns} warning(s). "
+                     + ("NOT ready to operate.\n" if fails else "OK to operate.\n"))
+    return 1 if fails else 0
+
+
+# ---- the step gate (serve ONE workflow node at a time) ----------------------
+# The newsroom workflow is served one node at a time so the agent never holds the whole
+# playbook at once (which is what lets a model collapse the steps into one pass and skip
+# the editorial gates). Each `step` call reads ONE node body from this repo's prompts/ dir
+# (the single source of truth for the workflow prompt files), fills the numeric parameters
+# from cli/workflow/parameters.json, prints it, and appends the exact NEXT command computed
+# from workflow/manifest.json (same prompts/ dir). The gate keeps no session: the agent carries
+# its position by passing the node key back. The prompts are files; the CLI owns the parameters.
+
+
+# The numeric editorial parameters travel WITH the CLI/skill: cli/workflow/parameters.json holds
+# the enforced floor/cap the WALK fills into the nodes. The workflow PROMPTS (nodes + manifest)
+# are file-based under this repo's prompts/ dir, not here. Override the parameters dir with
+# CENSURADO_WORKFLOW_DIR (used by the tests).
+_WORKFLOW_DIR = Path(os.environ.get(
+    "CENSURADO_WORKFLOW_DIR", str(Path(__file__).resolve().parent / "workflow")))
+
+
+def _prompt_path(key):
+    """Resolve a prompt key (its relative path with forward slashes, e.g.
+    'workflow/50-draft.md') to a file under PROMPTS_DIR, or None if the key is not a
+    .md/.json or would escape the dir (path-traversal guard)."""
+    if not (key.endswith(".md") or key.endswith(".json")):
+        return None
+    root = PROMPTS_DIR.resolve()
+    candidate = root.joinpath(*key.split("/")).resolve()
+    if not candidate.is_relative_to(root):
+        return None
+    return candidate
+
+
+def _fetch_prompt_body(key):
+    """One prompt body by key (e.g. 'workflow/50-draft.md', 'workflow/manifest.json', or
+    'persona/synthesize.md'), read from the on-disk recipe under PROMPTS_DIR (this repo's
+    prompts/ dir; git is the version history). No server is involved: the walk reads files."""
+    path = _prompt_path(key)
+    if path is None:
+        sys.exit(f"FATAL: invalid prompt key {key!r} (must be a .md/.json path under the recipe dir)")
+    if not path.is_file():
+        sys.exit(f"FATAL: no prompt {key!r} under {PROMPTS_DIR}. Set CENSURADO_PROMPTS_DIR if this "
+                 f"repo's prompts/ dir lives elsewhere.")
+    return _read_file(path, f"the prompt {key!r}")
+
+
+def _fetch_params():
+    """The numeric editorial parameters {NAME: value} for placeholder filling, read from the
+    recipe's cli/workflow/parameters.json (versioned with the CLI). A MISSING file yields an empty
+    map and placeholders are left as-is; a MALFORMED file fails with a clear error rather than
+    silently dropping the enforced floor."""
+    path = _WORKFLOW_DIR / "parameters.json"
+    if not path.is_file():
+        return {}
+    data = _json(_read_file(path, "parameters.json"), "parameters.json", want=dict)
+    return {k: v for k, v in data.items() if v is not None}
+
+
+def fill_params(text, params):
+    """Substitute {{MIN_SOURCES}} / {{RESPIN_PASSES}} / {{TOPIC_CAP}} with the live values.
+    Pure and null-safe: an absent parameter leaves its placeholder untouched."""
+    for name, val in params.items():
+        text = text.replace("{{" + name + "}}", str(val))
+    return text
+
+
+def mode_sequence(manifest, mode):
+    """The ordered, ENABLED node keys for `mode` from the manifest (disabled nodes dropped).
+    `disabled` is a per-mode map ({mode: [keys]}); a flat list is tolerated as a global
+    disable for a hand-edited manifest."""
+    modes = manifest.get("modes") or {}
+    if mode not in modes:
+        sys.exit(f"FATAL: unknown mode {mode!r}; known modes: {', '.join(sorted(modes)) or '(none)'}")
+    seq = modes[mode]
+    if not isinstance(seq, list):
+        sys.exit(f"FATAL: workflow manifest mode {mode!r} is not a list of node keys")
+    cfg = manifest.get("disabled") or {}
+    disabled = set(cfg.get(mode, []) if isinstance(cfg, dict) else cfg)
+    return [k for k in seq if k not in disabled]
+
+
+def next_line(seq, key, mode):
+    """The NEXT command after serving `key` in `mode`, or DONE at the end of the sequence."""
+    if key in seq:
+        i = seq.index(key)
+        if i + 1 < len(seq):
+            return (f"NEXT: when this step is done, run: "
+                    f"python3 cli/censurado.py step {seq[i + 1]} --mode {mode}")
+    return "DONE: this walk is complete."
+
+
+_MAX_REFETCH = 4  # a node may be re-served a few times (e.g. the evaluate/respin loop); beyond
+                  # that it is a spin, not progress, and the loop shield stops it.
+
+
+def _work_dir():
+    """The per-article scratch dir the walk writes its artifacts to, or None. The DRIVER sets it
+    as $CENSURADO_WORK (a fresh temp dir per article, e.g. under /tmp). Enforcement (the artifact
+    gate + loop shield) runs ONLY when it is set, so a plain `step` call with no work dir stays
+    purely advisory and unchanged."""
+    w = os.environ.get("CENSURADO_WORK", "").strip()
+    return Path(w) if w else None
+
+
+def _gate(key, seq, produces, workdir, mode):
+    """When a work dir is set, ENFORCE the walk instead of merely describing it: (1) a LOOP SHIELD
+    that refuses to keep re-serving the same node forever, and (2) an ARTIFACT GATE that blocks
+    advancing to a node until the PREVIOUS node actually wrote its required file. Either prints a
+    directive and exits non-zero (the driver feeds that back to the model); a pass returns None."""
+    workdir.mkdir(parents=True, exist_ok=True)
+    counts_f = workdir / ".step-counts.json"
+    counts = {}
+    if counts_f.is_file():
+        try:
+            counts = json.loads(counts_f.read_text())
+        except (json.JSONDecodeError, OSError):
+            counts = {}
+        if not isinstance(counts, dict):
+            counts = {}
+    counts[key] = counts.get(key, 0) + 1
+    counts_f.write_text(json.dumps(counts))
+    if counts[key] > _MAX_REFETCH:
+        need = produces.get(key)
+        hint = f" If its job is not done, do it and save {workdir / need}." if need else ""
+        sys.exit(f"STOP: you have fetched node {key} {counts[key]} times without moving on. Stop "
+                 f"re-fetching it: do what it asks, then run the NEXT command it printed.{hint}")
+    if key in seq:
+        i = seq.index(key)
+        if i > 0:
+            prev = seq[i - 1]
+            need = produces.get(prev)
+            path = workdir / need if need else None
+            if path is not None and not (path.is_file() and path.stat().st_size > 20):
+                sys.exit(f"BLOCKED: you cannot start {key} yet. The previous step {prev} must first "
+                         f"do its work and save it to {path}. Go back: run `python3 cli/censurado.py "
+                         f"step {prev} --mode {mode}`, complete it, write {path}, then advance to {key}.")
+
+
+def cmd_step(a):
+    """Serve one workflow node (the step gate). No key + no mode: the mode picker (node 00).
+    --mode with no key: the first node of that mode. A key: that node, plus the NEXT line. The
+    recipe is read from cli/workflow/ (bundled); no brain is involved. When the driver sets
+    $CENSURADO_WORK, the gate ENFORCES the walk (artifact gate + loop shield) instead of only
+    describing it, and tells each producing node where to save its artifact."""
+    if a.list:
+        manifest = _json(_fetch_prompt_body("workflow/manifest.json"), "the workflow manifest", want=dict)
+        modes = manifest.get("modes") or {}
+        for mode in ([a.mode] if a.mode else sorted(modes)):
+            print(f"# {mode}")
+            for k in mode_sequence(manifest, mode):
+                print(f"  {k}")
+        return 0
+
+    params = _fetch_params()
+    if not a.key and not a.mode:  # the entry: the mode picker (node 00)
+        sys.stdout.write(fill_params(_fetch_prompt_body("workflow/00-mode.md"), params).rstrip() + "\n")
+        return 0
+
+    manifest = (_json(_fetch_prompt_body("workflow/manifest.json"), "the workflow manifest", want=dict)
+                if a.mode else {})
+    seq = mode_sequence(manifest, a.mode) if a.mode else []
+    key = a.key or (seq[0] if seq else None)
+    if key is None:
+        sys.exit(f"FATAL: mode {a.mode!r} has no enabled steps")
+    produces = manifest.get("produces") or {}
+    workdir = _work_dir()
+    if workdir is not None and a.mode:
+        _gate(key, seq, produces, workdir, a.mode)  # may print a directive and exit non-zero
+
+    body = fill_params(_fetch_prompt_body(f"workflow/{key}.md"), params)
+    sys.stdout.write(body.rstrip() + "\n\n")
+    if workdir is not None and produces.get(key):
+        sys.stdout.write(f"ARTIFACT: before you run NEXT, save this step's output to "
+                         f"{workdir / produces[key]} (that file is required to advance).\n\n")
+    sys.stdout.write((next_line(seq, key, a.mode) if a.mode
+                      else "NEXT: re-run with --mode <mode> so the next step can be computed.") + "\n")
+    return 0
+
+
+def build_parser():
+    p = argparse.ArgumentParser(prog="censurado.py", description=__doc__,
+                                formatter_class=argparse.RawDescriptionHelpFormatter)
+    sub = p.add_subparsers(dest="cmd", required=True)
+
+    g = sub.add_parser("get", help="read an article as JSON")
+    g.add_argument("slug")
+    g.set_defaults(fn=cmd_get)
+
+    ar = sub.add_parser("archive",
+                        help="list an author's published articles, light (title/description/date, "
+                             "no bodies), for the repeat-news sweep")
+    ar.add_argument("author", help="author id/slug whose archive to list")
+    ar.add_argument("--q", default="", help="free-text filter (an entity or theme), passed to the backend")
+    ar.add_argument("--since", default="", help="only articles published at/after (YYYY-MM-DD or RFC3339)")
+    ar.add_argument("--until", default="",
+                    help="only articles published up to this day inclusive (YYYY-MM-DD), "
+                         "or strictly before an RFC3339 instant")
+    ar.add_argument("--limit", type=int, default=0, help="cap the list (0 = backend default)")
+    ar.set_defaults(fn=cmd_archive)
+
+    pub = sub.add_parser("preview", aliases=["publish"],
+                         help="stage an article to your LOCAL preview site (localhost:8080, NOT public); "
+                              "going live to production is a separate `make deploy`")
+    pub.add_argument("--author", required=True, help="persona slug; byline+section auto-filled from it")
+    pub.add_argument("--title", required=True)
+    pub.add_argument("--section", default="")
+    pub.add_argument("--subtitle", default="")
+    pub.add_argument("--description", default="")
+    pub.add_argument("--body", default="")
+    pub.add_argument("--body-file", dest="body_file", default="", help="read the markdown body from a file")
+    pub.add_argument("--topics", default="", help="comma-separated tags (themes + named entities)")
+    pub.add_argument("--keywords", default="", help="comma-separated SEO keywords")
+    pub.add_argument("--slug", default="")
+    pub.add_argument("--published-at", dest="published_at", default="", help="RFC3339; omit for now")
+    pub.add_argument("--image", default="")
+    pub.add_argument("--image-alt", dest="image_alt", default="")
+    pub.add_argument("--youtube", default="")
+    pub.add_argument("--author-name", dest="author_name", default="")
+    pub.add_argument("--author-bio", dest="author_bio", default="")
+    pub.add_argument("--author-avatar", dest="author_avatar", default="")
+    pub.add_argument("--tweets-file", dest="tweets_file", default="", help="JSON array of snapshots")
+    pub.add_argument("--idempotency", default="")
+    pub.add_argument("--dry-run", action="store_true", help="print the payload, do not POST")
+    pub.set_defaults(fn=cmd_publish)
+
+    e = sub.add_parser("edit", help="GET -> modify -> PUT an existing article in place")
+    e.add_argument("slug")
+    e.add_argument("--set", action="append", help="top-level field, e.g. --set title='...'")
+    e.add_argument("--meta", action="append", help="metadata field, e.g. --meta subtitle='...'")
+    e.add_argument("--body-file", dest="body_file", default="", help="replace the body from a file")
+    e.add_argument("--tweets-file", dest="tweets_file", default="", help="set metadata.tweets from a JSON array")
+    e.add_argument("--published-at", dest="published_at", default="")
+    e.add_argument("--dry-run", action="store_true", help="print the payload, do not PUT")
+    e.set_defaults(fn=cmd_edit)
+
+    m = sub.add_parser("media", help="upload an image/video, print {url}")
+    m.add_argument("file")
+    m.set_defaults(fn=cmd_media)
+
+    im = sub.add_parser("image", help="render an art-directed FLUX.2 hero (ComfyUI) and upload it")
+    im.add_argument("--prompt", required=True, help="the art-directed image prompt (see cli/skills/media/SKILL.md)")
+    im.add_argument("--alt", default="", help="short Spanish alt text for accessibility")
+    im.add_argument("--seed", type=int, default=None, help="override the stable per-prompt seed")
+    im.add_argument("--width", type=int, default=1344, help="wide landscape by default (~16:9); heroes read wide, not tall")
+    im.add_argument("--height", type=int, default=768)
+    im.add_argument("--steps", type=int, default=4)
+    im.add_argument("--template", default="", help="ComfyUI graph template path (default: flux2_klein)")
+    im.add_argument("--dry-run", action="store_true", help="print the graph, do not render")
+    im.set_defaults(fn=cmd_image)
+
+    tw = sub.add_parser("tweet", help="capture an X post as a {{tweet:id}} snapshot (fxtwitter, keyless)")
+    tw.add_argument("ref", help="status id or URL")
+    tw.add_argument("--from-json", dest="from_json", default="", help="map a saved fxtwitter response instead of fetching")
+    tw.set_defaults(fn=cmd_tweet)
+
+    tr = sub.add_parser("truth", help="capture a Trump Truth Social post as a {{tweet:id}} snapshot (keyless)")
+    tr.add_argument("ref", help="status id or URL")
+    tr.add_argument("--from-json", dest="from_json", default="", help="map a saved Truth Social response instead of fetching")
+    tr.set_defaults(fn=cmd_truth)
+
+    pe = sub.add_parser("personas", help="list author ids (handles) in the backend registry")
+    pe.set_defaults(fn=cmd_personas)
+
+    pr = sub.add_parser("persona", help="fetch ONE author's full record as JSON (voice/beat/sources)")
+    pr.add_argument("id", help="author id/slug")
+    pr.set_defaults(fn=cmd_persona)
+
+    ca = sub.add_parser("create-author",
+                        help="persist an agent-authored persona into the backend author registry")
+    ca.add_argument("--file", default="",
+                    help="persona JSON (display_name/beat/who_i_am/style required); omit or '-' to read stdin")
+    ca.set_defaults(fn=cmd_create_author)
+
+    rma = sub.add_parser("remove-author", help="tombstone an author in the backend (needs --yes; soft, restorable)")
+    rma.add_argument("id", help="author id/slug")
+    rma.add_argument("--yes", action="store_true", help="confirm the delete (it is not undoable via the API)")
+    rma.set_defaults(fn=cmd_remove_author)
+
+    so = sub.add_parser("sources", help="show or (with --set) replace an author's attached sources")
+    so.add_argument("id", help="author id/handle")
+    so.add_argument("--set", default=None,
+                    help="comma-separated source slugs to attach (replaces the set); omit to just show")
+    so.set_defaults(fn=cmd_sources)
+
+    ptp = sub.add_parser("profile-topics",
+                         help="show or (with --set) replace an author's curated public-profile topics")
+    ptp.add_argument("id", help="author id/slug")
+    ptp.add_argument("--set", default=None,
+                     help='comma-separated topics for the profile page (replaces the set); "" clears; omit to show')
+    ptp.set_defaults(fn=cmd_profile_topics)
+
+    pda = sub.add_parser("portada",
+                         help="write or read the per-day front-page plan (portada) in the publish backend")
+    pda.add_argument("date", help="YYYY-MM-DD")
+    pda.add_argument("--set-json", dest="set_json", default=None,
+                     help='JSON object {"entries":[{"slug","role"}],"recomendado":[...]} to POST; omit to list all')
+    pda.set_defaults(fn=cmd_portada)
+
+    po = sub.add_parser("portals", help="list available source slugs (the ids to attach to authors)")
+    po.set_defaults(fn=cmd_portals)
+
+    pt = sub.add_parser("prompt", help="fetch a workflow prompt template by key (e.g. workflow/50-draft.md)")
+    pt.add_argument("key", help="prompt key, e.g. persona/synthesize.md or workflow/50-draft.md")
+    pt.set_defaults(fn=cmd_prompt)
+
+    spp = sub.add_parser("set-prompt",
+                         help="edit a prompt in place (writes the recipe .md/.json file; git is its history)")
+    spp.add_argument("key", help="e.g. workflow/50-draft.md or persona/synthesize.md (an existing prompt file)")
+    spp.add_argument("--body-file", dest="body_file", default="", help="read the new body from a file")
+    spp.add_argument("--body", default="", help="the new body inline (use --body-file for long text)")
+    spp.set_defaults(fn=cmd_set_prompt)
+
+    sy = sub.add_parser("style",
+                        help="read the editorial style guide (voice/lexicon/house rules); numbers live in parameters.json")
+    sy.set_defaults(fn=cmd_style)
+
+    sfl = sub.add_parser("set-floor",
+                         help="set the sourcing floor the walk enforces (MIN_SOURCES / MIN_PER_TYPE) in parameters.json")
+    sfl.add_argument("--min-sources", dest="min_sources", type=int, default=None,
+                     help="cross-source corroboration floor (>= 1)")
+    sfl.add_argument("--min-per-type", dest="min_per_type", type=int, default=None,
+                     help="per-lean minimum, left/neutral/right (>= 0)")
+    sfl.set_defaults(fn=cmd_set_floor)
+
+    dr = sub.add_parser("doctor",
+                        help="self-check the stack, the skill package, and the on-disk agentic recipe")
+    dr.set_defaults(fn=cmd_doctor)
+
+    stp = sub.add_parser("step",
+                         help="serve ONE workflow node at a time (the step gate); prints the NEXT command")
+    stp.add_argument("key", nargs="?", default="",
+                     help="node key, e.g. 30-research; omit for the mode picker (or the first node with --mode)")
+    stp.add_argument("--mode", default="",
+                     help="workflow mode: single-article, single-author, authors, daily, weekly, last-hour")
+    stp.add_argument("--list", action="store_true",
+                     help="print the node sequence for the mode (or all modes), without serving a body")
+    stp.set_defaults(fn=cmd_step)
+    return p
+
+
+def main(argv=None):
+    """Parse and dispatch, with ONE top-level net so the LLM never sees a traceback: a ToolError
+    prints as `ERROR: <what> - <how to fix>`; any other unexpected exception is still caught and
+    reported as a clean internal-error line (a bug in this CLI, not the model's input). argparse's
+    own usage errors keep their SystemExit(2) path. Deliberate agent directives raised via
+    `sys.exit(...)` (BLOCKED/STOP/FATAL) pass through unchanged."""
+    args = build_parser().parse_args(argv)
+    try:
+        return args.fn(args)
+    except ToolError as e:
+        sys.stderr.write(f"ERROR: {e}\n")
+        return 1
+    except BrokenPipeError:
+        try:
+            sys.stdout.close()
+        except Exception:
+            pass
+        return 0
+    except KeyboardInterrupt:
+        sys.stderr.write("ERROR: interrupted.\n")
+        return 130
+    except Exception as e:  # last resort: report, never dump a traceback at the model
+        sys.stderr.write(f"ERROR: unexpected {type(e).__name__}: {e}\n"
+                         "(this is a bug in censurado.py, not your input; the command did not "
+                         "complete. Re-check your arguments, or report it.)\n")
+        return 1
+
+
+if __name__ == "__main__":
+    sys.exit(main())

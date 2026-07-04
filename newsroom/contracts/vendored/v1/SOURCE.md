@@ -1,7 +1,7 @@
 # Vendored contracts (v1)
 
 Pinned, byte-identical copies of the platform's publish contracts from the
-`censurado-web-backend` repository. They are the cross-layer contracts for what the harness
+`censurado-web-backend` repository. They are the cross-layer contracts for what the newsroom
 publishes.
 
 - `article.schema.json` (`$id` `https://censurado.local/contracts/article.schema.json`):

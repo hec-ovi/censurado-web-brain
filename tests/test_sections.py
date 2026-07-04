@@ -1,4 +1,4 @@
-"""The harness section enum is a closed, exact vocabulary."""
+"""The newsroom section enum is a closed, exact vocabulary."""
 
 from __future__ import annotations
 
