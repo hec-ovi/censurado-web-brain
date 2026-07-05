@@ -1,15 +1,22 @@
 # Censurado newsroom: the agentic CLI + prompt recipe (this repo) and the docker stack
 # that runs the backend, generator, public site, and comfyui (the sibling code repos).
 # Two lanes: the python package (install/test/lint the CLI + sweeps) and the compose
-# stack (bootstrap/up/deploy). Run `make install` once, then `make test`; run
-# `make bootstrap` once, then `make up-publish`.
+# stack (start/up/deploy). Run `make install` once, then `make test`; run `make start`
+# once, then `make up`.
+#
+# `make` is optional: every stack target below just delegates to ./run.sh, which needs
+# only bash + docker (no make, no apt). `./run.sh start`, `./run.sh up`, etc. do the same.
 
 VENV := .venv
 PYTEST := $(VENV)/bin/pytest
 RUFF := $(VENV)/bin/ruff
 
+# Pass ARGS=--console to any `up*` target to stay in the FOREGROUND with the console
+# attached, e.g. `make up ARGS=--console` (or, without make, `./run.sh up --console`).
+ARGS ?=
+
 .PHONY: install test lint fmt clean \
-        bootstrap build up up-publish down ps logs site generate init-perms config stack-clean deploy
+        bootstrap start build up up-gpu comfyui down ps logs generate init-perms config stack-clean deploy
 
 # ----- python package (the CLI + the newsroom sweeps) -----
 # Toolchain: uv (https://docs.astral.sh/uv). It provisions the interpreter and the
@@ -31,42 +38,45 @@ clean:            ## remove the venv + python caches
 	rm -rf $(VENV) .pytest_cache .ruff_cache
 	find . -type d -name __pycache__ -prune -exec rm -rf {} +
 
-# ----- docker stack (backend + generator + public site + comfyui) -----
-bootstrap:        ## mint secrets + seed keys.json into .env
-	./bootstrap.sh
+# ----- docker stack: thin mirror of ./run.sh (the no-make, no-apt entry point) -----
+bootstrap:        ## mint secrets + seed keys.json into .env (rotates the keys; run by hand)
+	./run.sh bootstrap
 
-build:            ## build all images
-	docker compose build
+start:            ## ONE command online: create .env + mint secrets if missing, then bring the fast lane up
+	./run.sh start
+
+build:            ## build all images (fast lane; add `--profile comfyui` for the GPU image)
+	./run.sh build
 
 init-perms:       ## run the perms one-shot by hand (compose runs it automatically on `up`)
-	docker compose run --rm init-perms
+	./run.sh init-perms
 
-up:               ## bring the whole stack up (detached; adds comfyui, needs the GPU box)
-	docker compose up -d
+up:               ## bring up the FAST lane (publish/generate/site, no comfyui); ARGS=--console for foreground
+	./run.sh up $(ARGS)
 
-up-publish:       ## bring up only the GPU-free publishing lane (no comfyui)
-	docker compose up -d publish generate site
+up-gpu:           ## the whole stack, adding comfyui (heavy, needs the GPU box); the fast lane comes up first
+	./run.sh up-gpu $(ARGS)
+
+comfyui:          ## start ONLY comfyui, e.g. after `make up` once the fast lane is already serving
+	./run.sh comfyui $(ARGS)
 
 down:             ## stop the stack
-	docker compose down
+	./run.sh down
 
 ps:               ## list services
-	docker compose ps
+	./run.sh ps
 
 logs:             ## follow logs
-	docker compose logs -f
+	./run.sh logs
 
-generate: init-perms  ## one-shot rebuild of the static site (normally the generate watcher does this on `up`)
-	docker compose run --rm --no-deps generate go run ./cmd/censurado/generate -out /site -page-size 6
-
-site:             ## (re)start the public server + the generate watcher
-	docker compose up -d generate site
+generate:         ## one-shot rebuild of the static site (normally the generate watcher does this on `up`)
+	./run.sh generate
 
 config:           ## validate the composed topology
-	docker compose config -q && echo OK
+	./run.sh config
 
 stack-clean:      ## stop, DELETE the named volumes (site/gocache/comfyui) + any orphans
-	docker compose down -v --remove-orphans
+	./run.sh stack-clean
 
 deploy:           ## build a fresh snapshot and push it to Cloudflare Pages (live site)
-	./deploy/deploy-cdn.sh
+	./run.sh deploy

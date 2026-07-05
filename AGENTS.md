@@ -150,7 +150,7 @@ Publishing writes the db; it does **not** itself write the public site. A separa
   (the front page is the `latest` landing at `/latest/`), feeds (`feed.xml`,
   `atom.xml`, `feed.json`), `sitemap.xml`, JSON shards, and a purge manifest under
   `.generated/`. There is no root `/index.html`.
-- It runs continuously (`restart: unless-stopped`); `make site` forces a one-shot
+- It runs continuously (`restart: unless-stopped`); `./run.sh site` forces a one-shot
   rebuild. The generate watcher owns regeneration; no operator surface triggers a rebuild.
 - `site` (nginx) serves `site-data` read-only. The config redirects `/`
   to `/latest/` so the origin works as the main page: `nginx/site.conf`.
@@ -193,7 +193,8 @@ context: `../comfyui-strix-docker/`.
 - `.env.example` every config field and which are secrets.
 - `bootstrap.sh` mints the operator key + panel login, seeds `keys.json`, fills `.env`,
   fixes the site volume perms.
-- `Makefile` install/test/lint (python) + bootstrap/up/up-publish/site/generate/down/deploy.
+- `run.sh` the no-dependency stack runner (bash + docker, no make): start/up/up-gpu/comfyui/down/site/generate/deploy.
+- `Makefile` the optional `make` mirror of `run.sh`, plus the python lane (install/test/lint).
 - `nginx/site.conf` the public static-site server (root redirect to `/latest/`).
 - `deploy/deploy-cdn.sh` + `deploy/CACHING.md` the Cloudflare Pages push + cache policy.
 - `functions/` the Cloudflare Pages Function for article reactions (like/dislike + D1).
@@ -220,21 +221,29 @@ context: `../comfyui-strix-docker/`.
 
 ## Operations
 
+The stack runner is `./run.sh` (needs only bash + docker, no `make`). Every `make` target
+below is just a mirror of it.
+
 ```bash
+./run.sh start                     # first run: writes .env, mints secrets if missing, then ups the fast lane
+# or, step by step:
 cp .env.example .env               # then edit the GPU GIDs + COMFYUI_MODELS_PATH
 ./bootstrap.sh                     # mint secrets, seed keys.json, fill .env, fix volume perms
-docker compose up -d               # the WHOLE stack (adds comfyui: needs the GPU box)
-docker compose run --rm generate   # build the static site (served live by `site`)
+./run.sh up                        # the FAST lane (publish/generate/site, no comfyui); detached
 ```
 
-**GPU-free publishing lane.** Everything a CLI agent needs to write, review, publish, and
-serve runs with no GPU: only `comfyui` (hero images) needs the Strix Halo box, and nothing
-in the publishing path depends on it. Bring up just that lane with an explicit service list:
+**GPU-free is the default.** Everything a CLI agent needs to write, review, publish, and
+serve runs with no GPU, and `./run.sh up` (the default) brings up exactly that lane: `comfyui`
+(hero images) is heavy and GPU-only, so it sits behind the `comfyui` compose profile and
+nothing in the publishing path waits on it. Add it only when you want images:
 
 ```bash
-docker compose run --rm init-perms                                # first run / after a wipe
-docker compose up -d publish generate site    # no comfyui
+./run.sh up-gpu                    # the whole stack incl. comfyui (needs the Strix Halo box)
+./run.sh comfyui                   # or add just comfyui after the fast lane is already up
 ```
+
+`./run.sh up` is detached; add `--console` (e.g. `./run.sh up --console`) to run in the
+foreground. With `make`: `make up`, `make up-gpu`, `make up ARGS=--console`.
 
 **Deploy to the live site (optional, Cloudflare).** `make deploy` (or
 `deploy/deploy-cdn.sh`) builds a fresh static snapshot at the production page size and
@@ -247,9 +256,10 @@ static files, so shipping elsewhere (a direct FTP push, another static host, an 
 store) just means swapping `deploy-cdn.sh` for that service's own CLI or skill. Nothing
 else in the stack depends on Cloudflare.
 
-The `Makefile` wraps these (`make up`, `make site`, `make generate`, `make
-init-perms`, `make test`) when `make` is installed; the raw commands above work
-without it. After deleting volumes (`docker compose down -v`), run `docker compose
+`./run.sh` wraps these (`./run.sh up`, `./run.sh site`, `./run.sh generate`,
+`./run.sh init-perms`) and needs only bash + docker; the `Makefile` mirrors them for
+`make` users (and carries `make test`/`make install`); the raw `docker compose` commands
+above work without either. After deleting volumes (`docker compose down -v`), run `docker compose
 run --rm init-perms` once before the next generate so the site volume is writable.
 
 - Operator panel: http://localhost:8082 (the human entry point, served by `publish`;
@@ -281,8 +291,8 @@ watcher; the db and media on persistent host bind mounts; one shared network).
   serves the whole site and the admin panel; you only lose the way to author new pieces.
 - **Site volume ownership.** `generate` runs as the distroless nonroot
   uid (65532) but a fresh `site-data` volume initializes root-owned, so the first
-  write fails. `init-perms` chowns it; `bootstrap.sh`, `make up`, and `make generate`
-  all run it first. After a `make stack-clean` (which deletes volumes) this re-applies.
+  write fails. `init-perms` chowns it; `bootstrap.sh`, `./run.sh up`, and `./run.sh generate`
+  all run it first. After a `./run.sh stack-clean` (which deletes volumes) this re-applies.
 - **Only `site` is public.** Every other port binds `127.0.0.1`. There is no TLS or
   auth in front of the operational ports; add one before exposing them.
 - **Secrets are host-local.** `.env` and `keys.json` are gitignored. `bootstrap.sh`

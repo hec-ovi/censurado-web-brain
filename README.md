@@ -72,7 +72,7 @@ A CLI agent renders a hero image per article on `comfyui` (FLUX.2 klein) via `cl
 
 ## Using it, step by step
 
-Prerequisites: Docker + Compose v2, the code repos checked out as siblings (see above), ComfyUI models on disk, and for `comfyui` an AMD Strix Halo box (gfx1151) on a recent amdgpu kernel. The rest of the stack is plain HTTP with no GPU need. A `Makefile` wraps every command below (`make up`, `make site`, `make test`, ...); the raw `docker compose` form works without `make`.
+Prerequisites: Docker + Compose v2, the code repos checked out as siblings (see above), ComfyUI models on disk, and for `comfyui` an AMD Strix Halo box (gfx1151) on a recent amdgpu kernel. The rest of the stack is plain HTTP with no GPU need. Run the stack with `./run.sh <cmd>` (needs only bash + docker, no `make`); a `Makefile` mirrors the same targets for anyone who has `make`, and the raw `docker compose` form works too.
 
 **1. Configure.** Copy the template and edit the non-secret machine values (GPU group ids):
 
@@ -86,23 +86,28 @@ cp .env.example .env      # edit RENDER_GID, VIDEO_GID, COMFYUI_MODELS_PATH
 ./bootstrap.sh
 ```
 
-**3. Bring the stack up.** The first run builds the service images and downloads the Go module graph, so it is slow; later runs are fast:
+**3. Bring the stack up.** The fast lane (backend API + generator + public site, no GPU) is
+the default. The first run builds the images and downloads the Go module graph, so it is slow;
+later runs are fast:
 
 ```bash
-docker compose up -d
+./run.sh up                # fast lane: publish + generate + site (no comfyui), detached
 docker compose ps          # everything Up; `generate` may take a minute
 ```
 
-**No GPU?** `docker compose up -d` also starts `comfyui`, which needs the Strix Halo box.
-Nothing in the write/review/publish/serve path depends on it, so bring up just that lane
-with an explicit service list (or `make up-publish`):
+`./run.sh up` runs detached; add `--console` to watch the logs instead (`./run.sh up --console`).
+On a fresh checkout, steps 1 to 3 collapse into one command: `./run.sh start` writes `.env`, mints
+the secrets if they are missing, then brings the fast lane up. (With `make`: `make up`, `make start`.)
+
+**Want hero images?** `comfyui` is heavy and GPU-only, so it is opt-in and never blocks the
+fast lane. On an AMD Strix Halo box, add it:
 
 ```bash
-docker compose up -d publish generate site   # no comfyui
+./run.sh up-gpu            # the whole stack, incl. comfyui (or `./run.sh comfyui` to add it later)
 ```
 
-You get the full CLI publishing lane (write, review, edit, serve) with no GPU. You only
-lose the per-article image generation.
+So you get the full CLI publishing lane (write, review, edit, serve) with no GPU by default;
+`comfyui` only adds the per-article image generation.
 
 **4. Check it is alive.**
 
@@ -118,7 +123,7 @@ Open the operator panel at http://localhost:8082 (log in with the panel token fr
 
 **7. Operate.** The panel (served by the backend on 8082) is the single operator surface: it lists and edits articles, curates the portada, creates and edits authors (name, voice/style, gender, topics, attached sources), derives topics, and manages sources, all against the backend behind one login. It talks to the backend directly and binds `127.0.0.1`.
 
-**8. Tear down.** `docker compose down` stops everything but keeps the data (the db and media are host bind mounts under the neutral data dir `${CENSURADO_DATA_DIR:-../censurado-data}`, at `.../db` and `.../media`, which lives outside every code repo). To wipe the named volumes too: `docker compose down -v`, then `docker compose run --rm init-perms` before the next `up` so the site volume is writable again.
+**8. Tear down.** `docker compose down` stops everything but keeps the data (the db and media are host bind mounts under `${CENSURADO_DATA_DIR:-./data}`, at `data/db` and `data/media` inside this repo, gitignored). To wipe the named volumes too: `docker compose down -v`, then `docker compose run --rm init-perms` before the next `up` so the site volume is writable again.
 
 `bootstrap.sh` is safe to re-run; it mints a fresh operator key and panel login each time.
 
@@ -137,14 +142,73 @@ make deploy               # or ./deploy/deploy-cdn.sh
 media, writes the root redirect and the cache headers, and pushes to Pages. The cache
 policy (assets are re-fetched (no-store), media is immutable) is documented in [deploy/CACHING.md](deploy/CACHING.md).
 
+## Rebuilding the corpus from the live site
+
+The database holds all the content and it is gitignored, so a wiped `data/` loses the
+corpus. The public site is a static snapshot, so `elcensuradoweb.com` (Cloudflare Pages) is
+the last surviving copy of the articles, authors, and images. The look (templates, CSS,
+videos) lives in `censurado-web`, not the db, so it always comes back with the code. There is
+no committed tool for the rebuild; it is a manual pass. The overall process:
+
+1. **Bring the stack up.** `./run.sh up` (fast lane; `comfyui` stays off unless you add
+   `up-gpu`). The db starts empty and the portal 403s until the first article exists.
+
+2. **Pull the published content.** Everything on the live pages is fair game:
+   - Enumerate every article URL from the child sitemaps (`/sitemaps/articles-YYYY-MM.xml`).
+   - Read each article page: title, date, author handle, and section come from the
+     `NewsArticle` JSON-LD; the dek and lede are `.article-subtitle` / `.article-standfirst`;
+     topics are the `topic-link` chips; the hero is the JSON-LD `image`. Convert the body HTML
+     to markdown.
+   - Reverse the embeds. The generator authors them as body markers (`{{video:<id>}}`,
+     `{{tweet:<url>}}`, `{{relacionado:<slug>}}`), and an HTML-to-markdown pass drops the
+     rendered iframe or card, so pull the YouTube id, the tweet snapshot (name, handle, avatar,
+     text, url), and the related link back out of the rendered HTML and rewrite the markers. A
+     tweet also needs its snapshot stored in the article's `metadata.tweets[]`; a related marker
+     stores the target's local slug, which differs from the live one.
+   - Authors come from `/author/<handle>/` and the `/about/` roster: name, bio, avatar, gender,
+     and beat.
+   - Images: re-upload each `/media/<sha>` by its bytes. The store keys by sha256, so the URL
+     is stable and every body, hero, and avatar reference keeps resolving.
+
+3. **Republish.** POST it back through the operator API (`/media` first, then `/authors`, then
+   `/articles`), or paste it through the admin panel at `:8082`. Re-publishing the same
+   title+body reproduces the same content hash, so permalinks match. An existing article updates
+   via `PUT /articles/{slug}`; a plain re-POST is an idempotency replay that skips the update.
+
+4. **Fix the dates.** The article page shows `created_at`, which the backend stamps at insert
+   (the import time), not `published_at`. Set them equal once in the sqlite, with the writer
+   stopped so the WAL is free:
+   ```bash
+   docker compose stop publish generate
+   docker run --rm --user 65532:65532 -v "$PWD/data/db:/db" python:3-slim \
+     python3 -c "import sqlite3; c=sqlite3.connect('/db/censurado.db'); \
+       c.execute('UPDATE articles SET created_at = published_at'); c.commit(); \
+       c.execute('PRAGMA wal_checkpoint(TRUNCATE)'); c.commit()"
+   docker compose start publish generate
+   ```
+
+5. **Recreate the synthetic part.** Three things never appear on the public pages, so they
+   cannot be scraped and are written by hand per author (through the panel's Autores + Sources,
+   or `POST /authors` and `POST /sources`):
+   - **The style card** (`style`): the author's private voice guide, the lean and register they
+     write in (left, libertarian, conspiracy, AI researcher, and so on). This is what makes each
+     persona sound like itself.
+   - **`who_i_am`** (`metadata.who_i_am`): a private first-person bio the workflow embodies at
+     draft time.
+   - **The source registry**: the outlets each author reads, each with a `lean` (left, neutral,
+     right) and a feed, attached to the author (left outlets to the left author, and so on).
+
+   These are the author profiles: public bio, avatar, gender, and beat come back from the site;
+   the style card, `who_i_am`, and attached sources are yours to define.
+
 ## Running without the GPU box, or without Docker
 
 The stack splits cleanly along the GPU line:
 
 - **No GPU (no Strix Halo).** Everything except `comfyui` runs on any machine with
-  Docker. Use `make up-publish` for the full write / review / publish / serve lane; you lose
-  only per-article image generation. Publish text-only pieces, or attach images generated
-  elsewhere via `POST /media`.
+  Docker, and it is the default: `./run.sh up` (or `./run.sh start`) brings up the fast write /
+  review / publish / serve lane and never touches the GPU. You lose only per-article image
+  generation. Publish text-only pieces, or attach images generated elsewhere via `POST /media`.
 - **No ComfyUI.** Skip `comfyui` and publish without a hero image (or upload one); the
   per-article image step is simply skipped when ComfyUI is absent.
 - **No Docker at all.** You cannot run the stack locally. Run it on a machine that has
@@ -195,7 +259,8 @@ deploy/                deploy-cdn.sh (push to Cloudflare Pages) + CACHING.md (ca
 .env.example           config template (copy to .env)
 bootstrap.sh           mint secrets, seed keys.json, fill .env, fix volume perms
 mint-panel-login.sh    rotate or set just the operator panel login token
-Makefile               install / test / lint + bootstrap / up / up-publish / down / deploy
+run.sh                 the no-dependency stack runner (bash + docker): start/up/up-gpu/down/deploy
+Makefile               optional `make` mirror of run.sh, plus the python lane (install/test/lint)
 nginx/site.conf        the public static-site server (root redirects to /latest/)
 functions/             the Cloudflare Pages Function for article reactions (like/dislike + D1)
 tests/                 the local suite (CLI, sweeps, prompt drift, contracts, compose wiring)

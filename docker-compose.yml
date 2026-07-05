@@ -16,8 +16,12 @@
 #
 # The ONE cross-service secret is a single operator token: a publish key minted with
 # three scopes (articles:write + articles:publish-any + admin:write). ./bootstrap.sh
-# mints it, seeds keys.json, and writes it into .env. Run that first, then
-# `docker compose up -d`.
+# mints it, seeds keys.json, and writes it into .env. Run that first (or `./run.sh start`,
+# which does it for you on first run), then `docker compose up -d` (the fast lane:
+# publish/generate/site). comfyui is heavy + GPU-only, so it is OPT-IN behind the
+# `comfyui` profile: add it with `docker compose --profile comfyui up -d` (or
+# `./run.sh up-gpu`); nothing in the fast lane waits on it. ./run.sh needs only bash +
+# docker (no make); the Makefile just mirrors it.
 #
 # Host ports: the public news site is the only 0.0.0.0 surface (SITE_PORT, 8080).
 # Everything operational (publish API, operator panel, ComfyUI) binds 127.0.0.1 only.
@@ -34,6 +38,11 @@ services:
   # The CLI agent (cli/censurado.py image) reaches it at 127.0.0.1:8188 to render a
   # FLUX.2 klein hero image per article. From comfyui-strix-docker.
   comfyui:
+    # Heavy (ROCm init, model load) and GPU-only, so it is OPT-IN: gated behind the
+    # `comfyui` compose profile. A plain `docker compose up` / `./run.sh up` brings up
+    # only the fast lane (publish/generate/site); add comfyui with `--profile comfyui`
+    # (or `./run.sh up-gpu`), which starts it alongside without the fast lane waiting on it.
+    profiles: ["comfyui"]
     build:
       context: ../comfyui-strix-docker
     image: comfyui-strix-halo:latest
@@ -98,8 +107,8 @@ services:
     volumes:
       # Persistent host bind mounts (survive `docker compose down -v`): the sqlite
       # source of truth and the uploaded images, owned by uid 65532 (init-perms).
-      - ${CENSURADO_DATA_DIR:-../censurado-data}/db:/data
-      - ${CENSURADO_DATA_DIR:-../censurado-data}/media:/srv/media
+      - ${CENSURADO_DATA_DIR:-./data}/db:/data
+      - ${CENSURADO_DATA_DIR:-./data}/media:/srv/media
       # Seed as an empty JSON array FIRST (bootstrap.sh does this); a missing host
       # file makes Docker create a directory here and breaks startup.
       - ./keys.json:/etc/censurado/keys.json:ro
@@ -132,7 +141,7 @@ services:
     command: ["sh", "-c", "mkdir -p /site/.generated /gocache/tmp && chown -R 65532:65532 /site /data-host /gocache"]
     volumes:
       - site-data:/site
-      - ${CENSURADO_DATA_DIR:-../censurado-data}:/data-host
+      - ${CENSURADO_DATA_DIR:-./data}:/data-host
       # The generate watcher runs as uid 65532 and writes its Go build/module cache
       # here; a fresh named volume is root-owned, so chown it to the writer too.
       - gocache-data:/gocache
@@ -181,7 +190,7 @@ services:
     volumes:
       - ../censurado-web:/work/censurado-web:ro
       - ../censurado-web-backend:/work/censurado-web-backend:ro
-      - ${CENSURADO_DATA_DIR:-../censurado-data}/db:/data
+      - ${CENSURADO_DATA_DIR:-./data}/db:/data
       - site-data:/site
       - gocache-data:/gocache
     networks: [censurado]
@@ -200,7 +209,7 @@ services:
       # Serve uploaded images at /media/ from the same persistent store publish
       # writes to. Mounted OUTSIDE the read-only html root (you cannot create a
       # mountpoint inside a read-only volume); nginx maps /media/ here via alias.
-      - ${CENSURADO_DATA_DIR:-../censurado-data}/media:/srv/media:ro
+      - ${CENSURADO_DATA_DIR:-./data}/media:/srv/media:ro
       - ./nginx/site.conf:/etc/nginx/conf.d/default.conf:ro
     ports:
       - "${SITE_PORT:-8080}:80"

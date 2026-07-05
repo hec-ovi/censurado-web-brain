@@ -52,14 +52,34 @@ def test_default_service_set(tmp_path):
     # generate is a resident watcher (it -watches the db and rebuilds the static site),
     # so it joins a default `up`. init-perms now also joins `up` as a one-shot the
     # writers wait on (it exits 0 before publish/generate start), so a plain
-    # `docker compose up -d` works with no manual step. The legacy admin (:8081) and
-    # console (:8083) surfaces are gone; the operator panel is folded INTO publish (Go
-    # go:embed) and the brain is a host-run CLI now, so neither is a service.
+    # `docker compose up -d` works with no manual step. comfyui is heavy (ROCm, model
+    # load) and GPU-only, so it is OPT-IN behind the `comfyui` profile and does NOT join
+    # a plain `up`: the default lane is the fast one (write/review/publish/serve). The
+    # legacy admin (:8081) and console (:8083) surfaces are gone; the operator panel is
+    # folded INTO publish (Go go:embed) and the brain is a host-run CLI now.
     assert set(cfg["services"]) == {
-        "comfyui", "publish", "site", "generate", "init-perms",
+        "publish", "site", "generate", "init-perms",
     }
+    assert "comfyui" not in cfg["services"], "comfyui is profile-gated (opt-in), not in a default up"
     assert "panel" not in cfg["services"], "the panel is folded into publish, not a separate service"
     assert "brain" not in cfg["services"], "the brain is a host-run CLI now, not a service"
+
+
+def test_comfyui_is_opt_in_behind_the_comfyui_profile(tmp_path):
+    # The heavy GPU image backend joins the stack only when the `comfyui` profile is
+    # selected (`docker compose --profile comfyui up` / `make up-gpu`), so the fast lane
+    # spins up without waiting on ROCm/model load. It stays localhost-only when present.
+    cfg = _config(tmp_path, "--profile", "comfyui")
+    assert "comfyui" in cfg["services"], "comfyui must join the stack under --profile comfyui"
+    comfy = cfg["services"]["comfyui"]
+    assert comfy.get("profiles") == ["comfyui"], "comfyui must carry the comfyui profile"
+    # Nothing in the fast lane depends on comfyui, so it never blocks their startup.
+    for svc in ("publish", "generate", "site", "init-perms"):
+        dep = cfg["services"][svc].get("depends_on") or {}
+        assert "comfyui" not in dep, f"{svc} must not wait on comfyui"
+    # Still bound to 127.0.0.1 (never a public surface) and on the shared network.
+    assert comfy["ports"][0]["host_ip"] == "127.0.0.1", "comfyui must stay localhost-only"
+    assert "censurado" in comfy["networks"], "comfyui must join the shared network"
 
 
 def test_publish_serves_the_operator_panel(tmp_path):
@@ -145,13 +165,13 @@ def test_persistent_state_is_host_bind_mounts(tmp_path):
                 return v
         raise AssertionError(f"{svc} has no mount at {target}")
 
-    # sqlite db: bind mount under the data dir (default ../censurado-data/db, OUTSIDE the repo)
-    # for publish (writer) and the generate reader.
+    # sqlite db: bind mount under the data dir (default ./data/db, INSIDE this repo and
+    # gitignored) for publish (writer) and the generate reader.
     for svc in ("publish", "generate"):
         m = mount(svc, "/data")
-        assert m["type"] == "bind" and m["source"].endswith("/censurado-data/db")
+        assert m["type"] == "bind" and m["source"].endswith("/data/db")
     # images: bind mount under <data-dir>/media on publish.
-    assert mount("publish", "/srv/media")["source"].endswith("/censurado-data/media")
+    assert mount("publish", "/srv/media")["source"].endswith("/data/media")
 
 
 def test_publish_media_store_enabled_and_regen_moved_to_generate(tmp_path):
@@ -175,7 +195,7 @@ def test_site_serves_media(tmp_path):
     # image URLs (/media/<hash>.<ext>) resolve on the portal.
     site = _config(tmp_path)["services"]["site"]
     m = next((v for v in site["volumes"] if v["target"] == "/srv/media"), None)
-    assert m is not None and m["source"].endswith("/censurado-data/media")
+    assert m is not None and m["source"].endswith("/data/media")
 
 
 def test_site_is_the_only_public_port(tmp_path):
