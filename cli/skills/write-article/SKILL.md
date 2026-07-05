@@ -93,7 +93,9 @@ Drop a marker on its OWN line in the body and the static generator expands it:
 Three distinct media slots, do not confuse them: the portada CARD thumbnail is `metadata.image`
 (else the first body `{{video:}}` poster, else text-only); the article HERO is `metadata.image`
 (a still) or `metadata.youtube` (a lead video); the body markers render inline where you place
-them. A `{{tweet:<id>}}` for a live X post needs NOTHING extra: write the marker exactly like
+them. So when the piece IS a video, embed `{{video:<id>}}` in the body and do NOT attach a hero
+image: `metadata.image` wins the card over the video poster, so setting both hides the video
+behind a still. Render or pass an image only for a piece that has no video to lead with. A `{{tweet:<id>}}` for a live X post needs NOTHING extra: write the marker exactly like
 `{{relacionado:}}` or `{{video:}}` and `preview` auto-fetches the card from the id (keyless, via
 fxtwitter). Capture explicitly ONLY to pin a snapshot the auto-fetch cannot reach: a since-deleted
 X post, or a Truth Social post (auto-fetch is X-only). Then run `censurado.py tweet <url>` (X) or

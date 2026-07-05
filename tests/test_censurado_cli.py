@@ -1366,3 +1366,17 @@ def test_deploy_relays_failure_without_workaround(monkeypatch, capsys):
     assert "FAILED" in err
     # the failure guidance must forbid the exact workarounds the looping agent tried
     assert "Do NOT run generate" in err and "chmod" in err
+
+
+def test_preview_consumes_the_work_hero_so_it_cannot_leak(monkeypatch, tmp_path):
+    # After a successful stage, the work-dir image.json is deleted so a LATER preview of a
+    # different piece cannot inherit this one's hero from the shared default work dir (the leak
+    # that attached one article's still to the next, video, piece).
+    monkeypatch.setenv("CENSURADO_WORK", str(tmp_path))
+    (tmp_path / "image.json").write_text(
+        json.dumps({"image": "/media/" + "a" * 64 + ".png", "image_alt": "x"}))
+    monkeypatch.setattr(cz, "_req",
+                        lambda *a, **k: (201, json.dumps({"id": "1", "slug": "s"}).encode()))
+    monkeypatch.setattr(cz, "token", lambda: "t")
+    assert cz.cmd_publish(_preview_ns()) == 0
+    assert not (tmp_path / "image.json").exists()  # consumed on publish

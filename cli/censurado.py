@@ -703,6 +703,15 @@ def cmd_publish(a):
     if st not in (200, 201):
         sys.stderr.write(f"preview FAILED -> HTTP {st} (nothing was staged)\n")
         return 1
+    # The hero the `image` verb saved to the work dir is SPENT once the piece is staged: delete
+    # it so a later ad-hoc preview of a DIFFERENT piece cannot inherit this one's hero from the
+    # shared default work dir. That leak attached one article's image to the next (a video piece
+    # got the previous article's still). A walk renders a fresh hero per article, so this is safe;
+    # to re-attach on a re-preview, pass --image or re-run `image`.
+    try:
+        (_work_dir() / "image.json").unlink()
+    except (FileNotFoundError, OSError):
+        pass
     slug = ""
     try:
         slug = (json.loads(body) or {}).get("slug", "")
