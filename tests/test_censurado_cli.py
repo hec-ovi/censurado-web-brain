@@ -1097,6 +1097,37 @@ def test_topics_warns_when_the_corpus_exceeds_the_scan(monkeypatch, capsys):
     assert "scanned 1 of 500" in capsys.readouterr().err
 
 
+def test_cli_parses_remove_topic_verb():
+    a = cz.build_parser().parse_args(["remove-topic", "javier-milei", "--yes"])
+    assert a.fn is cz.cmd_remove_topic and a.slug == "javier-milei" and a.yes is True
+
+
+def test_remove_topic_refuses_without_yes(monkeypatch):
+    # Guarded like remove-author: without --yes it exits and issues NO request.
+    calls = []
+    monkeypatch.setattr(cz, "api", lambda *args, **kw: calls.append(args) or (204, b""))
+    with pytest.raises(SystemExit):
+        cz.cmd_remove_topic(SimpleNamespace(slug="javier-milei", yes=False))
+    assert not calls  # nothing reached the backend
+
+
+def test_remove_topic_tombstones_via_delete(monkeypatch):
+    calls = []
+
+    def fake_api(method, path, payload=None, auth=True, base=None):
+        calls.append((method, path))
+        return 204, b""
+
+    monkeypatch.setattr(cz, "api", fake_api)
+    assert cz.cmd_remove_topic(SimpleNamespace(slug="javier-milei", yes=True)) == 0
+    assert calls[-1] == ("DELETE", "/topics/javier-milei")
+
+
+def test_remove_topic_reports_a_missing_slug(monkeypatch):
+    monkeypatch.setattr(cz, "api", lambda *a, **k: (404, b""))
+    assert cz.cmd_remove_topic(SimpleNamespace(slug="nope", yes=True)) == 1
+
+
 def test_archive_exits_on_http_error(monkeypatch):
     monkeypatch.setattr(cz, "api",
                         lambda m, p, payload=None, auth=True, base=None: (401, b"{}"))

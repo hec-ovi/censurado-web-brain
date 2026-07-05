@@ -102,6 +102,8 @@ def test_topic_cleanse_walk_covers_both_halves_and_agent_detection():
     # Uses the phase-3 inventory verb; cross-references (does not duplicate) normalize-topics.
     assert "cli/censurado.py topics" in low
     assert "normalize-topics" in low
+    # Registry reconcile is automated with the remove-topic verb (v1 default), not manual-only.
+    assert "remove-topic" in low
     # Agent-side detection + the safety rails: dry-run gate, over-merge hazard, hash stability.
     assert "no model runs" in low
     assert "dry run" in low or "dry-run" in low

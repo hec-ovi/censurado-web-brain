@@ -50,6 +50,7 @@ for its exact flags.
 | curate one author's short profile-topic list (guided) | `python3 cli/censurado.py step --mode normalize-topics` |
 | merge topic-tag variants of one entity across the whole corpus (e.g. `Javier-Milei` into `milei`), on articles and author chips | `python3 cli/censurado.py step --mode topic-cleanse` (a gated walk) |
 | see the tag surface / inventory distinct article tags with counts | `python3 cli/censurado.py topics` |
+| drop a stale topic from the `/topics` index (reconcile after a merge; soft, restorable) | `python3 cli/censurado.py remove-topic <slug> --yes` |
 | edit an article already on the preview site | `python3 cli/censurado.py edit <slug> --meta k=v --body-file ...` |
 | take an article down / remove it from the site (soft, restorable) | `python3 cli/censurado.py unpublish <slug> --yes` |
 | read the editorial voice/rules or a prompt | `python3 cli/censurado.py style` (voice/lexicon/rules) ; `python3 cli/censurado.py prompt <key>` |

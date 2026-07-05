@@ -49,9 +49,11 @@ Do it one entity or theme at a time:
    REPLACE; the `normalize-topics` walk covers how to choose the set). Skip authors whose chips
    fall back to the computed union, since they self-heal from the rewritten article tags.
 
-7. **Reconcile the topic registry (manual).** The operator `/topics` facet registry can still
-   list a merged-away slug, because the cleanse never touches that table. Open the panel's
-   Temas tab and delete the stale variant row so the topic index matches the corpus.
+7. **Reconcile the topic registry.** The operator `/topics` facet registry can still list a
+   merged-away slug, because the cleanse never touches that table. Drop the stale variant with
+   `python3 cli/censurado.py remove-topic <old-slug> --yes` (a soft, restorable tombstone; the
+   slug is the one the Temas tab shows), so the topic index matches the corpus. You can also do
+   it by hand from the panel's Temas tab.
 
 8. **Regenerate.** The change reaches the site after a regenerate: the generate service
    repaints on its own, or regenerate now. Going live is a separate, human-gated `make deploy`.

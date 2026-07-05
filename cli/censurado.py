@@ -996,6 +996,29 @@ def cmd_topics(a):
     return 0
 
 
+def cmd_remove_topic(a):
+    """Tombstone a topic in the operator registry (DELETE /topics/<slug>). SOFT delete: it
+    drops the stale row off the `/topics` facet index, restorable via the panel. Use it to
+    reconcile the registry after a `topic-cleanse` merge, when a variant slug was folded into
+    a canonical one and its registry row lingers. It does NOT touch article tags (those move
+    via the cleanse) or author chips (those move via profile-topics). Guarded by --yes.
+    Response: 204 removed; 404 no such topic. The slug is the one the Temas tab / GET /topics
+    shows (already slugified)."""
+    if not a.yes:
+        sys.exit(f"REFUSED: confirm removing a topic with --yes:\n"
+                 f"  python3 cli/censurado.py remove-topic {a.slug} --yes")
+    st, body = api("DELETE", "/topics/" + urllib.parse.quote(a.slug, safe=""))
+    if st in (200, 204):
+        sys.stderr.write(f"remove-topic {a.slug} -> tombstoned ({st})\n")
+        return 0
+    if st == 404:
+        sys.stderr.write(f"remove-topic {a.slug} -> no such topic (404)\n")
+        return 1
+    sys.stdout.write(body.decode("utf-8", "replace") + "\n")
+    sys.stderr.write(f"remove-topic {a.slug} -> HTTP {st}\n")
+    return 1
+
+
 def cmd_portals(a):
     """List the source slugs available to attach to an author (GET /sources). These are the
     ids `sources <handle> --set` links against."""
@@ -1511,6 +1534,13 @@ def build_parser():
                              "the read side of topic normalization")
     tp.add_argument("--limit", type=int, default=0, help="cap the articles scanned (0 = 1000)")
     tp.set_defaults(fn=cmd_topics)
+
+    rmt = sub.add_parser("remove-topic",
+                         help="tombstone a topic in the /topics registry (soft, restorable); reconciles the "
+                              "facet index after a topic-cleanse merge")
+    rmt.add_argument("slug", help="the registry topic slug to remove (as shown by the Temas tab / GET /topics)")
+    rmt.add_argument("--yes", action="store_true", help="confirm the delete")
+    rmt.set_defaults(fn=cmd_remove_topic)
 
     pda = sub.add_parser("portada",
                          help="write or read the per-day front-page plan (portada) in the publish backend")
