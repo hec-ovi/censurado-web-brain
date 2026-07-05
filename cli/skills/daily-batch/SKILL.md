@@ -45,11 +45,18 @@ floor, honest-headline gate, and evaluate/respin loop.
   `cli/workflow/parameters.json` (the same `{{TOPIC_CAP}}` the finalize node enforces; not `style`).
 
 ## After the sweep
-If tags drifted, tidy them through the backend (there is no separate brain and no bulk cleanse
-pass anymore). Fix an article's tags in place with the `edit` verb, which re-sends the whole
-topics set (admin:write); read a piece first with `get <slug>` if you need its current tags:
+If tags drifted, you have two tools. For a ONE-OFF fix on a single article, edit its tags in
+place with the `edit` verb, which re-sends the whole topics set (admin:write); read a piece
+first with `get <slug>` if you need its current tags:
 
     python3 cli/censurado.py edit <slug> --set "topics=inteligencia artificial,Milei,economía"
 
-You supply the canonical form for each tag yourself; nothing runs a model. The operator can
-also curate tags from the panel's Articles and Temas tabs.
+For a corpus-wide MERGE of naming variants of one entity (e.g. `Javier-Milei` into `milei`)
+across many articles and the authors' profile chips, run the topic-cleanse walk, which drives
+the hash-safe `censurado-brain topics cleanse` plus `profile-topics`:
+
+    python3 cli/censurado.py step --mode topic-cleanse
+
+You supply the canonical form for each tag yourself; nothing runs a model. See the tag surface
+first with `python3 cli/censurado.py topics`. The operator can also curate tags from the
+panel's Articles and Temas tabs.

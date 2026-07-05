@@ -1555,7 +1555,8 @@ def build_parser():
                      help="node key, e.g. 30-research; omit for the mode picker (or the first node with --mode)")
     stp.add_argument("--mode", default="",
                      help="workflow mode (run `step --list` to see all): single-article, single-author, "
-                          "authors, daily, weekly, last-hour, deploy, normalize-topics, portal-review")
+                          "authors, daily, weekly, last-hour, deploy, normalize-topics, portal-review, "
+                          "topic-cleanse")
     stp.add_argument("--list", action="store_true",
                      help="print the node sequence for the mode (or all modes), without serving a body")
     stp.set_defaults(fn=cmd_step)

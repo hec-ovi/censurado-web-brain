@@ -883,6 +883,18 @@ def test_step_stamps_the_current_node_key_and_position(monkeypatch, capsys, tmp_
     assert "node 1 of" in out                     # and its position in the walk
 
 
+def test_step_serves_the_topic_cleanse_walk(monkeypatch, capsys):
+    # topic-cleanse is a standalone single-node mode served from the REAL prompts (no _recipe,
+    # no stack). It must carry both merge halves and the safety gates a driver follows.
+    monkeypatch.delenv("CENSURADO_WORK", raising=False)
+    assert cz.cmd_step(_ns(mode="topic-cleanse")) == 0
+    low = capsys.readouterr().out.lower()
+    assert "topics cleanse" in low and "--apply" in low   # article half (hash-safe brain writer)
+    assert "profile-topics" in low                          # author-chip half
+    assert "no model runs" in low                           # detection is agent-side
+    assert "over-merg" in low                               # the over-merge hazard gate
+
+
 def test_step_no_key_no_mode_serves_the_mode_picker(monkeypatch, capsys, tmp_path):
     monkeypatch.setattr(cz, "PROMPTS_DIR", _recipe(tmp_path))
     assert cz.cmd_step(_ns()) == 0
