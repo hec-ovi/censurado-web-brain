@@ -108,6 +108,17 @@ def test_prompts_skill_treats_every_prompt_as_a_file_not_a_db():
         "prompts skill must send numeric-floor edits to parameters.json / set-floor, not a prompt"
 
 
+def test_daily_batch_skill_tail_wires_the_portada_arrange_walk():
+    # After a sweep publishes its items, the batch skill's tail arranges each day's front page
+    # via the standalone portal-review walk, one UTC day at a time, loading the day with
+    # `archive --day`. Assert it in the BODY so a gutted body cannot pass on the frontmatter.
+    body = _body(SKILLS_DIR / "daily-batch" / "SKILL.md").lower()
+    assert "step --mode portal-review" in body, "batch tail must run the arrange walk"
+    assert "archive --day" in body, "batch tail must name the day loader"
+    assert "one day at a time" in body, "arrange is per UTC day"
+    assert "make deploy" in body, "going live stays a separate human-gated deploy"
+
+
 def test_retired_flat_docs_are_gone_and_unreferenced():
     # ART-DIRECTOR / DAILY-SWEEP / TOOLKIT were folded into the sub-skills (media / daily-batch /
     # write-article) and DELETED. Guard both that they stay gone AND that nothing under cli/ still

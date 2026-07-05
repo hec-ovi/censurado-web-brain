@@ -562,17 +562,25 @@ def _day_bound(v, end=False):
 
 
 def cmd_archive(a):
-    """List an author's published articles from the backend read API, LIGHT (no bodies):
+    """List published articles from the backend read API, LIGHT (no bodies):
     slug, published_at, title, subtitle, description, section, topics, has_media. This is
     the repeat-news sweep's first stage: judge candidates by title, description, and DATE
     against the event being covered, and read a candidate's full body with `get <slug>`
     only when real doubt remains, so the sweep stays cheap on context. `has_media` (the
     server-derived image/video flag) also feeds the portada layout: it says whether a
-    piece's card shows a picture or plain text, without opening each body."""
-    params = {"author": a.author}
+    piece's card shows a picture or plain text, without opening each body.
+
+    With `--day YYYY-MM-DD` and no author it lists a whole UTC day across EVERY author: the
+    loader the portada arrange (`step --mode portal-review`) reads to lay out that day's
+    front page (title, subtitle/dek, description, has_media per piece)."""
+    author = getattr(a, "author", "") or ""
+    day = getattr(a, "day", "") or ""
+    since, until = (day, day) if day else (a.since, a.until)
+    params = {}
+    if author: params["author"] = author
     if a.q: params["q"] = a.q
-    if a.since: params["from"] = _day_bound(a.since)
-    if a.until: params["to"] = _day_bound(a.until, end=True)
+    if since: params["from"] = _day_bound(since)
+    if until: params["to"] = _day_bound(until, end=True)
     if a.limit: params["limit"] = str(a.limit)
     st, body = api("GET", "/articles?" + urllib.parse.urlencode(params))
     if st != 200:
@@ -1364,9 +1372,13 @@ def build_parser():
     g.set_defaults(fn=cmd_get)
 
     ar = sub.add_parser("archive",
-                        help="list an author's published articles, light (title/description/date, "
-                             "no bodies), for the repeat-news sweep")
-    ar.add_argument("author", help="author id/slug whose archive to list")
+                        help="list published articles light (title/description/date, no bodies): "
+                             "an author's archive, or a whole day across authors with --day")
+    ar.add_argument("author", nargs="?", default="",
+                    help="author id/slug whose archive to list; omit (with --day) for the whole day across authors")
+    ar.add_argument("--day", default="",
+                    help="all articles published on this UTC day (YYYY-MM-DD) across every author; "
+                         "the loader the portada arrange reads")
     ar.add_argument("--q", default="", help="free-text filter (an entity or theme), passed to the backend")
     ar.add_argument("--since", default="", help="only articles published at/after (YYYY-MM-DD or RFC3339)")
     ar.add_argument("--until", default="",
