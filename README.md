@@ -228,8 +228,6 @@ All config lives in `.env` (see `.env.example`). The non-secret defaults target 
 
 Not built yet, captured here so we can pick them up. Nothing below blocks the current pipeline.
 
-- **Agentic importance arrange at the end of a batch** (brain). When a driver runs the full scheduler batch, the last step arranges the portada by importance. This is agent-driven, not an automatic ranking function. The portada is a matrix grid, and the skill rule is: alternate articles that carry media (image or video) with the ones that do not so media never clumps, give a very important article its own full-width single row, keep the rest in two-column rows, and never leave a gap (always fill both cells of a two-column row). Example shape: `[x]`, `[x, o]`, `[o, x]`, `[x]`, where a lone `x` is a full-width single row and a pair is two columns with the media cell alternating side row to row.
-- **Drag-and-drop layout organizer** (backend panel). The portada organizer reorders with up/down buttons today; a visual drag-and-drop swap is a nice-to-have.
 - **Analytics / BI dashboard** (backend panel). One surface for growth: a most-popular-topics chart (filtered totals, built to scale to thousands of topics), authors ranked by likes, authors with the fewest articles, and statistical/growth modeling. Note: author-likes needs a reactions data source the backend does not hold yet (reactions live in the downstream Cloudflare Pages reactions function).
 - **Rebel Forge integration.** Integrate the Rebel Forge functionality (a separate GitHub repo). Pending, scope defined when picked up.
 
