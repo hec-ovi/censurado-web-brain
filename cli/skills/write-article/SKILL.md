@@ -31,21 +31,25 @@ the backend: the nodes will tell you to load an author with `censurado.py person
 
 ## Each node is WORK YOU DO, not a button you press
 Fetching a node does NOT complete it. The node is instructions for YOU to carry out with your
-own reasoning and tools (web search, writing) before you move on. Some nodes must SAVE a file
-to your scratch dir `$CENSURADO_WORK` and the gate will not let you advance until that file
-exists (it prints the exact path as `ARTIFACT: ...`). Writing these scratch files under
-`$CENSURADO_WORK` is the ONLY file-writing you ever do: it is your workspace, not the repo. You
-still never edit a repo file, read source code, or touch the database; the piece reaches the
-site only through the `preview` verb at the final node.
+own reasoning and tools (web search, writing) before you move on. Some nodes must SAVE a file to
+your scratch dir, and the gate will not let you advance until that file exists.
 
-- `30-research` -> write your source ledger to `$CENSURADO_WORK/ledger.md` (each key fact + its
-  source URL). Use web search to find real sources first.
-- `50-draft` -> write the full article body to `$CENSURADO_WORK/draft.md`.
+**The CLI hands you the scratch dir, you never hunt for it.** Every node prints a `WORK DIR:
+<path>` line (your scratch for this piece) and, for a node that must produce a file, an
+`ARTIFACT: <exact path>` line. Write EXACTLY to those printed paths. Do NOT run `echo
+$CENSURADO_WORK`, `ls`, or `doctor` to find a directory, and do NOT set any environment variable:
+the path is already on screen. Writing to those printed scratch paths is the ONLY file-writing
+you ever do; it is your workspace, not the repo. You still never edit a repo file, read source
+code, or touch the database, and the piece reaches the site only through `preview` at the final node.
+
+- `30-research` -> write your source ledger to the `ARTIFACT:` path it prints (`.../ledger.md`),
+  each key fact + its source URL. Use web search to find real sources first.
+- `50-draft` -> write the full article body to the `ARTIFACT:` path it prints (`.../draft.md`).
 
 If you try to skip ahead you will get a `BLOCKED:` message naming the step to go back and do.
 If you re-fetch the same node over and over you will get a `STOP:` message: do the work
-instead of re-fetching. At the preview node, pass the body you saved: `--body-file
-$CENSURADO_WORK/draft.md`.
+instead of re-fetching. At the preview node, pass the body you saved with `--body-file <the
+draft.md path the walk printed>`.
 
 ## The verbs the walk uses
 The nodes hand you the exact command at each step; these are the ones you will run:

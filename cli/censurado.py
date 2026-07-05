@@ -32,7 +32,7 @@ and write those files directly (no server), resolving the dir from `CENSURADO_PR
 WITH this package (`cli/workflow/parameters.json`). See cli/SKILL.md (the resolver + sub-skills)
 for the agent surface, `python3 cli/censurado.py <cmd> --help` for flags.
 """
-import argparse, hashlib, html, json, os, re, subprocess, sys, time, unicodedata, urllib.error, urllib.parse, urllib.request
+import argparse, hashlib, html, json, os, re, shutil, subprocess, sys, tempfile, time, unicodedata, urllib.error, urllib.parse, urllib.request
 from datetime import datetime, timedelta
 from pathlib import Path
 
@@ -1509,13 +1509,21 @@ _MAX_REFETCH = 4  # a node may be re-served a few times (e.g. the evaluate/respi
                   # that it is a spin, not progress, and the loop shield stops it.
 
 
+# The scratch dir the walk (and the image/tweet verbs) reads and writes when the driver did not
+# set $CENSURADO_WORK. Having a stable default (never None) means the agent NEVER has to know the
+# env var exists or hunt for a directory: the walk always prints it and always enforces the
+# artifact gate. A fresh walk wipes it (see cmd_step) so a serial batch reuses it one piece at a
+# time. A driver that wants per-article isolation can still set $CENSURADO_WORK itself.
+_DEFAULT_WORK = Path(tempfile.gettempdir()) / "censurado-work"
+
+
 def _work_dir():
-    """The per-article scratch dir the walk writes its artifacts to, or None. The DRIVER sets it
-    as $CENSURADO_WORK (a fresh temp dir per article, e.g. under /tmp). Enforcement (the artifact
-    gate + loop shield) runs ONLY when it is set, so a plain `step` call with no work dir stays
-    purely advisory and unchanged."""
+    """The scratch dir the walk writes its artifacts (ledger.md, draft.md, image.json, tweets.json)
+    to. It is $CENSURADO_WORK when the driver set it, else the stable default `_DEFAULT_WORK`. It is
+    NEVER None, so the artifact gate + loop shield always run and every verb resolves the SAME dir
+    without the agent threading anything."""
     w = os.environ.get("CENSURADO_WORK", "").strip()
-    return Path(w) if w else None
+    return Path(w) if w else _DEFAULT_WORK
 
 
 def _gate(key, seq, produces, workdir, mode):
@@ -1581,16 +1589,26 @@ def cmd_step(a):
         sys.exit(f"FATAL: mode {a.mode!r} has no enabled steps")
     produces = manifest.get("produces") or {}
     workdir = _work_dir()
-    if workdir is not None and a.mode:
-        _gate(key, seq, produces, workdir, a.mode)  # may print a directive and exit non-zero
+    # A FRESH walk (mode given, no explicit node = the agent started the walk) that is using the
+    # shared default scratch clears it first, so the previous article's ledger/draft/counts cannot
+    # leak into this one. A driver that set $CENSURADO_WORK owns its own dir, so leave that alone.
+    defaulting = not os.environ.get("CENSURADO_WORK", "").strip()
+    if a.mode and not a.key and defaulting and workdir.exists():
+        shutil.rmtree(workdir, ignore_errors=True)
+    if a.mode:
+        _gate(key, seq, produces, workdir, a.mode)  # always enforce; may print a directive and exit
 
     body = fill_params(_fetch_prompt_body(f"workflow/{key}.md"), params)
     if a.mode and key in seq:
         # Stamp the CURRENT node key + position so a small-model driver always knows where it is
         # in the walk (the NEXT line only names the next node); it must not have to guess its id.
         sys.stdout.write(f"STEP {key}  [{a.mode}, node {seq.index(key) + 1} of {len(seq)}]\n\n")
+        # Name the scratch dir up front so the agent writes there directly and never runs echo/ls/
+        # doctor to hunt for it (a weak driver otherwise wanders looking for where its files go).
+        sys.stdout.write(f"WORK DIR: {workdir}  (your scratch for this piece; save the file each "
+                         f"ARTIFACT line names here, nothing else on disk is yours to touch)\n\n")
     sys.stdout.write(body.rstrip() + "\n\n")
-    if workdir is not None and produces.get(key):
+    if produces.get(key):
         sys.stdout.write(f"ARTIFACT: before you run NEXT, save this step's output to "
                          f"{workdir / produces[key]} (that file is required to advance).\n\n")
     sys.stdout.write((next_line(seq, key, a.mode) if a.mode

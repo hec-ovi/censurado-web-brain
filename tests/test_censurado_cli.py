@@ -25,6 +25,14 @@ def _load():
 
 cz = _load()
 
+
+@pytest.fixture(autouse=True)
+def _isolate_default_work(monkeypatch, tmp_path):
+    """Redirect the module's default scratch dir into a per-test temp dir, so a walk with no
+    $CENSURADO_WORK set (which now defaults + enforces) never touches the real /tmp/censurado-work."""
+    monkeypatch.setattr(cz, "_DEFAULT_WORK", tmp_path / "_default_work")
+
+
 FX_TWEET = {"tweet": {
     "id": "2071372670411690152", "text": "Celebro esa decisión.",
     "url": "https://x.com/mauriciomacri/status/2071372670411690152",
@@ -985,11 +993,36 @@ def test_step_gate_loop_shield_stops_refetching_the_same_node(monkeypatch, tmp_p
     assert "STOP" in str(e.value)
 
 
-def test_step_gate_is_advisory_when_no_work_dir_is_set(monkeypatch, capsys, tmp_path):
+def test_step_gate_enforces_by_default_without_an_env_work_dir(monkeypatch, tmp_path):
+    # With no $CENSURADO_WORK the gate is NOT advisory any more: it defaults the scratch dir and
+    # enforces, so skipping ahead still BLOCKS (a weak driver otherwise blows past the ledger/draft).
     monkeypatch.delenv("CENSURADO_WORK", raising=False)
     monkeypatch.setattr(cz, "PROMPTS_DIR", _recipe(tmp_path))
-    assert cz.cmd_step(_ns(key="40-outline", mode="single-article")) == 0  # no ledger needed
-    assert "Outline" in capsys.readouterr().out
+    with pytest.raises(SystemExit) as e:  # 40-outline still needs 30-research's ledger.md first
+        cz.cmd_step(_ns(key="40-outline", mode="single-article"))
+    assert "BLOCKED" in str(e.value) and "30-research" in str(e.value)
+
+
+def test_step_prints_the_work_dir_up_front_when_unset(monkeypatch, capsys, tmp_path):
+    # The served node names the scratch dir so a weak driver writes there directly instead of
+    # running echo/ls/doctor to hunt for it (the observed failure mode).
+    monkeypatch.delenv("CENSURADO_WORK", raising=False)
+    monkeypatch.setattr(cz, "PROMPTS_DIR", _recipe(tmp_path))
+    assert cz.cmd_step(_ns(mode="single-article")) == 0
+    out = capsys.readouterr().out
+    assert "WORK DIR:" in out and str(cz._DEFAULT_WORK) in out
+
+
+def test_step_fresh_walk_start_wipes_the_default_scratch(monkeypatch, capsys, tmp_path):
+    # Starting a fresh walk on the shared default dir clears a prior piece's artifacts, so a serial
+    # batch cannot advance article 2 on article 1's leftover ledger/draft.
+    monkeypatch.delenv("CENSURADO_WORK", raising=False)
+    monkeypatch.setattr(cz, "PROMPTS_DIR", _recipe(tmp_path))
+    cz._DEFAULT_WORK.mkdir(parents=True, exist_ok=True)
+    stale = cz._DEFAULT_WORK / "ledger.md"
+    stale.write_text("- old article's ledger that must not leak -> https://x/y\n")
+    assert cz.cmd_step(_ns(mode="single-article")) == 0  # start the walk (no explicit node)
+    assert not stale.exists()  # the fresh start wiped it
 
 
 # ---- the archive verb: the repeat-news sweep's first stage. It lists an author's
