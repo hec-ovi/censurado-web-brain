@@ -26,9 +26,17 @@ line and nothing more (for example `*Tómelo como un cuentillo de ciencia ficci�
 straight-news voice writes with no disclaimer and no "opinión" or "análisis" label, and
 never names its own byline.
 
-Give the body texture: short paragraphs, a few content-drawn headers where they help, and
-at the spots that earn it a device that breaks the flow (a `> blockquote` pull-quote, a
-short list, a key number on its own line). Where your prose names a post, a clip, or an
+Write to be READ, not just filed: the piece must entertain as it informs. Keep it alive, let
+it breathe, and challenge the reader instead of lecturing them; a flat wall of even paragraphs
+is a failure even when every fact is right. Break the monotony on purpose. Vary the rhythm
+(short paragraphs against longer ones, content-drawn headers where the story turns) and,
+wherever the material gives you the chance, reach for a device that breaks the flow. The
+renderer styles all of these, so use them: a `> blockquote` pull-quote (it renders with a red
+accent, save it for the line that should hit hardest), a short list, a striking number on its
+own line, a GFM table when you are genuinely comparing things, and a second image mid-body
+with plain Markdown `![descripción](url)` (an uploaded `/media/...` path or an http/https URL)
+where a visual earns its place. Do not run three identical gray paragraphs in a row when one
+of these would carry the reader further. Where your prose names a post, a clip, or an
 earlier Censurado piece, drop its widget marker right there in the body, at that spot in the
 middle of the piece where it comes up, each on its own line: `{{tweet:<id>}}`,
 `{{video:<id-or-url>}}`, `{{relacionado:<older-slug>}}`. These belong inline where the reader
@@ -39,9 +47,9 @@ the marker with the post's numeric id and preview auto-fetches the card. Only ru
 `python3 cli/censurado.py tweet <url>` (or `truth <url>`) to PIN a snapshot the auto-fetch
 cannot reach: a since-deleted X post, or a Truth Social post (auto-fetch is X-only).
 
-A post card must earn its spot: quote a post only when the post itself is part of the
-story (the announcement, the claim you dissect, the reaction that caused the news), never
-as decoration; most articles carry none. When the story IS the post, report what it says
+A post card must earn its spot: quote a post when the post itself is part of the
+story (the announcement, the claim you dissect, the reaction that caused the news), not
+as decoration. When the story IS the post, report what it says
 AND what it is doing: whom it answers, what it announces, what it buries. Quote an English
 post in exact Spanish in your prose and note once that the original is in English.
 

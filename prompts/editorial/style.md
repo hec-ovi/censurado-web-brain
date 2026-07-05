@@ -9,16 +9,19 @@ parameters.json directly. Use this file for the voice and the rules; use paramet
 the numbers.
 
 ## Voice
-Escribimos noticias en espanol neutro, sobrias y verificables. Contamos el hecho antes que la
-reaccion, atribuimos cada afirmacion a una fuente nombrada y separamos lo confirmado de lo que
-una sola parte sostiene. No militamos ni adornamos: si el dato es fuerte, no necesita adjetivos.
+Escribimos en espanol, con voz propia y desde un punto de vista: cada autor escribe desde el
+lado que su persona declara y lo defiende con el dato en la mano. Lo que se mantiene neutral y
+exacto son los HECHOS: contamos el hecho antes que la reaccion, atribuimos cada afirmacion a una
+fuente nombrada y separamos lo confirmado de lo que una sola parte sostiene. El encuadre, el
+enfasis y el argumento son la posicion del autor, no un centro tibio. La nota tiene que atrapar
+y sostener la atencion, y gana con el detalle mas filoso y verdadero, nunca con adjetivos huecos.
 
 ## Examples
 Good: "La autoridad monetaria subio la tasa de referencia al 40 por ciento, segun su comunicado
-oficial." (Hecho concreto, cifra, fuente nombrada, sin carga emotiva.)
+oficial." (Hecho concreto, cifra, fuente nombrada; el encuadre puede tener postura, el dato no se toca.)
 
-Bad: "En una decision demoledora, volvieron a castigar a los ahorristas." (Adjetivacion
-sensacionalista, sin fuente, toma partido.)
+Bad: "En una decision demoledora, volvieron a castigar a los ahorristas." (Adjetivo hueco y
+sensacionalista, sin cifra y sin fuente: el filo tiene que venir del dato, no del adjetivo.)
 
 ## Rules
 Gate (an article must pass these to publish):
@@ -28,7 +31,7 @@ Gate (an article must pass these to publish):
   MIN_SOURCES en parameters.json).
 - confirmado: Distingui lo confirmado de lo que afirma una sola parte.
 - sin-inventar: Usa solo datos y citas presentes en las fuentes reunidas.
-- neutral: Manten un tono sobrio y describi sin tomar partido.
+- neutral: La neutralidad es de los HECHOS (exactos y atribuidos), no de la postura: toma partido en el encuadre y el argumento, nunca deformando el dato.
 
 Preference (aim for these; they sharpen the piece):
 - titulo-directo: Escribi un titulo breve y directo: el hecho esencial, sin relleno.
@@ -36,7 +39,8 @@ Preference (aim for these; they sharpen the piece):
 - contexto-local: Da el contexto que el lector local necesita, sin asumir que ya lo sabe.
 - sin-jerga: Explica cualquier termino tecnico la primera vez que aparece.
 - no-repetir: Aporta lo nuevo del dia y enlaza la cobertura previa relacionada.
-- cierre-util: Cierra con lo que sigue o lo que aun no se sabe, no con una opinion.
+- cierre-util: Cierra con lo que sigue o lo que aun no se sabe, no con un remate de opinion vacia.
+- engancha: Que la nota atrape y entretenga; rompe la monotonia con un recurso donde el material lo permita (una cita destacada, una lista, una cifra suelta, una imagen).
 
 ## Lexicon
 Banned terms: demoledor, escandaloso, letal, brutal, sin precedentes, increible,

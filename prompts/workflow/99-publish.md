@@ -30,5 +30,8 @@ On success the command prints the live link for you, so you do not build the URL
 
 Copy that `PREVIEW:` link back to the user; it is where the piece is live-rendered (the tag
 reads `still rendering` for a beat if the generate watcher has not rebuilt yet, then the page
-resolves). Publishing to production (the public site) is a separate `make deploy` and only
-happens on an explicit go-ahead. This article is done.
+resolves). The generate watcher rebuilds the site on its own within a couple of seconds, so do
+NOT run `./run.sh generate`, `make generate`, or the test suite (`pytest` / `make test`) here:
+they verify the tooling, not your article, and only slow the walk. Handing over the link IS the
+verification step. Publishing to production (the public site) is a separate `make deploy` and
+only happens on an explicit go-ahead. This article is done.

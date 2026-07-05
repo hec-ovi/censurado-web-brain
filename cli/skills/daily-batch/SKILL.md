@@ -24,6 +24,12 @@ and emits the queue. Then write EACH queued item as its own full `single-article
 through to `preview`. Do not shortcut a queued item; every piece still passes its own sourcing
 floor, honest-headline gate, and evaluate/respin loop.
 
+The `preview` step prints the live `PREVIEW:` and `NEWEST: http://localhost:8080/latest/` links
+for each piece; hand those to the human, that IS how they verify a piece. The generate watcher
+repaints the local site on its own within a couple of seconds, so NEVER run `./run.sh generate`,
+`make generate`, or the test suite (`pytest` / `make test`) as part of a sweep: those check the
+tooling, not your articles, and only burn time. Handing over the link is the verification step.
+
 ## What a good sweep looks like
 - **Scope:** a freshness window ("today", "last few hours") and 3 to 6 pieces is a healthy
   sweep. List authors with `personas`, read each with `persona <id>` for its beat and outlets,
@@ -39,10 +45,12 @@ floor, honest-headline gate, and evaluate/respin loop.
   say so; only a genuinely new finding justifies a follow-up, and it must cite the prior piece
   with `{{relacionado:<slug>}}`.
 - **Tags:** keep the small canonical THEME set small (draw one theme: `inteligencia
-  artificial`, `política argentina`, `economía`, `internacionales`, `misterio y conspiración`,
+  artificial`, `política argentina`, `economía`, `internacionales`,
   `literatura`, `universidades`, `corrupción`), then always add the proper-noun ENTITY tags the
   piece is about (people, orgs, places), up to the tag ceiling `TOPIC_CAP` in the bundled recipe
   `cli/workflow/parameters.json` (the same `{{TOPIC_CAP}}` the finalize node enforces; not `style`).
+  Note: "misterio y conspiración" is now a SECTION (its own beat), not a theme tag, so file those
+  pieces under the `misterio-y-conspiracion` section instead of tagging them with it.
 
 ## After the sweep
 If tags drifted, you have two tools. For a ONE-OFF fix on a single article, edit its tags in

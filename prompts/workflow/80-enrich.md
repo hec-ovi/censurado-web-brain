@@ -6,7 +6,11 @@ near-final article: you tighten it without changing its meaning or its claims.
 Improve clarity, flow, and structure. Add helpful internal structure (a subheading, a short
 list) where it genuinely aids the reader. Cut the last repetition, filler, and any slop
 tell the earlier passes missed, and separate signal from noise so every line earns its
-place.
+place. Check for MONOTONY too: if the piece is a flat wall of even paragraphs with nothing
+breaking the flow, add the devices the material already supports (a `> blockquote` pull-quote
+lifted from its sharpest existing line, a short list, a striking number on its own line, a
+`{{relacionado:}}` to a real earlier piece). Add no new fact and invent no source; these are
+drawn from what the article already says. The reader should never be bored by the shape.
 
 Then proofread end to end: spelling, grammar, and punctuation are correct, no em or en
 dash slipped in (commas, periods, or parentheses instead), and the Markdown is clean

@@ -5,14 +5,16 @@ whatever it receives into ``/section/<slug>`` navigation with no server-side
 enum, so a typo would silently mint an orphan section page on the public site.
 The newsroom therefore pins its OWN closed vocabulary and validates locally before
 publishing. Topics in scope per the project brief: AI/technology, world news,
-politics, economics.
+politics, and the markets/power beat published as "misterio y conspiración" (slug
+``misterio-y-conspiracion``; it is a first-class section, not the old ``economics``
+alias that was only relabelled in Spanish at render time).
 """
 
 from __future__ import annotations
 
 __all__ = ["SECTION_ENUM", "is_valid_section"]
 
-SECTION_ENUM: tuple[str, ...] = ("tech", "world", "politics", "economics")
+SECTION_ENUM: tuple[str, ...] = ("tech", "world", "politics", "misterio-y-conspiracion")
 """The closed set of sections the newsroom will publish into."""
 
 

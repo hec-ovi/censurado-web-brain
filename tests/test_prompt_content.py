@@ -90,6 +90,44 @@ def test_draft_node_enforces_the_anti_slop_discipline():
     assert "over-hedging" in low
 
 
+def test_finalize_titles_are_attention_first_not_word_capped():
+    # The title/subtitle/description are attention-first: the old hard word-cap is gone
+    # (compactness is qualitative), the pull is honest, and the standfirst is an opinionated
+    # paragraph rather than a neutral one-or-two-sentence blurb.
+    low = _flat("90-finalize.md")
+    assert "5 words" not in low and "five words" not in low
+    assert "compact" in low
+    assert "attention" in low or "magnetic" in low
+    assert "opinionated" in low
+
+
+def test_draft_node_demands_entertaining_varied_texture():
+    # The draft node pushes an entertaining, alive read that breaks monotony with the
+    # renderer's real devices (blockquote pull-quote, list, mid-body image), not a flat wall.
+    low = _flat("50-draft.md")
+    assert "entertain" in low
+    assert "monotony" in low
+    assert "blockquote" in low
+
+
+def test_enrich_node_adds_a_monotony_check():
+    # The plain enrich pass also breaks up a flat wall (adding devices drawn from existing
+    # text, no new facts), so a dull-shaped piece does not slip through.
+    low = _flat("80-enrich.md")
+    assert "monotony" in low
+
+
+def test_publish_and_batch_forbid_running_generate_and_tests():
+    # The publish node and the daily-batch skill both tell the driver NOT to run the generate
+    # one-shot or the test suite during a walk; the generate watcher rebuilds on its own and
+    # the printed preview link is the verification step.
+    pub = _flat("99-publish.md")
+    assert "watcher rebuilds" in pub
+    assert "test suite" in pub
+    skill = " ".join((PROMPTS_DIR.parent / "cli" / "skills" / "daily-batch" / "SKILL.md").read_text().lower().split())
+    assert "never run" in skill and "test suite" in skill
+
+
 def test_portal_review_carries_the_day_loader_and_arrange_rules():
     # The standalone arrange walk must name its day loader and the two layout rules the roadmap
     # spec added on top of the existing lead + media/text checkerboard.

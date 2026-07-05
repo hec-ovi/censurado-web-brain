@@ -6,21 +6,27 @@ into the fields below and craft the sharpest honest headline and dek the facts s
 
 Each article has four authored layers; keep them distinct, none restating another:
 
-- **title**: a short, concrete headline, about 5 words or fewer, drawn from the piece (it
-  renders on one line on the portada, so keep it tight). A headline is a promise: the body
-  must deliver exactly what it implies. Within that, make it arresting. Draft several and
-  keep the one that is both most compelling AND fully honest: promise kept, no withheld
-  subject (name the real thing, never "esto" or "lo que pasó"), no overclaim, numbers in
-  context, no fake urgency, earned emotion; and it lands at least two hooks (front-loaded
+- **title**: the most compact, arresting headline the story can honestly carry, drawn from
+  the piece (it renders on one line on the portada, so cut every word that is not
+  load-bearing until only the hook is left). A headline is a promise: the body must deliver
+  exactly what it implies. Within that, go for the jugular of attention, but honestly. Draft
+  several and keep the one that is both most magnetic AND fully honest: promise kept, no
+  withheld subject (name the real thing, never "esto" or "lo que pasó"), no overclaim, numbers
+  in context, no fake urgency, earned emotion. The pull comes from the sharpest true detail,
+  never from hollow adjectives (`demoledor`, `brutal`, `sin precedentes` are slop, not hooks).
+  It lands at least two hooks (front-loaded
   concrete fact, strong active present-tense verb, visible stakes, tension or reversal).
   A title is ONE whole thought: never two halves spliced by a `;`, a `:`, or a dash (em,
   en, or a hyphen between clauses). If it needs a splice, it is two drafts; pick one.
-- **subtitle** (the dek): one line under the title. It does NOT repeat the title's words or
-  subject; it pays off the stakes the title teases and sets up the opening line. The same
-  splice ban applies: no `;`, no `:`, no dash separators.
-- **description** (the standfirst): one or two self-contained sentences that deliver the
-  whole story densely; a reader who stops here still knows what happened and why it matters.
-  Never a blurb about the author.
+- **subtitle** (the dek): one concentrated line under the title, the single most shocking
+  true fact the story holds, the one that makes the reader need the rest. It does NOT repeat
+  the title's words or subject; it pays off the stakes the title teases and sets up the
+  opening line. Shock with the fact, not with adjectives. The same splice ban applies: no
+  `;`, no `:`, no dash separators.
+- **description** (the standfirst): a single tight paragraph, opinionated and magnetic, that
+  delivers the whole story densely from the author's point of view; a reader who stops here
+  still knows what happened, why it matters, and where the author stands. Compact but not
+  clipped, every sentence earning attention. Never a blurb about the author.
 - **body**: the complete Markdown body, exactly as finished. Do not truncate or summarize.
 
 Also set:
