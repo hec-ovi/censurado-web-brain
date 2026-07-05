@@ -963,6 +963,39 @@ def cmd_profile_topics(a):
     return 0 if st in (200, 201) else 1
 
 
+def cmd_topics(a):
+    """Inventory the distinct free-text article tags across the published corpus: each tag with
+    how many articles carry it and the slugs that do, sorted by count then name. This is the
+    READ side of topic normalization: run it to SEE the tag surface and spot naming variants
+    (`Javier-Milei` vs `milei`, singular/plural, alternate spellings) before merging them. The
+    MERGE side is two writers, `censurado-brain topics cleanse` for article tags and
+    `profile-topics --set` for an author's profile chips. LIGHT: reads the listing, no bodies."""
+    limit = getattr(a, "limit", 0) or 1000
+    st, body = api("GET", "/articles?" + urllib.parse.urlencode({"limit": str(limit)}))
+    if st != 200:
+        sys.exit(f"FATAL: topics HTTP {st}: {body.decode('utf-8', 'replace')[:200]}")
+    data = _json(body, "the topics response", want=dict)
+    fetched = [it for it in data.get("articles", []) if isinstance(it, dict)]
+    total = data.get("total", len(fetched))
+    tags = {}
+    for it in fetched:
+        slug = it.get("slug", "")
+        for tag in it.get("topics", []) or []:
+            if not isinstance(tag, str) or not tag.strip():
+                continue
+            rec = tags.setdefault(tag, {"tag": tag, "count": 0, "slugs": []})
+            rec["count"] += 1
+            rec["slugs"].append(slug)
+    ordered = sorted(tags.values(), key=lambda r: (-r["count"], r["tag"].lower()))
+    out = {"total_tags": len(ordered), "articles_scanned": len(fetched),
+           "articles_total": total, "topics": ordered}
+    if total > len(fetched):
+        sys.stderr.write(
+            f"note: scanned {len(fetched)} of {total} articles; raise --limit for the full inventory\n")
+    print(json.dumps(out, ensure_ascii=False, indent=2))
+    return 0
+
+
 def cmd_portals(a):
     """List the source slugs available to attach to an author (GET /sources). These are the
     ids `sources <handle> --set` links against."""
@@ -1472,6 +1505,12 @@ def build_parser():
     ptp.add_argument("--set", default=None,
                      help='comma-separated topics for the profile page (replaces the set); "" clears; omit to show')
     ptp.set_defaults(fn=cmd_profile_topics)
+
+    tp = sub.add_parser("topics",
+                        help="inventory distinct article tags across the corpus (count + slugs per tag); "
+                             "the read side of topic normalization")
+    tp.add_argument("--limit", type=int, default=0, help="cap the articles scanned (0 = 1000)")
+    tp.set_defaults(fn=cmd_topics)
 
     pda = sub.add_parser("portada",
                          help="write or read the per-day front-page plan (portada) in the publish backend")

@@ -1039,6 +1039,52 @@ def test_archive_omits_empty_filters_from_the_query(monkeypatch):
     assert set(qs) == {"author"}  # no q/from/to/limit noise when unset
 
 
+def test_cli_parses_topics_verb():
+    a = cz.build_parser().parse_args(["topics", "--limit", "50"])
+    assert a.fn is cz.cmd_topics and a.limit == 50
+    assert cz.build_parser().parse_args(["topics"]).limit == 0  # 0 -> cmd default 1000
+
+
+def test_topics_inventories_distinct_tags_with_counts_and_slugs(monkeypatch, capsys):
+    # `topics` aggregates the free-text article tags across the corpus: per-tag count + the
+    # slugs carrying it, sorted by count then name. The read side of topic normalization: it
+    # surfaces variants (here `Javier-Milei` alongside `milei`) so an operator can plan a merge.
+    calls = []
+    listing = {"total": 3, "articles": [
+        {"slug": "a", "topics": ["milei", "economia"]},
+        {"slug": "b", "topics": ["milei", "Javier-Milei"]},
+        {"slug": "c", "topics": ["economia", "", "milei"]},
+    ]}
+
+    def fake_api(method, path, payload=None, auth=True, base=None):
+        calls.append((method, path))
+        return 200, json.dumps(listing).encode()
+
+    monkeypatch.setattr(cz, "api", fake_api)
+    assert cz.cmd_topics(SimpleNamespace(limit=0)) == 0
+    method, path = calls[-1]
+    assert method == "GET" and path.startswith("/articles?")
+    qs = urllib.parse.parse_qs(urllib.parse.urlparse(path).query)
+    assert qs["limit"] == ["1000"]  # 0 -> the default cap
+    out = json.loads(capsys.readouterr().out)
+    assert out["total_tags"] == 3 and out["articles_scanned"] == 3
+    # Sorted by count desc, then name: milei(3), economia(2), Javier-Milei(1).
+    assert [t["tag"] for t in out["topics"]] == ["milei", "economia", "Javier-Milei"]
+    milei = out["topics"][0]
+    assert milei["count"] == 3 and milei["slugs"] == ["a", "b", "c"]
+    assert all(t["tag"] for t in out["topics"])  # blank tags dropped, not counted
+
+
+def test_topics_warns_when_the_corpus_exceeds_the_scan(monkeypatch, capsys):
+    # If total > scanned, the inventory is partial; it must SAY so on stderr, not silently
+    # truncate (a merge planned off a partial surface would miss variants).
+    listing = {"total": 500, "articles": [{"slug": "a", "topics": ["milei"]}]}
+    monkeypatch.setattr(cz, "api",
+                        lambda m, p, payload=None, auth=True, base=None: (200, json.dumps(listing).encode()))
+    cz.cmd_topics(SimpleNamespace(limit=1))
+    assert "scanned 1 of 500" in capsys.readouterr().err
+
+
 def test_archive_exits_on_http_error(monkeypatch):
     monkeypatch.setattr(cz, "api",
                         lambda m, p, payload=None, auth=True, base=None: (401, b"{}"))
