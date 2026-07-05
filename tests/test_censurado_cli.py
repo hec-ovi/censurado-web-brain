@@ -883,6 +883,19 @@ def test_step_stamps_the_current_node_key_and_position(monkeypatch, capsys, tmp_
     assert "node 1 of" in out                     # and its position in the walk
 
 
+def test_step_serves_the_portal_review_arrange_node(monkeypatch, capsys):
+    # portal-review is a standalone single-node mode served straight from the REAL prompts (no
+    # _recipe, no stack). It must carry the arrange rules a driver follows end to end: the day
+    # loader, the no-gap orphan promotion, content-first pairing, and the --set-json write shape.
+    monkeypatch.delenv("CENSURADO_WORK", raising=False)
+    assert cz.cmd_step(_ns(mode="portal-review")) == 0
+    low = capsys.readouterr().out.lower()
+    assert "archive --day" in low          # the standalone day loader
+    assert "never leave a gap" in low      # the no-gap orphan-promotion rule
+    assert "content first" in low          # content pairing overrides the media checkerboard
+    assert "--set-json" in low             # the portada write shape
+
+
 def test_step_no_key_no_mode_serves_the_mode_picker(monkeypatch, capsys, tmp_path):
     monkeypatch.setattr(cz, "PROMPTS_DIR", _recipe(tmp_path))
     assert cz.cmd_step(_ns()) == 0
@@ -979,6 +992,12 @@ def test_cli_parses_archive_verb():
     assert a.since == "2026-06-01" and a.until == "2026-06-30" and a.limit == 40
 
 
+def test_cli_parses_archive_day_without_author():
+    # `archive --day` needs no author (the whole day across authors), so the positional is optional.
+    a = cz.build_parser().parse_args(["archive", "--day", "2026-07-01"])
+    assert a.fn is cz.cmd_archive and a.author == "" and a.day == "2026-07-01"
+
+
 def test_day_bound_extends_bare_dates_and_passes_timestamps():
     assert cz._day_bound("2026-06-01") == "2026-06-01T00:00:00Z"
     # the backend `to` filter is EXCLUSIVE (published_at < to), so an inclusive --until
@@ -1037,6 +1056,36 @@ def test_archive_omits_empty_filters_from_the_query(monkeypatch):
     _, path = calls[-1]
     qs = urllib.parse.parse_qs(urllib.parse.urlparse(path).query)
     assert set(qs) == {"author"}  # no q/from/to/limit noise when unset
+
+
+def test_archive_day_lists_the_whole_day_across_authors(monkeypatch, capsys):
+    # `archive --day` (no author) is the portada arrange loader: every piece published that
+    # UTC day across all authors, LIGHT with has_media, in one call. The day bounds it into
+    # from = day start, to = NEXT day start (the backend `to` is exclusive), and sends NO author.
+    calls = []
+    listing = {"total": 2, "articles": [
+        {"slug": "lead", "title": "Lead", "section": "politics", "author": "a-one",
+         "published_at": "2026-07-01T20:00:00Z", "topics": ["milei"], "has_media": True,
+         "metadata": {"subtitle": "dek", "description": "desc"}},
+        {"slug": "text", "title": "Text", "section": "economy", "author": "b-two",
+         "published_at": "2026-07-01T08:00:00Z", "topics": [], "has_media": False,
+         "metadata": {}}]}
+
+    def fake_api(method, path, payload=None, auth=True, base=None):
+        calls.append((method, path))
+        return 200, json.dumps(listing).encode()
+
+    monkeypatch.setattr(cz, "api", fake_api)
+    rc = cz.cmd_archive(SimpleNamespace(author="", day="2026-07-01", q="", since="", until="", limit=0))
+    assert rc == 0
+    method, path = calls[-1]
+    assert method == "GET" and path.startswith("/articles?")
+    qs = urllib.parse.parse_qs(urllib.parse.urlparse(path).query)
+    assert "author" not in qs                       # the whole day, every author
+    assert qs["from"] == ["2026-07-01T00:00:00Z"]   # day start
+    assert qs["to"] == ["2026-07-02T00:00:00Z"]     # next day start, exclusive
+    out = json.loads(capsys.readouterr().out)
+    assert {a["slug"]: a["has_media"] for a in out["articles"]} == {"lead": True, "text": False}
 
 
 def test_archive_exits_on_http_error(monkeypatch):

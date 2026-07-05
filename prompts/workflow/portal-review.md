@@ -11,13 +11,15 @@ Do it one day at a time. For each day under review:
 1. Read the current plan first: `python3 cli/censurado.py portada <YYYY-MM-DD>` lists every
    saved plan, so you can see what (if anything) is already set for the day.
 
-2. Look at the day's published articles: the corpus, the recent pieces, what actually ran
-   that day. That is the raw material you are ordering. For each piece note the two things
+2. Load the day's pieces in one read: `python3 cli/censurado.py archive --day <YYYY-MM-DD>`
+   lists every piece published that UTC day across all authors, LIGHT: slug, title,
+   subtitle/dek, description, section, topics, and a `has_media` flag (the same image/video
+   signal the card renders on). That is the raw material you are ordering, and the whole day's
+   media map in one cheap read, so you never open a body. For each piece note the two things
    you arrange on: its news WEIGHT (how much the story matters) and whether it carries MEDIA
-   (an image or video) or is TEXT-forward, because the layout alternates the two. You do not
-   open each body to tell: the article listing reports a `has_media` flag per piece (the
-   same image/video signal the card renders on), so the day's whole media map is one cheap
-   read.
+   (`has_media` true) or is TEXT-forward, because the layout alternates the two. Also note when
+   two pieces are DELIBERATELY related (opposing takes on the same event, a claim and its
+   rebuttal), which you may pair on purpose (step 4).
 
 3. Pick the LEAD. Evaluate the day's pieces and put the single most important one first: the
    story with the most news weight (impact, reach, how many readers it matters to,
@@ -52,10 +54,21 @@ Do it one day at a time. For each day under review:
 
        [x] [o,x] [x,o] [o] [o,x]
 
-   Reserve `"important"` for the few stories that earn a full-row callout (a strong second
-   lead, a standout media piece), never half the day. And keep VARIETY: do not place two
-   pieces on the same topic or by the same author adjacent (side by side, or stacked one
-   above the other); space same-topic and same-author stories apart.
+   NEVER LEAVE A GAP. Both cells of every two-column row must be filled. If the pieces that
+   pair up come out ODD so the last one would sit alone in a half-row (`[o,null]`), desktop
+   shows an empty column beside it. Fix it by promoting that lone trailing piece to
+   `role:"important"` so it renders as a full single row (`[o]`) with no gap. So a full row is
+   earned for two reasons: a story that deserves a full-row callout (a strong second lead, a
+   standout media piece), OR a lone trailing piece that would otherwise leave a gap. Beyond
+   those, keep `"important"` rare, never half the day.
+
+   CONTENT FIRST, then visuals. The checkerboard is the DEFAULT, not a hard rule. When two
+   pieces are DELIBERATELY related (opposing op-eds on the same event, a claim and its
+   rebuttal, two sides of one debate), you MAY set them side by side even if both are text
+   (`[o,o]`), because that juxtaposition is the point and it wins over the media checkerboard.
+   Otherwise keep VARIETY: never place two pieces by the same AUTHOR adjacent (side by side or
+   stacked), and keep same-TOPIC pieces apart too, EXCEPT the deliberate opposing-takes pair
+   above.
 
 5. Optionally choose a SHORT `recomendado` list (a handful of slugs) for the day's sidebar:
    worthwhile pieces that are not in the lead run but deserve a second look.

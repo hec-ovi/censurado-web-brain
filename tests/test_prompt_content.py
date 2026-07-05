@@ -90,6 +90,30 @@ def test_draft_node_enforces_the_anti_slop_discipline():
     assert "over-hedging" in low
 
 
+def test_portal_review_carries_the_day_loader_and_arrange_rules():
+    # The standalone arrange walk must name its day loader and the two layout rules the roadmap
+    # spec added on top of the existing lead + media/text checkerboard.
+    low = _flat("portal-review.md")
+    # Step 2 loads the whole day (all authors) in one read.
+    assert "archive --day" in low
+    # The no-gap rule: a lone trailing piece is promoted to a full single row (role important).
+    assert "never leave a gap" in low
+    assert "important" in low
+    # Content-first pairing overrides the media checkerboard for deliberately related pieces.
+    assert "content first" in low
+    assert "checkerboard" in low
+    # The write shape stays.
+    assert "--set-json" in low
+
+
+def test_batch_plan_forward_points_to_the_portada_arrange():
+    # The batch-plan node closes by pointing the sweep's last move at the portada arrange walk,
+    # so a driver knows to arrange each day after the queued articles publish.
+    low = _flat("10-batch-plan.md")
+    assert "step --mode portal-review" in low
+    assert "archive --day" in low
+
+
 def test_every_manifest_workflow_node_and_persona_synthesize_exist_on_disk():
     # The step gate serves nodes straight off disk, so every node the manifest references
     # (plus persona/synthesize, the author-synthesis prompt) must actually be present or a

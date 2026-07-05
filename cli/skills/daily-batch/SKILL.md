@@ -53,3 +53,14 @@ topics set (admin:write); read a piece first with `get <slug>` if you need its c
 
 You supply the canonical form for each tag yourself; nothing runs a model. The operator can
 also curate tags from the panel's Articles and Temas tabs.
+
+Then arrange the front page. Once every queued item is published, lay out each UTC day the
+batch touched with the portada arrange walk:
+
+    python3 cli/censurado.py step --mode portal-review
+
+Do it one day at a time (a piece's day is its `published_at` UTC day). Load the day in one read
+with `archive --day <YYYY-MM-DD>`, then follow the node to write the plan with `portada <date>
+--set-json` (lead first, alternate media/text, promote a lone trailing piece to `"important"`
+so no row is left half empty). Skip a day with fewer than 3 pieces; its default order is fine.
+Going live stays a separate, human-gated `make deploy`.
