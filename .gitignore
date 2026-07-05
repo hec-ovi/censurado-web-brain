@@ -64,6 +64,10 @@ console-cockpit-plan.md
 deepdive-findings.md
 split-plan.md
 refactor.md
+roadmap-plan.md
+
+# Per-article agent scratch (workflow temp: draft.md / ledger.md / image.json / .step-counts.json)
+scratch/
 
 # CI is intentionally not shipped (workflows email on every push; the stack is validated locally)
 .github/
