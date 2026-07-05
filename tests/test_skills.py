@@ -74,7 +74,8 @@ def test_deploy_skill_carries_its_safety_rails():
     # file: the frontmatter description alone must not satisfy these, or a gutted body would pass.
     body = _body(SKILLS_DIR / "deploy" / "SKILL.md").lower()
     assert "localhost:8080" in body, "deploy body must contrast the local preview"
-    assert "make deploy" in body, "deploy body must name the real command"
+    # Deploy is a verb now, not a make target: the body must name the real command as the verb.
+    assert "censurado.py deploy --yes" in body, "deploy body must name the real command (the verb)"
     assert "elcensuradoweb.com" in body, "deploy body must name the public target"
     assert "explicit yes" in body, "deploy body must require an explicit yes"
     assert any(p in body for p in ("unattended", "never deploy on your own")), \
@@ -116,7 +117,7 @@ def test_daily_batch_skill_tail_wires_the_portada_arrange_walk():
     assert "step --mode portal-review" in body, "batch tail must run the arrange walk"
     assert "archive --day" in body, "batch tail must name the day loader"
     assert "one day at a time" in body, "arrange is per UTC day"
-    assert "make deploy" in body, "going live stays a separate human-gated deploy"
+    assert "deploy --yes" in body, "going live stays a separate human-gated deploy verb"
 
 
 def test_daily_batch_routes_bulk_topic_merges_to_the_cleanse_walk():

@@ -33,7 +33,10 @@ the backend: the nodes will tell you to load an author with `censurado.py person
 Fetching a node does NOT complete it. The node is instructions for YOU to carry out with your
 own reasoning and tools (web search, writing) before you move on. Some nodes must SAVE a file
 to your scratch dir `$CENSURADO_WORK` and the gate will not let you advance until that file
-exists (it prints the exact path as `ARTIFACT: ...`):
+exists (it prints the exact path as `ARTIFACT: ...`). Writing these scratch files under
+`$CENSURADO_WORK` is the ONLY file-writing you ever do: it is your workspace, not the repo. You
+still never edit a repo file, read source code, or touch the database; the piece reaches the
+site only through the `preview` verb at the final node.
 
 - `30-research` -> write your source ledger to `$CENSURADO_WORK/ledger.md` (each key fact + its
   source URL). Use web search to find real sources first.

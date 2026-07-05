@@ -24,11 +24,29 @@ and emits the queue. Then write EACH queued item as its own full `single-article
 through to `preview`. Do not shortcut a queued item; every piece still passes its own sourcing
 floor, honest-headline gate, and evaluate/respin loop.
 
+## Do it yourself, serially. No subagents, no scripts.
+Walk the queue ONE piece at a time, yourself: finish a piece through `preview` before you start
+the next. Do NOT spawn subagents and do NOT write a shell script (a `stage.sh`, a loop) to
+"parallelize" or "orchestrate" the batch. That path is what causes duplicate slugs, lost
+pieces, and a front page you can no longer reason about. If the batch is large (more than about
+four or five pieces), do it in chunks: finish a chunk, hand the human the links, and continue.
+Slower and correct beats fast and scrambled.
+
+## Verifying a piece is a VERB, not a rebuild
 The `preview` step prints the live `PREVIEW:` and `NEWEST: http://localhost:8080/latest/` links
-for each piece; hand those to the human, that IS how they verify a piece. The generate watcher
-repaints the local site on its own within a couple of seconds, so NEVER run `./run.sh generate`,
-`make generate`, or the test suite (`pytest` / `make test`) as part of a sweep: those check the
-tooling, not your articles, and only burn time. Handing over the link is the verification step.
+for each piece; hand those to the human, that IS how they verify it. The generate watcher
+repaints the local site on its own within a couple of seconds. To confirm a piece is actually
+serving, use `python3 cli/censurado.py status --slug <slug>` (it resolves the live permalink and
+checks it returns 200). NEVER run `./run.sh generate`, `make generate`, `./deploy/*.sh`, or the
+test suite (`pytest` / `make test`) to make a piece appear or to check it: those touch the
+tooling, not your articles, and only burn time and loop. If a piece will not resolve, relay that
+to the human; do not debug the generator.
+
+## Fix a piece in place; never unpublish to "fix" it
+If a published piece is wrong (title, body, tags, section), correct it with `edit <slug>` in
+place. Do NOT `unpublish` it and re-`preview` under a new slug: the slug is the piece's identity,
+and changing it orphans every portada entry and `{{relacionado:}}` link that pointed at the old
+slug, so the piece looks like it "disappeared" from the front page. Keep the slug stable.
 
 ## What a good sweep looks like
 - **Scope:** a freshness window ("today", "last few hours") and 3 to 6 pieces is a healthy
@@ -78,4 +96,4 @@ Do it one day at a time (a piece's day is its `published_at` UTC day). Load the 
 with `archive --day <YYYY-MM-DD>`, then follow the node to write the plan with `portada <date>
 --set-json` (lead first, alternate media/text, promote a lone trailing piece to `"important"`
 so no row is left half empty). Skip a day with fewer than 3 pieces; its default order is fine.
-Going live stays a separate, human-gated `make deploy`.
+Going live stays a separate, human-gated verb: `python3 cli/censurado.py deploy --yes`.

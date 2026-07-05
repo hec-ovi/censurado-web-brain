@@ -32,7 +32,7 @@ and write those files directly (no server), resolving the dir from `CENSURADO_PR
 WITH this package (`cli/workflow/parameters.json`). See cli/SKILL.md (the resolver + sub-skills)
 for the agent surface, `python3 cli/censurado.py <cmd> --help` for flags.
 """
-import argparse, hashlib, html, json, os, re, sys, time, unicodedata, urllib.error, urllib.parse, urllib.request
+import argparse, hashlib, html, json, os, re, subprocess, sys, time, unicodedata, urllib.error, urllib.parse, urllib.request
 from datetime import datetime, timedelta
 from pathlib import Path
 
@@ -56,6 +56,31 @@ FLUX_TEMPLATE = Path(os.environ.get(
     str(Path(__file__).resolve().parent / "templates" / "flux2_klein_t2i.json")))
 # flux2_klein node ids: positive prompt, noise seed, latent dims, scheduler.
 _N_POS, _N_NOISE, _N_LATENT, _N_SCHED = "4", "9", "6", "7"
+
+
+def _env_value(key, default=""):
+    """Read a plain scalar from the environment, falling back to a `KEY=value` line in .env,
+    then to `default`. Same .env scan as token(), but for a non-secret operational value (the
+    public origin) and without token()'s FATAL-on-missing. A trailing inline `# comment` and
+    surrounding quotes are stripped so a `.env.example`-style annotated line still parses."""
+    v = os.environ.get(key, "").strip()
+    if v:
+        return v
+    if ENV_FILE.exists():
+        for line in ENV_FILE.read_text().splitlines():
+            line = line.strip()
+            if line.startswith(key + "="):
+                v = line.split("=", 1)[1].split(" #", 1)[0].strip().strip('"').strip("'")
+                if v:
+                    return v
+    return default
+
+
+# The PUBLIC production origin (Cloudflare Pages). `status` probes it to answer "did the last
+# deploy land / is the live site up". CENSURADO_PUBLIC_URL wins, else DEPLOY_BASE_URL from the
+# env/.env (the same var deploy-cdn.sh reads), else the project default. Trailing / trimmed.
+PUBLIC_URL = (os.environ.get("CENSURADO_PUBLIC_URL", "").strip()
+              or _env_value("DEPLOY_BASE_URL", "https://elcensuradoweb.com")).rstrip("/")
 
 
 def token():
@@ -1135,6 +1160,161 @@ def cmd_set_prompt(a):
     return 0
 
 
+# A mainstream browser UA for liveness probes: the public origin is behind Cloudflare, which
+# blocks the default urllib agent with a 403 bot challenge. Local services ignore it.
+_PROBE_UA = ("Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) "
+             "Chrome/125.0 Safari/537.36")
+
+
+def _probe(url, ok_set, timeout=5):
+    """One NON-raising liveness GET. Returns (up, code, detail): `up` is True when the HTTP
+    status is in `ok_set`, `code` is the status (0 if the service could not be reached at all),
+    `detail` is a short human note. A transport failure (connection refused, DNS, timeout) is a
+    down verdict, NEVER a raise: `status` must report on every service, not abort on the first
+    one that happens to be down. Any HTTP response (even 404/500) proves the service is at least
+    reachable, so a 404 is `reachable, HTTP 404` not `unreachable`."""
+    # A browser-like UA: the public origin sits behind Cloudflare, which 403s the default
+    # `Python-urllib` agent as a bot -- that would misreport a healthy live site as "down".
+    req = urllib.request.Request(url, method="GET", headers={"User-Agent": _PROBE_UA})
+    try:
+        with urllib.request.urlopen(req, timeout=timeout) as r:
+            code = r.status
+    except urllib.error.HTTPError as e:
+        code = e.code
+    except (urllib.error.URLError, TimeoutError, OSError) as e:
+        return False, 0, f"unreachable ({getattr(e, 'reason', None) or e})"
+    return code in ok_set, code, f"HTTP {code}"
+
+
+def cmd_status(a):
+    """Is the portal ONLINE and serving? A read-only liveness report over the four services the
+    operator asks about, each probed INDEPENDENTLY (one down service never hides another), with an
+    [OK]/[WARN]/[FAIL] line per service and a one-line verdict:
+      - backend  (publish API, /healthz): owns all content and serves the panel. CORE.
+      - site     (local preview site): the local portal you `preview` to. CORE.
+      - public   (the deployed production origin): the live public site. WARN if down -- a
+                 deploy has not landed yet (or none was made), which is not a stack failure.
+      - comfyui  (the image lane): WARN if down -- optional, only image work needs it.
+    With `--slug <slug>` it also resolves that article from the backend and reports its live
+    permalink and whether the page is actually serving (the "where did my piece go / is it live"
+    check), locally and, when the public site is up, publicly. `--local-only` skips the
+    public-internet probe; `--json` prints the machine-readable verdict.
+
+    Exits 0 when the CORE (backend + local site) are up, 1 otherwise (WARNs never fail). It NEVER
+    writes, deploys, or regenerates anything: use it to VERIFY, then hand the human the link. If a
+    piece is not live yet, the generator watcher repaints within a few seconds on its own -- do NOT
+    run generate/deploy to force it; just re-run `status --slug` or reload the link."""
+    checks = [
+        ("backend", PUBLISH + "/healthz", {200}, True),
+        ("site", SITE + "/", {200, 301, 302}, True),
+        ("comfyui", COMFY + "/system_stats", {200}, False),
+    ]
+    if not a.local_only and PUBLIC_URL:
+        checks.append(("public", PUBLIC_URL + "/", {200, 301, 302}, False))
+
+    services, rows, core_down = {}, [], False
+    for label, url, ok_set, core in checks:
+        up, code, detail = _probe(url, ok_set)
+        level = "OK" if up else ("FAIL" if core else "WARN")
+        if not up and core:
+            core_down = True
+        note = "" if up else ("" if core else " - optional/not-yet")
+        rows.append((level, f"{label:<8} {url} ({detail}){note}"))
+        services[label] = {"up": up, "status": code, "url": url, "core": core}
+
+    article = None
+    if a.slug:
+        try:
+            st, body = api("GET", "/articles/" + a.slug)
+        except Exception as exc:  # backend down or hiccup: report, do not raise
+            st, body = 0, str(exc).encode()
+        if st == 200:
+            rec = _json(body, f"the article {a.slug!r}", want=dict)
+            ch = str(rec.get("content_hash", ""))
+            perm = f"{SITE}/a/{a.slug}-{ch[:8]}/" if ch else ""
+            live, _c, _d = _probe(perm, {200}) if perm else (False, 0, "no hash")
+            article = {"slug": a.slug, "title": rec.get("title", ""),
+                       "local_url": perm, "local_live": live}
+            rows.append(("OK" if live else "WARN",
+                         f"article  {a.slug!r} = {rec.get('title', '')!r}"))
+            rows.append((("OK" if live else "WARN"),
+                         f"  local   {perm or '(no permalink yet)'} "
+                         + ("[live now]" if live else "[not rendered yet; the watcher repaints in "
+                            "a few seconds -- reload, do NOT run generate]")))
+            if not a.local_only and PUBLIC_URL and services.get("public", {}).get("up") and ch:
+                pub = f"{PUBLIC_URL}/a/{a.slug}-{ch[:8]}/"
+                plive, _c2, _d2 = _probe(pub, {200})
+                article.update(public_url=pub, public_live=plive)
+                rows.append((("OK" if plive else "WARN"),
+                             f"  public  {pub} " + ("[live]" if plive else "[not deployed yet]")))
+        elif st == 404:
+            article = {"slug": a.slug, "found": False}
+            rows.append(("FAIL", f"article  no published {a.slug!r} (wrong slug, or it was "
+                                 "unpublished/soft-deleted -- republish or fix the slug)"))
+        else:
+            article = {"slug": a.slug, "backend_status": st}
+            rows.append(("WARN", f"article  could not resolve {a.slug!r} (backend HTTP {st})"))
+
+    ready = not core_down
+    # When a --slug was given, the verb is ALSO a verification gate: it passes only if that piece
+    # actually resolves and serves locally (a down public is a WARN, not a fail: a deploy may not
+    # have run). So `status --slug X` exits 0 only when the stack is up AND X is live.
+    article_ok = None if not a.slug else bool(article and article.get("local_live"))
+    ok = ready and (article_ok is not False)
+    if a.json:
+        print(json.dumps({"ready": ready, "article_ok": article_ok, "services": services,
+                          "article": article, "public_url": PUBLIC_URL or None},
+                         ensure_ascii=False, indent=2))
+        return 0 if ok else 1
+    for level, text in rows:
+        sys.stdout.write(f"  [{level}] {text}\n")
+    sys.stdout.write("  --- " + ("ONLINE: backend + local site are serving."
+                                 if ready else "OFFLINE: a CORE service is down.")
+                     + " Hand the human the link to verify a piece; do NOT run generate/deploy "
+                       "to check.\n")
+    return 0 if ok else 1
+
+
+def cmd_deploy(a):
+    """Publish the WHOLE current local snapshot to the PUBLIC production site (Cloudflare Pages)
+    by running deploy/deploy-cdn.sh, so the operating agent NEVER has to touch a shell script,
+    make target, or the generator: `deploy` is a verb like every other. This is the ONE public,
+    irreversible, outward-facing action, so it REFUSES without --yes (the deploy sub-skill still
+    requires you to show the human what will go live and get an explicit yes first).
+
+    It streams the script's own output, and on the script's `FATAL:` early-exit (CLOUDFLARE_ACCOUNT_ID
+    unset, or a half-set reactions binding) it relays that exact line and stops -- do NOT try to
+    work around it, fix perms, regenerate, or read the deploy/generator source; relay the message to
+    the human and let them complete the one setup step, then re-run `deploy`. On success it prints
+    the public origin and reminds you to VERIFY with `status --slug`, never by re-deploying."""
+    if not a.yes:
+        sys.stderr.write("deploy publishes the WHOLE snapshot to the PUBLIC site "
+                         f"{PUBLIC_URL or '(production)'}. This is irreversible and outward-facing. "
+                         "Show the human what will go live, get an explicit yes, then re-run with "
+                         "--yes.\n")
+        return 1
+    script = _REPO / "deploy" / "deploy-cdn.sh"
+    if not script.is_file():
+        fail(f"deploy script not found at {script} (expected deploy/deploy-cdn.sh in the repo).")
+    sys.stdout.write(f"Deploying the local snapshot to {PUBLIC_URL or 'production'} "
+                     "(deploy/deploy-cdn.sh)...\n")
+    sys.stdout.flush()
+    try:
+        proc = subprocess.run(["bash", str(script)], cwd=str(_REPO), check=False)
+    except Exception as exc:
+        fail(f"could not launch the deploy script ({exc}). This is the one infra action; if it "
+             "cannot run, tell the human -- do not improvise a workaround.")
+    if proc.returncode != 0:
+        sys.stderr.write(f"deploy FAILED (deploy-cdn.sh exited {proc.returncode}). Relay the last "
+                         "line above to the human and let them fix that ONE step, then re-run "
+                         "`deploy --yes`. Do NOT run generate, init-perms, chmod, or read the "
+                         "deploy/generator source.\n")
+        return 1
+    sys.stdout.write(f"deploy OK. Live at {PUBLIC_URL or 'the production origin'}. Verify a piece "
+                     "with `status --slug <slug>` (NOT by deploying again).\n")
+    return 0
+
+
 def cmd_doctor(a):
     """Self-check the unified skill end to end and print an [OK]/[WARN]/[FAIL] report:
       1. stack services up (the publish backend + site are core; ComfyUI is optional, image
@@ -1586,6 +1766,23 @@ def build_parser():
     sfl.add_argument("--min-per-type", dest="min_per_type", type=int, default=None,
                      help="per-lean minimum, left/neutral/right (>= 0)")
     sfl.set_defaults(fn=cmd_set_floor)
+
+    st = sub.add_parser("status",
+                        help="is the portal ONLINE? liveness of backend + local site + comfyui + the "
+                             "public deploy; --slug verifies one article is serving")
+    st.add_argument("--slug", default="",
+                    help="also verify this article resolves + is serving (local and public)")
+    st.add_argument("--local-only", dest="local_only", action="store_true",
+                    help="skip the public-internet probe (local stack only)")
+    st.add_argument("--json", action="store_true", help="print the machine-readable verdict")
+    st.set_defaults(fn=cmd_status)
+
+    dp = sub.add_parser("deploy",
+                        help="publish the whole local snapshot to the PUBLIC production site "
+                             "(needs --yes); the one infra verb, wraps deploy/deploy-cdn.sh")
+    dp.add_argument("--yes", action="store_true",
+                    help="confirm the public, irreversible deploy (required)")
+    dp.set_defaults(fn=cmd_deploy)
 
     dr = sub.add_parser("doctor",
                         help="self-check the stack, the skill package, and the on-disk agentic recipe")

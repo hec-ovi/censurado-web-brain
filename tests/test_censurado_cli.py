@@ -1182,3 +1182,154 @@ def test_archive_exits_on_http_error(monkeypatch):
                         lambda m, p, payload=None, auth=True, base=None: (401, b"{}"))
     with pytest.raises(SystemExit):
         cz.cmd_archive(SimpleNamespace(author="author-a", q="", since="", until="", limit=0))
+
+
+# ----- status (the liveness / verification verb) -----
+# `status` probes the four services independently and never raises: `_probe` is the single
+# transport chokepoint, so these stub `cz._probe` (and `cz.api` for the --slug read) and drive
+# the verb through to its exit code + printed report. No stack, no network.
+
+def _status_ns(**over):
+    base = dict(slug="", local_only=False, json=False)
+    base.update(over)
+    return SimpleNamespace(**base)
+
+
+def _probe_map(mapping, default=(True, 200, "HTTP 200")):
+    """A fake `_probe` that decides by a substring of the probed url: mapping is
+    {url_substring: (up, code)}; the first match wins, else `default`."""
+    def fake(url, ok_set, timeout=5):
+        for frag, (up, code) in mapping.items():
+            if frag in url:
+                return up, code, (f"HTTP {code}" if code else "unreachable (refused)")
+        return default
+    return fake
+
+
+def test_status_all_up_exits_0(monkeypatch, capsys):
+    monkeypatch.setattr(cz, "_probe", _probe_map({}))  # everything up
+    monkeypatch.setattr(cz, "PUBLIC_URL", "https://pub.example")
+    rc = cz.cmd_status(_status_ns())
+    out = capsys.readouterr().out
+    assert rc == 0
+    assert "ONLINE" in out
+    assert "[OK] backend" in out and "[OK] site" in out
+
+
+def test_status_backend_down_is_offline_exit_1(monkeypatch, capsys):
+    # The backend is CORE: down -> FAIL + OFFLINE + exit 1, even though the others are up.
+    monkeypatch.setattr(cz, "_probe", _probe_map({"healthz": (False, 0)}))
+    monkeypatch.setattr(cz, "PUBLIC_URL", "https://pub.example")
+    rc = cz.cmd_status(_status_ns())
+    out = capsys.readouterr().out
+    assert rc == 1
+    assert "[FAIL] backend" in out and "OFFLINE" in out
+
+
+def test_status_public_and_comfy_down_are_warn_not_fail(monkeypatch, capsys):
+    # public + comfy are non-core: down -> WARN, core still up -> ONLINE + exit 0.
+    monkeypatch.setattr(cz, "_probe",
+                        _probe_map({"pub.example": (False, 0), "system_stats": (False, 0)}))
+    monkeypatch.setattr(cz, "PUBLIC_URL", "https://pub.example")
+    rc = cz.cmd_status(_status_ns())
+    out = capsys.readouterr().out
+    assert rc == 0
+    assert "[WARN] public" in out and "[WARN] comfyui" in out and "ONLINE" in out
+
+
+def test_status_local_only_skips_public_probe(monkeypatch, capsys):
+    seen = []
+    def fake(url, ok_set, timeout=5):
+        seen.append(url)
+        return True, 200, "HTTP 200"
+    monkeypatch.setattr(cz, "_probe", fake)
+    monkeypatch.setattr(cz, "PUBLIC_URL", "https://pub.example")
+    rc = cz.cmd_status(_status_ns(local_only=True))
+    assert rc == 0
+    assert not any("pub.example" in u for u in seen)  # public origin never probed
+    assert "public" not in capsys.readouterr().out
+
+
+def test_status_slug_live_reports_permalink_exit_0(monkeypatch, capsys):
+    monkeypatch.setattr(cz, "PUBLIC_URL", "https://pub.example")
+    monkeypatch.setattr(cz, "api",
+                        lambda m, p, **k: (200, json.dumps(
+                            {"slug": "mi-nota", "title": "Mi Título",
+                             "content_hash": "deadbeef1234"}).encode()))
+    # every probe live, including the resolved permalink
+    monkeypatch.setattr(cz, "_probe", _probe_map({}))
+    rc = cz.cmd_status(_status_ns(slug="mi-nota"))
+    out = capsys.readouterr().out
+    assert rc == 0
+    assert "mi-nota-deadbeef" in out and "Mi Título" in out and "[live now]" in out
+
+
+def test_status_slug_not_found_exits_1(monkeypatch, capsys):
+    # A 404 from the backend means the piece is not published (wrong slug / unpublished).
+    monkeypatch.setattr(cz, "api", lambda m, p, **k: (404, b"{}"))
+    monkeypatch.setattr(cz, "_probe", _probe_map({}))
+    rc = cz.cmd_status(_status_ns(slug="ghost", local_only=True))
+    out = capsys.readouterr().out
+    assert rc == 1  # verification gate fails even though the stack is up
+    assert "no published 'ghost'" in out and "ONLINE" in out
+
+
+def test_status_slug_found_but_not_rendered_exits_1(monkeypatch, capsys):
+    # The article exists in the backend but its static permalink is not serving yet: the
+    # verification gate fails (exit 1) and the message says to reload, NOT to run generate.
+    monkeypatch.setattr(cz, "api",
+                        lambda m, p, **k: (200, json.dumps(
+                            {"slug": "pending", "title": "T", "content_hash": "abcd1234"}).encode()))
+    monkeypatch.setattr(cz, "_probe",
+                        _probe_map({"/a/pending-": (False, 404)}))  # permalink not rendered
+    rc = cz.cmd_status(_status_ns(slug="pending", local_only=True))
+    out = capsys.readouterr().out
+    assert rc == 1
+    assert "not rendered yet" in out and "do NOT run generate" in out
+
+
+def test_status_json_shape(monkeypatch, capsys):
+    monkeypatch.setattr(cz, "_probe", _probe_map({"pub.example": (False, 0)}))
+    monkeypatch.setattr(cz, "PUBLIC_URL", "https://pub.example")
+    rc = cz.cmd_status(_status_ns(json=True))
+    data = json.loads(capsys.readouterr().out)
+    assert rc == 0
+    assert data["ready"] is True and data["article_ok"] is None
+    assert data["services"]["backend"]["up"] is True
+    assert data["services"]["public"]["up"] is False
+
+
+# ----- deploy (the one infra verb; wraps deploy/deploy-cdn.sh) -----
+
+def test_deploy_refuses_without_yes(monkeypatch, capsys):
+    called = []
+    monkeypatch.setattr(cz.subprocess, "run", lambda *a, **k: called.append(a) or None)
+    rc = cz.cmd_deploy(SimpleNamespace(yes=False))
+    err = capsys.readouterr().err
+    assert rc == 1
+    assert "--yes" in err and not called  # refused before launching the script
+
+
+def test_deploy_runs_script_and_reports_success(monkeypatch, capsys):
+    captured = {}
+    def fake_run(cmd, cwd=None, check=False):
+        captured["cmd"], captured["cwd"] = cmd, cwd
+        return SimpleNamespace(returncode=0)
+    monkeypatch.setattr(cz.subprocess, "run", fake_run)
+    monkeypatch.setattr(cz, "PUBLIC_URL", "https://pub.example")
+    rc = cz.cmd_deploy(SimpleNamespace(yes=True))
+    out = capsys.readouterr().out
+    assert rc == 0
+    assert captured["cmd"][0] == "bash" and captured["cmd"][1].endswith("deploy/deploy-cdn.sh")
+    assert "deploy OK" in out and "status --slug" in out  # steers verification to the verb
+
+
+def test_deploy_relays_failure_without_workaround(monkeypatch, capsys):
+    monkeypatch.setattr(cz.subprocess, "run",
+                        lambda *a, **k: SimpleNamespace(returncode=2))
+    rc = cz.cmd_deploy(SimpleNamespace(yes=True))
+    err = capsys.readouterr().err
+    assert rc == 1
+    assert "FAILED" in err
+    # the failure guidance must forbid the exact workarounds the looping agent tried
+    assert "Do NOT run generate" in err and "chmod" in err

@@ -1,5 +1,20 @@
 # AGENTS.md
 
+> **Which agent are you? Read this first.**
+>
+> **If you are OPERATING the portal** (writing, publishing, editing, or managing content, the
+> daily/weekly sweep, authors, layout, images, deploy) then this file is NOT your manual. Your
+> entire surface is `python3 cli/censurado.py <verb>`, driven by the skill in
+> [`cli/SKILL.md`](cli/SKILL.md). You do not build or run the stack, you do not edit files, and
+> you do not run shell commands: no `make`, no `./run.sh`, no `docker`, no `generate`, no
+> `deploy/*.sh`, no `chmod` / `grep` / `sqlite3`. Going live is the `deploy --yes` verb; checking
+> the site is up is the `status` verb. If something seems to need a non-verb action, STOP and ask
+> the human. Go read `cli/SKILL.md` and ignore the developer map below.
+>
+> **If you are DEVELOPING the newsroom itself** (changing the CLI, the compose topology, the
+> generator wiring, the deploy script) then the map below is for you. Only work at this layer when
+> the user explicitly asked you to change the newsroom's code or infra.
+
 Agent-oriented map of `censurado-web-brain`. This repo is **the newsroom**: the agentic
 CLI a driver walks to write and publish articles, the editorial prompt recipe it follows,
 the maintenance sweeps that keep the corpus tidy, and the single Docker Compose that brings

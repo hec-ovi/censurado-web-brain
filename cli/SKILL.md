@@ -18,26 +18,61 @@ file is the DISPATCHER: match the request to a row below, open the sub-skill it 
 there is one), then run the verbs. If two rows match, read both. Run any verb with `--help`
 for its exact flags.
 
+## The hard boundary: you OPERATE this site, you do not build it (read first)
+You are the operator of a running news portal, not a developer of it. Your ENTIRE surface is
+`python3 cli/censurado.py <verb>`. There is a verb for every legitimate action (run `python3
+cli/censurado.py --help` to see them all). You must NEVER:
+- edit, create, or delete any file in this repo or any other. The ONLY writing you do is your
+  own scratch files under `$CENSURADO_WORK` (the `ledger.md` and `draft.md` the write walk
+  asks for). Nothing else on disk is yours to touch.
+- read, `grep`, `cat`, or `sed` the source code, this repo's or the sibling `../censurado-web*`
+  repos. You never need the code to operate the site.
+- run ANY shell command that is not `python3 cli/censurado.py ...`: no `make`, no `./run.sh`,
+  no `./deploy/*.sh`, no `docker`, no `chmod` / `mkdir` / `sed` / `grep`, no `sqlite3` or any
+  other direct database access, no `pytest` / `make test`.
+- regenerate or deploy to "make a change appear" or "to check" it: the local site repaints
+  itself within a few seconds, and you confirm with `status`, never by rebuilding.
+- spawn subagents or write a script to orchestrate the work. You do the walk yourself, in
+  order, one piece at a time (a big batch is done in small chunks, not by a fleet of agents).
+
+The content data lives in the backend and you reach it ONLY through verbs (`personas`,
+`persona`, `archive`, `get`, `sources`, ...). The prompts are files but you read and change
+them ONLY through `prompt` / `set-prompt`. Going public is itself a verb now (`deploy --yes`),
+so even the one infra action needs no `.sh` and no `make`.
+
+### When something seems to need a non-verb action, STOP. Do not improvise.
+If you catch yourself about to edit a file, run a script, read the source, query the database,
+or rerun generate/deploy in a loop, you are already off the rails. Instead:
+1. Run `python3 cli/censurado.py status` (add `--slug <slug>` to check one piece) to see what
+   is actually online and whether your article is serving. This is your verification tool: it
+   answers "is the stack up", "did my deploy land", and "where is my piece" without any shell.
+2. If a verb failed, relay its exact `ERROR:` / `FATAL:` line to the human and ask how to
+   proceed. A missing capability or a broken build is the human's call, never a shell
+   workaround, a source dive, or a chmod. Looping on `generate` / `deploy` / `chmod` while an
+   article "won't appear" is the exact failure this rule exists to stop.
+
 ## Always, on every task
-- **Preflight.** The stack must be up: `curl -s http://127.0.0.1:8082/healthz` returns `ok`
-  (that is the backend, which owns all content data and serves the panel). If not, ask the
-  user to start it (from the repo root, no GPU needed):
-  `docker compose up -d publish generate site`. ComfyUI (images) is optional. The workflow
-  and persona prompts are on-disk files in this repo's `prompts/` (no server to start). One
-  command self-checks all of this at once: `python3 cli/censurado.py doctor` prints an
-  [OK]/[WARN]/[FAIL] report over the stack, the skill package, and the on-disk recipe.
+- **Preflight.** The stack must be up. Check with a verb, not a raw `curl`:
+  `python3 cli/censurado.py status` prints an [OK]/[WARN]/[FAIL] liveness report over the
+  backend, the local site, ComfyUI (optional, images only), and the public deploy, and exits 0
+  when the core is serving. `python3 cli/censurado.py doctor` is the deeper preflight (it also
+  checks the skill package and the on-disk recipe). If the core is down, ask the USER to start
+  it (you do not run this yourself): from the repo root, no GPU needed,
+  `docker compose up -d publish generate site`. The workflow and persona prompts are on-disk
+  files in this repo's `prompts/` (no server to start).
 - **Auth is automatic.** `censurado.py` reads the operator token from `.env`. Never print,
   invent, or pass a token.
 - **Preview is local, deploy is public.** `censurado.py preview` stages an article to the
   LOCAL preview site (`localhost:8080`), NOT the public internet, so use it freely to let the
-  user SEE the piece. Going public is a separate `make deploy` (production). Always show the
-  draft and get a yes before you `deploy`, unless told to run unattended.
+  user SEE the piece. Going public is a separate verb, `censurado.py deploy --yes` (production).
+  Always show the draft and get a yes before you `deploy`, unless told to run unattended.
 - **Compliance.** The site is openly AI-generated with fictional personas: keep the footer
   "Aviso editorial", mark opinion/satire, and never impersonate real people.
 
 ## Route the request
 | The user wants to ... | Do this |
 |---|---|
+| check the site is up / verify a piece is actually live / "you online?" / "where is my article?" | `python3 cli/censurado.py status` (add `--slug <slug>` to verify one piece locally and publicly) |
 | write / create / cover a news article ("nota", "write up this news") | read `cli/skills/write-article/SKILL.md`, then walk it |
 | search the web, find real sources, read a page | read `cli/skills/websearch/SKILL.md` |
 | run the daily / weekly batch, sweep the day, refresh the portal | read `cli/skills/daily-batch/SKILL.md` |
@@ -56,7 +91,7 @@ for its exact flags.
 | read the editorial voice/rules or a prompt | `python3 cli/censurado.py style` (voice/lexicon/rules) ; `python3 cli/censurado.py prompt <key>` |
 | read or change the enforced numeric bar (how many sources, tag cap) | read `cli/skills/sources/SKILL.md`; the floor/cap live in `cli/workflow/parameters.json` (`set-floor`, `step`), NOT in `style` |
 | change how the newsroom writes: a workflow WALK node or a library prompt (dev) | read `cli/skills/prompts/SKILL.md` |
-| go live / publish to production (public internet) | read `cli/skills/deploy/SKILL.md` |
+| go live / publish to production (public internet) | read `cli/skills/deploy/SKILL.md`, then `python3 cli/censurado.py deploy --yes` |
 
 ## The one rule for writing
 Writing an article is a GATED WALK served ONE step at a time, never one shot. Always go
