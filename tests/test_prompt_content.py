@@ -114,6 +114,27 @@ def test_batch_plan_forward_points_to_the_portada_arrange():
     assert "archive --day" in low
 
 
+def test_topic_cleanse_walk_covers_both_halves_and_agent_detection():
+    # The topic-normalization walk must drive BOTH merge halves and state that detection is
+    # the operator's (no inference backend), so a driver does not wait on a model that never runs.
+    low = _flat("topic-cleanse.md")
+    # Article half: the hash-safe brain cleanse writer, dry-run then apply.
+    assert "topics cleanse" in low
+    assert "--map-file" in low and "--apply" in low
+    # Author half: the separate profile-chip write.
+    assert "profile-topics" in low
+    # Uses the phase-3 inventory verb; cross-references (does not duplicate) normalize-topics.
+    assert "cli/censurado.py topics" in low
+    assert "normalize-topics" in low
+    # Registry reconcile is automated with the remove-topic verb (v1 default), not manual-only.
+    assert "remove-topic" in low
+    # Agent-side detection + the safety rails: dry-run gate, over-merge hazard, hash stability.
+    assert "no model runs" in low
+    assert "dry run" in low or "dry-run" in low
+    assert "over-merg" in low
+    assert "hash" in low
+
+
 def test_every_manifest_workflow_node_and_persona_synthesize_exist_on_disk():
     # The step gate serves nodes straight off disk, so every node the manifest references
     # (plus persona/synthesize, the author-synthesis prompt) must actually be present or a

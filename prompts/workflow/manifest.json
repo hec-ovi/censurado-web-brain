@@ -8,7 +8,8 @@
     "last-hour": ["10-batch-plan"],
     "deploy": ["deploy"],
     "normalize-topics": ["normalize-topics"],
-    "portal-review": ["portal-review"]
+    "portal-review": ["portal-review"],
+    "topic-cleanse": ["topic-cleanse"]
   },
   "disabled": {
     "single-article": ["deploy"],

@@ -971,6 +971,62 @@ def cmd_profile_topics(a):
     return 0 if st in (200, 201) else 1
 
 
+def cmd_topics(a):
+    """Inventory the distinct free-text article tags across the published corpus: each tag with
+    how many articles carry it and the slugs that do, sorted by count then name. This is the
+    READ side of topic normalization: run it to SEE the tag surface and spot naming variants
+    (`Javier-Milei` vs `milei`, singular/plural, alternate spellings) before merging them. The
+    MERGE side is two writers, `censurado-brain topics cleanse` for article tags and
+    `profile-topics --set` for an author's profile chips. LIGHT: reads the listing, no bodies."""
+    limit = getattr(a, "limit", 0) or 1000
+    st, body = api("GET", "/articles?" + urllib.parse.urlencode({"limit": str(limit)}))
+    if st != 200:
+        sys.exit(f"FATAL: topics HTTP {st}: {body.decode('utf-8', 'replace')[:200]}")
+    data = _json(body, "the topics response", want=dict)
+    fetched = [it for it in data.get("articles", []) if isinstance(it, dict)]
+    total = data.get("total", len(fetched))
+    tags = {}
+    for it in fetched:
+        slug = it.get("slug", "")
+        for tag in it.get("topics", []) or []:
+            if not isinstance(tag, str) or not tag.strip():
+                continue
+            rec = tags.setdefault(tag, {"tag": tag, "count": 0, "slugs": []})
+            rec["count"] += 1
+            rec["slugs"].append(slug)
+    ordered = sorted(tags.values(), key=lambda r: (-r["count"], r["tag"].lower()))
+    out = {"total_tags": len(ordered), "articles_scanned": len(fetched),
+           "articles_total": total, "topics": ordered}
+    if total > len(fetched):
+        sys.stderr.write(
+            f"note: scanned {len(fetched)} of {total} articles; raise --limit for the full inventory\n")
+    print(json.dumps(out, ensure_ascii=False, indent=2))
+    return 0
+
+
+def cmd_remove_topic(a):
+    """Tombstone a topic in the operator registry (DELETE /topics/<slug>). SOFT delete: it
+    drops the stale row off the `/topics` facet index, restorable via the panel. Use it to
+    reconcile the registry after a `topic-cleanse` merge, when a variant slug was folded into
+    a canonical one and its registry row lingers. It does NOT touch article tags (those move
+    via the cleanse) or author chips (those move via profile-topics). Guarded by --yes.
+    Response: 204 removed; 404 no such topic. The slug is the one the Temas tab / GET /topics
+    shows (already slugified)."""
+    if not a.yes:
+        sys.exit(f"REFUSED: confirm removing a topic with --yes:\n"
+                 f"  python3 cli/censurado.py remove-topic {a.slug} --yes")
+    st, body = api("DELETE", "/topics/" + urllib.parse.quote(a.slug, safe=""))
+    if st in (200, 204):
+        sys.stderr.write(f"remove-topic {a.slug} -> tombstoned ({st})\n")
+        return 0
+    if st == 404:
+        sys.stderr.write(f"remove-topic {a.slug} -> no such topic (404)\n")
+        return 1
+    sys.stdout.write(body.decode("utf-8", "replace") + "\n")
+    sys.stderr.write(f"remove-topic {a.slug} -> HTTP {st}\n")
+    return 1
+
+
 def cmd_portals(a):
     """List the source slugs available to attach to an author (GET /sources). These are the
     ids `sources <handle> --set` links against."""
@@ -1485,6 +1541,19 @@ def build_parser():
                      help='comma-separated topics for the profile page (replaces the set); "" clears; omit to show')
     ptp.set_defaults(fn=cmd_profile_topics)
 
+    tp = sub.add_parser("topics",
+                        help="inventory distinct article tags across the corpus (count + slugs per tag); "
+                             "the read side of topic normalization")
+    tp.add_argument("--limit", type=int, default=0, help="cap the articles scanned (0 = 1000)")
+    tp.set_defaults(fn=cmd_topics)
+
+    rmt = sub.add_parser("remove-topic",
+                         help="tombstone a topic in the /topics registry (soft, restorable); reconciles the "
+                              "facet index after a topic-cleanse merge")
+    rmt.add_argument("slug", help="the registry topic slug to remove (as shown by the Temas tab / GET /topics)")
+    rmt.add_argument("--yes", action="store_true", help="confirm the delete")
+    rmt.set_defaults(fn=cmd_remove_topic)
+
     pda = sub.add_parser("portada",
                          help="write or read the per-day front-page plan (portada) in the publish backend")
     pda.add_argument("date", help="YYYY-MM-DD")
@@ -1528,7 +1597,8 @@ def build_parser():
                      help="node key, e.g. 30-research; omit for the mode picker (or the first node with --mode)")
     stp.add_argument("--mode", default="",
                      help="workflow mode (run `step --list` to see all): single-article, single-author, "
-                          "authors, daily, weekly, last-hour, deploy, normalize-topics, portal-review")
+                          "authors, daily, weekly, last-hour, deploy, normalize-topics, portal-review, "
+                          "topic-cleanse")
     stp.add_argument("--list", action="store_true",
                      help="print the node sequence for the mode (or all modes), without serving a body")
     stp.set_defaults(fn=cmd_step)

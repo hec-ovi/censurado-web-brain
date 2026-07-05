@@ -896,6 +896,18 @@ def test_step_serves_the_portal_review_arrange_node(monkeypatch, capsys):
     assert "--set-json" in low             # the portada write shape
 
 
+def test_step_serves_the_topic_cleanse_walk(monkeypatch, capsys):
+    # topic-cleanse is a standalone single-node mode served from the REAL prompts (no _recipe,
+    # no stack). It must carry both merge halves and the safety gates a driver follows.
+    monkeypatch.delenv("CENSURADO_WORK", raising=False)
+    assert cz.cmd_step(_ns(mode="topic-cleanse")) == 0
+    low = capsys.readouterr().out.lower()
+    assert "topics cleanse" in low and "--apply" in low   # article half (hash-safe brain writer)
+    assert "profile-topics" in low                          # author-chip half
+    assert "no model runs" in low                           # detection is agent-side
+    assert "over-merg" in low                               # the over-merge hazard gate
+
+
 def test_step_no_key_no_mode_serves_the_mode_picker(monkeypatch, capsys, tmp_path):
     monkeypatch.setattr(cz, "PROMPTS_DIR", _recipe(tmp_path))
     assert cz.cmd_step(_ns()) == 0
@@ -1086,6 +1098,83 @@ def test_archive_day_lists_the_whole_day_across_authors(monkeypatch, capsys):
     assert qs["to"] == ["2026-07-02T00:00:00Z"]     # next day start, exclusive
     out = json.loads(capsys.readouterr().out)
     assert {a["slug"]: a["has_media"] for a in out["articles"]} == {"lead": True, "text": False}
+
+
+def test_cli_parses_topics_verb():
+    a = cz.build_parser().parse_args(["topics", "--limit", "50"])
+    assert a.fn is cz.cmd_topics and a.limit == 50
+    assert cz.build_parser().parse_args(["topics"]).limit == 0  # 0 -> cmd default 1000
+
+
+def test_topics_inventories_distinct_tags_with_counts_and_slugs(monkeypatch, capsys):
+    # `topics` aggregates the free-text article tags across the corpus: per-tag count + the
+    # slugs carrying it, sorted by count then name. The read side of topic normalization: it
+    # surfaces variants (here `Javier-Milei` alongside `milei`) so an operator can plan a merge.
+    calls = []
+    listing = {"total": 3, "articles": [
+        {"slug": "a", "topics": ["milei", "economia"]},
+        {"slug": "b", "topics": ["milei", "Javier-Milei"]},
+        {"slug": "c", "topics": ["economia", "", "milei"]},
+    ]}
+
+    def fake_api(method, path, payload=None, auth=True, base=None):
+        calls.append((method, path))
+        return 200, json.dumps(listing).encode()
+
+    monkeypatch.setattr(cz, "api", fake_api)
+    assert cz.cmd_topics(SimpleNamespace(limit=0)) == 0
+    method, path = calls[-1]
+    assert method == "GET" and path.startswith("/articles?")
+    qs = urllib.parse.parse_qs(urllib.parse.urlparse(path).query)
+    assert qs["limit"] == ["1000"]  # 0 -> the default cap
+    out = json.loads(capsys.readouterr().out)
+    assert out["total_tags"] == 3 and out["articles_scanned"] == 3
+    # Sorted by count desc, then name: milei(3), economia(2), Javier-Milei(1).
+    assert [t["tag"] for t in out["topics"]] == ["milei", "economia", "Javier-Milei"]
+    milei = out["topics"][0]
+    assert milei["count"] == 3 and milei["slugs"] == ["a", "b", "c"]
+    assert all(t["tag"] for t in out["topics"])  # blank tags dropped, not counted
+
+
+def test_topics_warns_when_the_corpus_exceeds_the_scan(monkeypatch, capsys):
+    # If total > scanned, the inventory is partial; it must SAY so on stderr, not silently
+    # truncate (a merge planned off a partial surface would miss variants).
+    listing = {"total": 500, "articles": [{"slug": "a", "topics": ["milei"]}]}
+    monkeypatch.setattr(cz, "api",
+                        lambda m, p, payload=None, auth=True, base=None: (200, json.dumps(listing).encode()))
+    cz.cmd_topics(SimpleNamespace(limit=1))
+    assert "scanned 1 of 500" in capsys.readouterr().err
+
+
+def test_cli_parses_remove_topic_verb():
+    a = cz.build_parser().parse_args(["remove-topic", "javier-milei", "--yes"])
+    assert a.fn is cz.cmd_remove_topic and a.slug == "javier-milei" and a.yes is True
+
+
+def test_remove_topic_refuses_without_yes(monkeypatch):
+    # Guarded like remove-author: without --yes it exits and issues NO request.
+    calls = []
+    monkeypatch.setattr(cz, "api", lambda *args, **kw: calls.append(args) or (204, b""))
+    with pytest.raises(SystemExit):
+        cz.cmd_remove_topic(SimpleNamespace(slug="javier-milei", yes=False))
+    assert not calls  # nothing reached the backend
+
+
+def test_remove_topic_tombstones_via_delete(monkeypatch):
+    calls = []
+
+    def fake_api(method, path, payload=None, auth=True, base=None):
+        calls.append((method, path))
+        return 204, b""
+
+    monkeypatch.setattr(cz, "api", fake_api)
+    assert cz.cmd_remove_topic(SimpleNamespace(slug="javier-milei", yes=True)) == 0
+    assert calls[-1] == ("DELETE", "/topics/javier-milei")
+
+
+def test_remove_topic_reports_a_missing_slug(monkeypatch):
+    monkeypatch.setattr(cz, "api", lambda *a, **k: (404, b""))
+    assert cz.cmd_remove_topic(SimpleNamespace(slug="nope", yes=True)) == 1
 
 
 def test_archive_exits_on_http_error(monkeypatch):

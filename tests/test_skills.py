@@ -119,6 +119,24 @@ def test_daily_batch_skill_tail_wires_the_portada_arrange_walk():
     assert "make deploy" in body, "going live stays a separate human-gated deploy"
 
 
+def test_daily_batch_routes_bulk_topic_merges_to_the_cleanse_walk():
+    # The stale claim that the brain/cleanse "no longer exists" is gone. Bulk entity-variant
+    # normalization routes to the topic-cleanse walk; single-article fixes stay the edit verb.
+    body = _body(SKILLS_DIR / "daily-batch" / "SKILL.md").lower()
+    assert "no bulk cleanse pass anymore" not in body, "stale claim that the cleanse is gone must be removed"
+    assert "no separate brain" not in body, "stale claim that there is no brain must be removed"
+    assert "step --mode topic-cleanse" in body, "batch skill must route bulk merges to the cleanse walk"
+    assert "edit <slug>" in body, "the per-article edit fix must survive"
+
+
+def test_resolver_routes_the_topic_cleanse_and_topics_verbs():
+    # cli/SKILL.md is always loaded, so the corpus-wide topic merge and the tag inventory must
+    # be reachable from the dispatcher, not just from the daily-batch tail.
+    low = RESOLVER.read_text(encoding="utf-8").lower()
+    assert "step --mode topic-cleanse" in low, "resolver must route the topic-cleanse walk"
+    assert "censurado.py topics" in low, "resolver must expose the tag inventory verb"
+
+
 def test_retired_flat_docs_are_gone_and_unreferenced():
     # ART-DIRECTOR / DAILY-SWEEP / TOOLKIT were folded into the sub-skills (media / daily-batch /
     # write-article) and DELETED. Guard both that they stay gone AND that nothing under cli/ still
