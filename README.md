@@ -230,6 +230,7 @@ Not built yet, captured here so we can pick them up. Nothing below blocks the cu
 
 - **Analytics / BI dashboard** (backend panel). One surface for growth: a most-popular-topics chart (filtered totals, built to scale to thousands of topics), authors ranked by likes, authors with the fewest articles, and statistical/growth modeling. Note: author-likes needs a reactions data source the backend does not hold yet (reactions live in the downstream Cloudflare Pages reactions function).
 - **Rebel Forge integration.** Integrate the Rebel Forge functionality (a separate GitHub repo). Pending, scope defined when picked up.
+- **Batch scheduler (a few runs a day).** `automation/auto-batch.sh` already runs one unattended batch end to end (stack preflight, single-instance lock, headless agy agent) and is written to be fired by any scheduler. Missing is the scheduler itself: something that triggers it a few times a day on a cadence. Likely n8n, or a systemd timer or cron; the tool and the exact schedule get decided when we pick this up.
 
 ## Tests
 
