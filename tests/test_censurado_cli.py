@@ -132,9 +132,22 @@ def test_build_publish_payload_card_image_borrows_hero_when_no_src():
     assert p["metadata"]["card"] == {"type": "image", "src": _FULL_MEDIA, "alt": "una ilustración"}
 
 
-def test_build_publish_payload_no_card_type_omits_card():
-    # No --card-type: no metadata.card, so the backend derives card_type from the hero/media.
-    assert "card" not in cz.build_publish_payload(_pub_ns()).get("metadata", {})
+def test_build_publish_payload_derives_text_card_when_no_media():
+    # No --card-type and no media: preview still writes an explicit card (unified format) = text.
+    assert cz.build_publish_payload(_pub_ns()).get("metadata", {})["card"] == {"type": "text"}
+
+
+def test_build_publish_payload_derives_youtube_card_from_body_video():
+    # No --card-type: a body {{video:<id>}} derives a youtube card carrying the id, so the listing
+    # can show the poster (this is the treguatango case that had no metadata media).
+    p = cz.build_publish_payload(_pub_ns(body="texto\n\n{{video:eD099-68xvw}}\n\nfin"))
+    assert p["metadata"]["card"] == {"type": "youtube", "src": "eD099-68xvw"}
+
+
+def test_build_publish_payload_derives_image_card_from_hero():
+    # No --card-type but a hero image: derives an image card borrowing the hero + its alt.
+    p = cz.build_publish_payload(_pub_ns(image=_FULL_MEDIA, image_alt="una ilustración"))
+    assert p["metadata"]["card"] == {"type": "image", "src": _FULL_MEDIA, "alt": "una ilustración"}
 
 
 def test_build_publish_payload_card_type_invalid_rejected():

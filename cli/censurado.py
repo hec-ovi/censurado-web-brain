@@ -490,25 +490,52 @@ def _resolve_hero(a):
 _CARD_TYPES = ("text", "image", "youtube", "video")
 
 
-def _build_card(a, hero_img, hero_alt):
-    """Build the authored front-page CARD (metadata.card = {type, src, alt}) from the --card-*
-    flags. The card is WHAT THE LISTING PREVIEW SHOWS and is DECOUPLED from the body: a piece
-    whose body embeds several videos can still carry a `text` card. Returns the card dict, or
-    None when no --card-type was given (then the backend derives the card from the hero/media
-    for back-compat). For a media card with no explicit --card-src, the piece's own media is
-    borrowed: --youtube for a youtube card, the resolved hero still for an image/video card
-    (an .mp4 has no auto thumbnail, so a video card's src is a poster image)."""
+def _yt_id(val):
+    """The 11-char YouTube id from a bare id or a youtu.be/watch/shorts/embed URL, or ""."""
+    val = (val or "").strip()
+    if re.fullmatch(r"[A-Za-z0-9_-]{11}", val):
+        return val
+    m = re.search(r"(?:youtu\.be/|[?&]v=|/embed/|/shorts/)([A-Za-z0-9_-]{11})", val)
+    return m.group(1) if m else ""
+
+
+def _first_body_video(body):
+    """The first `{{video:<val>}}` marker's value in the body, or ""."""
+    m = re.search(r"\{\{\s*video\s*:\s*([^}]+?)\s*\}\}", body or "")
+    return m.group(1).strip() if m else ""
+
+
+def _build_card(a, hero_img, hero_alt, body=""):
+    """Build the front-page CARD (metadata.card = {type, src, alt}), the LISTING preview,
+    DECOUPLED from the body (a piece whose body embeds several videos can still carry a `text`
+    card). EVERY published article gets an explicit card in one unified format: `--card-type` is
+    honored verbatim when given, OTHERWISE the type is DERIVED from the piece's own media so the
+    stored shape is always consistent, an image hero -> image, a --youtube or a body
+    {{video:<id>}} -> youtube (src = the id), else text. For a media card with no explicit
+    --card-src the piece's own media is borrowed (the resolved hero still, or the youtube id)."""
     ct = (getattr(a, "card_type", "") or "").strip().lower()
-    if not ct:
-        return None
-    if ct not in _CARD_TYPES:
+    if ct and ct not in _CARD_TYPES:
         fail(f"--card-type must be one of {'|'.join(_CARD_TYPES)} (got {ct!r}).")
+    yt = (getattr(a, "youtube", "") or "").strip()
+    body_vid = _first_body_video(body)
+    if not ct:                                   # derive so the stored card format is uniform
+        if hero_img:
+            ct = "image"
+        elif yt or _yt_id(body_vid):
+            ct = "youtube"
+        elif body_vid:
+            ct = "video"
+        else:
+            ct = "text"
     card = {"type": ct}
     if ct == "text":
         return card
     src = (getattr(a, "card_src", "") or "").strip()
     if not src:
-        src = (getattr(a, "youtube", "") or "").strip() if ct == "youtube" else hero_img
+        if ct == "youtube":
+            src = _yt_id(yt) or yt or _yt_id(body_vid) or body_vid
+        else:                                    # image, or a self-hosted video poster still
+            src = hero_img or (body_vid if ct == "video" else "")
     if src:
         card["src"] = src
     alt = (getattr(a, "card_alt", "") or "").strip() or hero_alt
@@ -579,7 +606,7 @@ def build_publish_payload(a):
     hero_img, hero_alt = _resolve_hero(a)   # never trust a hand-copied media hash
     if hero_img: meta["image"] = hero_img
     if hero_alt: meta["image_alt"] = hero_alt
-    card = _build_card(a, hero_img, hero_alt)  # the authored front-page card (what the preview shows)
+    card = _build_card(a, hero_img, hero_alt, body)  # the front-page card, always explicit (derived if unset)
     if card: meta["card"] = card
     if a.youtube: meta["youtube"] = a.youtube
     if a.keywords: meta["keywords"] = _split(a.keywords)

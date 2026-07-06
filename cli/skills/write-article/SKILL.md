@@ -94,9 +94,11 @@ Drop a marker on its OWN line in the body and the static generator expands it:
 Three independent surfaces, do not confuse them. (1) The front-page CARD (the small preview):
 choose it EXPLICITLY with `--card-type` (`text` | `image` | `youtube` | `video`) plus `--card-src`
 (an image `/media` path, or a YouTube id). The card is DECOUPLED from the body: a piece whose body
-embeds five videos can still carry a `text` card, or an `image` card. Omit `--card-type` and the
-card is derived from the hero/media for back-compat, but PREFER to set it; for an `image`/`video`
-card with no `--card-src`, the hero still is borrowed. (2) The article HERO (top of the page):
+embeds five videos can still carry a `text` card, or an `image` card. `preview` ALWAYS writes an
+explicit `card` in the unified format: omit `--card-type` and it DERIVES one from your media (an
+image hero -> image; a `--youtube` or a body `{{video:<id>}}` -> youtube with `src` = the id; else
+text), so every piece stores the same shape. Pass `--card-type`/`--card-src` to choose it yourself;
+for an `image`/`video` card with no `--card-src`, the hero still is borrowed. (2) The article HERO (top of the page):
 `metadata.image` (`--image`, a still) or `metadata.youtube` (`--youtube`, a lead video). (3) The
 BODY markers below: unbounded inline content. The three are independent, so a video piece can set
 `--card-type youtube --card-src <id>` for the card, embed `{{video:<id>}}` in the body, and lead
