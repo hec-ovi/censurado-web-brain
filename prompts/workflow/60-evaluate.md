@@ -14,13 +14,13 @@ dimensions PASS or REVISE, with a short, specific note on what to fix when it is
    missing opening mark, or ASCII-only Spanish is a REVISE, listing the offending words.
 3. **Entities.** The proper-noun entities (people, organizations, places) are named
    correctly and will be tagged. A misnamed or untagged central entity is a REVISE.
-4. **Title and subtitle.** The title is honest AND arresting: it passes the honesty gates
-   (promise kept by the body, no withheld subject, no overclaim, numbers in context, no
-   fake urgency, earned emotion) and lands at least two hooks (a front-loaded concrete
-   fact, a strong active present-tense verb, visible stakes, or a tension or reversal). The
-   subtitle does NOT repeat the title's words or subject, and neither is spliced by a `;`,
-   a `:`, or a dash. Any failed honesty gate, fewer than two hooks, a spliced title or
-   subtitle, or a parroting subtitle is a REVISE.
+4. **Title and subtitle.** The title is honest AND arresting: it is NO MORE THAN 5 WORDS, and
+   it passes the honesty gates (promise kept by the body, no withheld subject, no overclaim,
+   numbers in context, no fake urgency, earned emotion) and lands a strong hook (a front-loaded
+   concrete fact, a strong active present-tense verb, visible stakes, or a tension or reversal).
+   The subtitle does NOT repeat the title's words or subject, and neither is spliced by a `;`,
+   a `:`, or a dash. A title over five words, any failed honesty gate, no hook, a spliced title
+   or subtitle, or a parroting subtitle is a REVISE.
 5. **Compression and density.** Each layer is dense, high information per word. Padding,
    filler, or a coasting layer is a REVISE, naming the slack passages.
 6. **Non-redundancy and slop.** No layer restates an earlier one, no repeated wording, and

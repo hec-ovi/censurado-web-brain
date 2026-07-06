@@ -53,6 +53,8 @@ def test_finalize_prompt_carries_headline_discipline():
     low = " ".join(text.lower().split())
     # The topic cap is a client-filled parameter, never a hardcoded number.
     assert "{{TOPIC_CAP}}" in text
+    # The hard word cap on titles (the 5-word constraint) is present and prominent.
+    assert "no more than 5 words" in low
     # The honesty gate and the pull hooks are present.
     assert "a headline is a promise" in low
     assert "promise kept" in low
