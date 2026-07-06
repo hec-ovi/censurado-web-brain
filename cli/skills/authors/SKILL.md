@@ -24,6 +24,14 @@ The record has two halves. PRIVATE (the drafting voice, never shown to readers):
 body language, Spanish for the current roster), and `sources` (the outlets it reads, see the
 `sources` sub-skill).
 
+`beat` fills an article's `section` when `preview` gets no explicit `--section`, so it must be
+the section URL SLUG the site files under (`politics`, `world`, `tech`, `literatura`,
+`misterio-y-conspiracion`), NOT a Spanish display label: a label like "Política" would slugify
+to a NEW `/section/politica/` page split off from the real `politics` one. There is no section
+registry table, so the live vocabulary is whatever articles carry: check it with
+`python3 cli/censurado.py sections` before setting a beat, and reuse an existing slug so the
+author lands in the section that already exists.
+
 ## Create an author
 An author is a single JSON object you write yourself. Do NOT invent the shape from memory:
 read the current schema and write to it.

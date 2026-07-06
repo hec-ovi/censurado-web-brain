@@ -691,6 +691,35 @@ def cmd_archive(a):
     return 0
 
 
+def cmd_sections(a):
+    """Consult the LIVE section vocabulary: the distinct `section` values actually present
+    on non-deleted articles, each with its article count, most-used first. `section` is a
+    FREE STRING with no registry table (unlike authors/topics), so THIS is the only
+    authoritative list of what sections exist right now. A renamed or removed section keeps
+    whatever old orphan articles still carry it (reachable by author or by scrolling older
+    days) and simply shows here until its last piece is retagged or deleted, so a stale value
+    in the list is expected, not a bug.
+
+    The same call returns the author and topic distributions (GET /articles:facets), so the
+    section picture and who publishes into it come back together. `--authors`/`--topics` narrow
+    the print to one axis; the default prints all three. Note the display LABEL (e.g. Spanish
+    "Política") is a render-time concern in the generator; the value stored here is the URL
+    slug the site files under (e.g. `politics`)."""
+    st, body = api("GET", "/articles:facets")
+    if st != 200:
+        fail(f"cannot read the section facets (GET /articles:facets HTTP {st}). Is the backend "
+             f"up at {PUBLISH} and the operator token valid?")
+    data = _json(body, "the facets response", want=dict)
+    axes = {k: data.get(k, []) for k in ("sections", "authors", "topics")}
+    want_authors = getattr(a, "authors", False)
+    want_topics = getattr(a, "topics", False)
+    if want_authors or want_topics:  # narrow to the explicitly requested axes
+        axes = {k: v for k, v in axes.items()
+                if (k == "authors" and want_authors) or (k == "topics" and want_topics)}
+    print(json.dumps(axes, ensure_ascii=False, indent=2))
+    return 0
+
+
 def _await_preview_url(slug, tries=6, delay=1.0):
     """Resolve the LOCAL permalink `/a/<slug>-<hash8>/` for a just-staged article and
     best-effort wait for the static generator to render it. The publish response carries
@@ -1669,6 +1698,13 @@ def build_parser():
                          "or strictly before an RFC3339 instant")
     ar.add_argument("--limit", type=int, default=0, help="cap the list (0 = backend default)")
     ar.set_defaults(fn=cmd_archive)
+
+    se = sub.add_parser("sections",
+                        help="consult the LIVE section vocabulary: distinct section values on "
+                             "non-deleted articles with counts (also authors + topics)")
+    se.add_argument("--authors", action="store_true", help="print only the author distribution")
+    se.add_argument("--topics", action="store_true", help="print only the topic distribution")
+    se.set_defaults(fn=cmd_sections)
 
     pub = sub.add_parser("preview", aliases=["publish"],
                          help="stage an article to your LOCAL preview site (localhost:8080, NOT public); "

@@ -230,6 +230,57 @@ def test_preview_refuses_without_subtitle_or_description(monkeypatch, capsys):
     assert not posted                                   # refused before any POST
 
 
+FX_FACETS = {
+    "sections": [{"value": "politics", "count": 27}, {"value": "tech", "count": 12},
+                 {"value": "literatura", "count": 10}, {"value": "economics", "count": 8}],
+    "authors": [{"value": "lara-arianna", "count": 23}, {"value": "vector-omni", "count": 12}],
+    "topics": [{"value": "javier-milei", "count": 9}],
+}
+
+
+def _facets_req(monkeypatch, seen):
+    def fake_req(method, url, data=None, headers=None, timeout=60):
+        seen.append((method, url))
+        if method == "GET" and url.endswith("/articles:facets"):
+            return 200, json.dumps(FX_FACETS).encode()
+        raise AssertionError(("unexpected request", method, url))
+    monkeypatch.setattr(cz, "_req", fake_req)
+    monkeypatch.setattr(cz, "token", lambda: "t")
+
+
+def test_sections_prints_live_vocabulary_all_axes(monkeypatch, capsys):
+    seen = []
+    _facets_req(monkeypatch, seen)
+    rc = cz.cmd_sections(SimpleNamespace(authors=False, topics=False))
+    got = json.loads(capsys.readouterr().out)
+    assert rc == 0
+    assert seen == [("GET", f"{cz.PUBLISH}/articles:facets")]   # hits the aggregate route
+    assert list(got) == ["sections", "authors", "topics"]        # all three axes by default
+    assert got["sections"][0] == {"value": "politics", "count": 27}  # count DESC preserved
+    # a renamed/removed section keeps whatever orphan articles still carry it and shows here
+    assert {"value": "economics", "count": 8} in got["sections"]
+
+
+def test_sections_authors_flag_narrows_to_one_axis(monkeypatch, capsys):
+    seen = []
+    _facets_req(monkeypatch, seen)
+    rc = cz.cmd_sections(SimpleNamespace(authors=True, topics=False))
+    got = json.loads(capsys.readouterr().out)
+    assert rc == 0
+    assert list(got) == ["authors"]                              # sections/topics dropped
+    assert got["authors"][0]["value"] == "lara-arianna"
+
+
+def test_sections_fails_clearly_when_route_missing(monkeypatch):
+    def fake_req(method, url, data=None, headers=None, timeout=60):
+        return 404, b"not found"
+    monkeypatch.setattr(cz, "_req", fake_req)
+    monkeypatch.setattr(cz, "token", lambda: "t")
+    with pytest.raises(cz.ToolError) as exc:
+        cz.cmd_sections(SimpleNamespace(authors=False, topics=False))
+    assert "articles:facets" in str(exc.value)   # names the route so the operator can debug
+
+
 def test_preview_prints_live_permalink(monkeypatch, capsys):
     def fake_req(method, url, data=None, headers=None, timeout=60):
         if method == "POST" and url.endswith("/articles"):
