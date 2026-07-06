@@ -893,6 +893,32 @@ def cmd_portada(a):
     return 0 if 200 <= st < 300 else 1
 
 
+def cmd_recomendado(a):
+    """Read or set the site's single GLOBAL 'Recomendado' list: the fixed editor's-pick
+    rail on the FRONT PAGE. It is ONE ordered list of article slugs (up to 10), NOT tied
+    to any day: it persists on the front page every day until you change it, and replaces
+    the old auto-computed rail. Any slug may be recommended, including pieces from previous
+    days; a slug whose article does not exist is dropped at render, and duplicates/blanks
+    are removed on save.
+
+    With `--set "slug-a,slug-b,..."` PUT the list (order preserved, at most 10). With
+    `--clear` empty it (the front page then shows the Recomendado widget with no items, so
+    the layout holds). With no flag, GET and print the current list. Writes need admin:write."""
+    if a.clear or a.set_slugs is not None:
+        slugs = [] if a.clear else _split(a.set_slugs)
+        st, body = api("PUT", "/recomendado", {"slugs": slugs})
+        if st != 200:
+            fail(f"cannot set recomendado (PUT /recomendado HTTP {st}): "
+                 f"{body.decode('utf-8', 'replace')[:200]}")
+    else:
+        st, body = api("GET", "/recomendado")
+        if st != 200:
+            fail(f"cannot read recomendado (GET /recomendado HTTP {st}). Is the backend up "
+                 f"at {PUBLISH} and the operator token valid?")
+    sys.stdout.write(body.decode("utf-8", "replace") + "\n")
+    return 0
+
+
 def cmd_media(a):
     data = _read_file(a.file, "the media file", binary=True)
     ext = a.file.rsplit(".", 1)[-1].lower()
@@ -1828,8 +1854,17 @@ def build_parser():
                          help="write or read the per-day front-page plan (portada) in the publish backend")
     pda.add_argument("date", help="YYYY-MM-DD")
     pda.add_argument("--set-json", dest="set_json", default=None,
-                     help='JSON object {"entries":[{"slug","role"}],"recomendado":[...]} to POST; omit to list all')
+                     help='JSON object {"entries":[{"slug","role"}]} to POST; omit to list all. '
+                          '(The front-page Recomendado rail is a separate GLOBAL list: see the recomendado verb.)')
     pda.set_defaults(fn=cmd_portada)
+
+    rec = sub.add_parser("recomendado",
+                         help="read or set the GLOBAL front-page Recomendado list (up to 10 slugs; persists across days)")
+    rec.add_argument("--set", dest="set_slugs", default=None,
+                     help="comma-separated article slugs, in order (up to 10); replaces the whole list")
+    rec.add_argument("--clear", action="store_true",
+                     help="empty the list (the front page still shows the widget, with no items)")
+    rec.set_defaults(fn=cmd_recomendado)
 
     po = sub.add_parser("portals", help="list available source slugs (the ids to attach to authors)")
     po.set_defaults(fn=cmd_portals)

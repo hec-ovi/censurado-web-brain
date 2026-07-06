@@ -81,6 +81,7 @@ or rerun generate/deploy in a loop, you are already off the rails. Instead:
 | add / remove / inspect an author (create a writer, retire one, read a voice) | read `cli/skills/authors/SKILL.md` |
 | change which outlets an author reads, or the sourcing floor (how many sources per article) | read `cli/skills/sources/SKILL.md` |
 | reorder the front page, feature/unfeature a story (portada) | read `cli/skills/portada/SKILL.md` |
+| set the front-page "Recomendado" rail (a global fixed list of up to 10, persists across days) | `python3 cli/censurado.py recomendado [--set "slug-a,slug-b,..."] [--clear]` (see `cli/skills/portada/SKILL.md`) |
 | art-direct and attach a hero image, or upload media | read `cli/skills/media/SKILL.md` |
 | list authors / read one author's voice and beat (quick) | `python3 cli/censurado.py personas` ; `python3 cli/censurado.py persona <id>` |
 | show / set an author's public profile topics | `python3 cli/censurado.py profile-topics <id> [--set ...]` |

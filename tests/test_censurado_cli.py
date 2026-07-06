@@ -281,6 +281,47 @@ def test_sections_fails_clearly_when_route_missing(monkeypatch):
     assert "articles:facets" in str(exc.value)   # names the route so the operator can debug
 
 
+def _reco_req(monkeypatch, seen, get_body):
+    def fake_req(method, url, data=None, headers=None, timeout=60):
+        seen.append((method, url, json.loads(data) if data else None))
+        if method == "GET" and url.endswith("/recomendado"):
+            return 200, json.dumps(get_body).encode()
+        if method == "PUT" and url.endswith("/recomendado"):
+            return 200, json.dumps({"slugs": json.loads(data)["slugs"]}).encode()
+        raise AssertionError(("unexpected request", method, url))
+    monkeypatch.setattr(cz, "_req", fake_req)
+    monkeypatch.setattr(cz, "token", lambda: "t")
+
+
+def test_recomendado_get_prints_current_list(monkeypatch, capsys):
+    seen = []
+    _reco_req(monkeypatch, seen, {"slugs": ["a-slug", "b-slug"]})
+    rc = cz.cmd_recomendado(SimpleNamespace(set_slugs=None, clear=False))
+    out = json.loads(capsys.readouterr().out)
+    assert rc == 0
+    assert seen == [("GET", f"{cz.PUBLISH}/recomendado", None)]   # read-only GET
+    assert out["slugs"] == ["a-slug", "b-slug"]
+
+
+def test_recomendado_set_puts_ordered_slugs(monkeypatch, capsys):
+    seen = []
+    _reco_req(monkeypatch, seen, {"slugs": []})
+    rc = cz.cmd_recomendado(SimpleNamespace(set_slugs="a-slug, b-slug ,c-slug", clear=False))
+    out = json.loads(capsys.readouterr().out)
+    assert rc == 0
+    assert seen[0][0] == "PUT"                                     # writes via PUT
+    assert seen[0][2] == {"slugs": ["a-slug", "b-slug", "c-slug"]} # trimmed, order kept
+    assert out["slugs"] == ["a-slug", "b-slug", "c-slug"]
+
+
+def test_recomendado_clear_puts_empty_list(monkeypatch, capsys):
+    seen = []
+    _reco_req(monkeypatch, seen, {"slugs": []})
+    rc = cz.cmd_recomendado(SimpleNamespace(set_slugs=None, clear=True))
+    assert rc == 0
+    assert seen[0][0] == "PUT" and seen[0][2] == {"slugs": []}     # clear == set empty
+
+
 def test_preview_prints_live_permalink(monkeypatch, capsys):
     def fake_req(method, url, data=None, headers=None, timeout=60):
         if method == "POST" and url.endswith("/articles"):
