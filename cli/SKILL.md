@@ -43,9 +43,10 @@ so even the one infra action needs no `.sh` and no `make`.
 ### When something seems to need a non-verb action, STOP. Do not improvise.
 If you catch yourself about to edit a file, run a script, read the source, query the database,
 or rerun generate/deploy in a loop, you are already off the rails. Instead:
-1. Run `python3 cli/censurado.py status` (add `--slug <slug>` to check one piece) to see what
-   is actually online and whether your article is serving. This is your verification tool: it
-   answers "is the stack up", "did my deploy land", and "where is my piece" without any shell.
+1. Run `python3 cli/censurado.py status` to see what is actually online (backend, local site,
+   ComfyUI, the public deploy). It answers "is the stack up" and "did my deploy land" without any
+   shell. To confirm a SPECIFIC piece, open the `PREVIEW:` link that `preview` already printed;
+   that link IS the confirmation, no extra verb and no re-checking loop needed.
 2. If a verb failed, relay its exact `ERROR:` / `FATAL:` line to the human and ask how to
    proceed. A missing capability or a broken build is the human's call, never a shell
    workaround, a source dive, or a chmod. Looping on `generate` / `deploy` / `chmod` while an
@@ -72,7 +73,8 @@ or rerun generate/deploy in a loop, you are already off the rails. Instead:
 ## Route the request
 | The user wants to ... | Do this |
 |---|---|
-| check the site is up / verify a piece is actually live / "you online?" / "where is my article?" | `python3 cli/censurado.py status` (add `--slug <slug>` to verify one piece locally and publicly) |
+| check the stack is up / "did my deploy land?" / "you online?" | `python3 cli/censurado.py status` |
+| verify a specific piece is live / "where is my article?" | open the `PREVIEW:` link `preview` printed for it (that link is the confirmation; the site repaints within a few seconds, do not re-check in a loop) |
 | write / create / cover a news article ("nota", "write up this news") | read `cli/skills/write-article/SKILL.md`, then walk it |
 | search the web, find real sources, read a page | read `cli/skills/websearch/SKILL.md` |
 | run the daily / weekly batch, sweep the day, refresh the portal | read `cli/skills/daily-batch/SKILL.md` |

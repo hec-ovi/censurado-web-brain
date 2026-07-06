@@ -13,6 +13,11 @@ it, and attach it. Treat the image as a rule for tech/AI pieces (it lifts every 
 optional elsewhere (reach for it on a lead, a literary piece, or a strong opinion column). A
 piece publishes fine text-only, and a video or a quoted post can stand in for art.
 
+This is the HERO (the image at the top of the article page). It is a SEPARATE slot from the
+front-page CARD (the small listing preview), which you choose with `--card-type` at publish (see
+write-article). A rendered hero can double as the card's image, but they are independent: setting
+a hero no longer silently changes the card.
+
 ## Brief an illustration, not a photo
 One image, top of the article, that reads as ART: stylized and conceptual (screen-print,
 collage, ink-and-wash, painterly, isometric, surrealism), composed with symbols, objects,

@@ -114,6 +114,34 @@ def test_build_publish_payload_strict_shape():
     assert md["author_name"] == "Autor A"
 
 
+def test_build_publish_payload_card_authored():
+    # An authored --card-type builds metadata.card: the front-page card, decoupled from the body.
+    p = cz.build_publish_payload(_pub_ns(card_type="youtube", card_src="eD099-68xvw"))
+    assert p["metadata"]["card"] == {"type": "youtube", "src": "eD099-68xvw"}
+
+
+def test_build_publish_payload_card_text_carries_no_media():
+    # A text card shows no picture, even when the body embeds a post/video (card != content).
+    p = cz.build_publish_payload(_pub_ns(card_type="text", body="texto\n\n{{tweet:1}}"))
+    assert p["metadata"]["card"] == {"type": "text"}
+
+
+def test_build_publish_payload_card_image_borrows_hero_when_no_src():
+    # An image card with no explicit --card-src borrows the resolved hero still + its alt.
+    p = cz.build_publish_payload(_pub_ns(card_type="image", image=_FULL_MEDIA, image_alt="una ilustración"))
+    assert p["metadata"]["card"] == {"type": "image", "src": _FULL_MEDIA, "alt": "una ilustración"}
+
+
+def test_build_publish_payload_no_card_type_omits_card():
+    # No --card-type: no metadata.card, so the backend derives card_type from the hero/media.
+    assert "card" not in cz.build_publish_payload(_pub_ns()).get("metadata", {})
+
+
+def test_build_publish_payload_card_type_invalid_rejected():
+    with pytest.raises(cz.ToolError):
+        cz.build_publish_payload(_pub_ns(card_type="reel"))
+
+
 def test_cli_tweet_from_json(tmp_path):
     fix = tmp_path / "fx.json"
     fix.write_text(json.dumps(FX_TWEET))
@@ -210,7 +238,7 @@ def test_preview_prints_live_permalink(monkeypatch, capsys):
 
 def test_preview_still_prints_url_before_the_site_regenerates(monkeypatch, capsys):
     # Hash resolves but the generator has not rebuilt yet: the permalink 404s. We must
-    # still print the CORRECT url (flagged "still rendering"), not swallow it.
+    # still print the CORRECT url (flagged "staged", the confirmation), not swallow it.
     monkeypatch.setattr(cz.time, "sleep", lambda *_: None)  # keep the poll instant
 
     def fake_req(method, url, data=None, headers=None, timeout=60):
@@ -225,7 +253,7 @@ def test_preview_still_prints_url_before_the_site_regenerates(monkeypatch, capsy
     rc = cz.cmd_publish(_preview_ns())
     out = capsys.readouterr()
     assert rc == 0
-    assert f"PREVIEW: {cz.SITE}/a/mi-nota-abcd1234/  [still rendering" in out.out
+    assert f"PREVIEW: {cz.SITE}/a/mi-nota-abcd1234/  [staged" in out.out
 
 
 def test_preview_survives_backend_drop_after_a_successful_publish(monkeypatch, capsys):
@@ -576,19 +604,19 @@ def test_portada_rejects_non_object_json(monkeypatch):
     assert "must be a JSON dict" in str(e.value)
 
 
-def test_archive_light_output_includes_has_media(monkeypatch, capsys):
+def test_archive_light_output_includes_card_type(monkeypatch, capsys):
     # cmd_archive lists an author's pieces LIGHT via api() (GET /articles); prove it
-    # carries the server-derived has_media flag per piece, which the portada layout
-    # walk reads to alternate media and text cards without opening each body.
+    # carries the server-derived card_type LABEL per piece (what the card shows), which the
+    # portada layout walk reads to alternate media and text cards without opening each body.
     articles = {
         "total": 2,
         "articles": [
             {"slug": "con-foto", "title": "Con foto", "section": "tech",
              "published_at": "2026-07-01T10:00:00Z", "topics": ["ia"],
-             "has_media": True, "metadata": {"subtitle": "s", "description": "d"}},
+             "card_type": "image", "metadata": {"subtitle": "s", "description": "d"}},
             {"slug": "solo-texto", "title": "Solo texto", "section": "politica",
              "published_at": "2026-07-01T09:00:00Z", "topics": [],
-             "has_media": False, "metadata": {}},
+             "card_type": "text", "metadata": {}},
         ],
     }
     monkeypatch.setattr(cz, "api",
@@ -596,7 +624,7 @@ def test_archive_light_output_includes_has_media(monkeypatch, capsys):
     rc = cz.cmd_archive(SimpleNamespace(author="vector-omni", q=None, since=None, until=None, limit=None))
     assert rc == 0
     out = json.loads(capsys.readouterr().out)
-    assert {a["slug"]: a["has_media"] for a in out["articles"]} == {"con-foto": True, "solo-texto": False}
+    assert {a["slug"]: a["card_type"] for a in out["articles"]} == {"con-foto": "image", "solo-texto": "text"}
 
 
 def test_prompt_workflow_key_reads_the_node_file(monkeypatch, capsys, tmp_path):
@@ -1105,15 +1133,15 @@ def test_archive_omits_empty_filters_from_the_query(monkeypatch):
 
 def test_archive_day_lists_the_whole_day_across_authors(monkeypatch, capsys):
     # `archive --day` (no author) is the portada arrange loader: every piece published that
-    # UTC day across all authors, LIGHT with has_media, in one call. The day bounds it into
+    # UTC day across all authors, LIGHT with card_type, in one call. The day bounds it into
     # from = day start, to = NEXT day start (the backend `to` is exclusive), and sends NO author.
     calls = []
     listing = {"total": 2, "articles": [
         {"slug": "lead", "title": "Lead", "section": "politics", "author": "a-one",
-         "published_at": "2026-07-01T20:00:00Z", "topics": ["milei"], "has_media": True,
+         "published_at": "2026-07-01T20:00:00Z", "topics": ["milei"], "card_type": "youtube",
          "metadata": {"subtitle": "dek", "description": "desc"}},
         {"slug": "text", "title": "Text", "section": "economy", "author": "b-two",
-         "published_at": "2026-07-01T08:00:00Z", "topics": [], "has_media": False,
+         "published_at": "2026-07-01T08:00:00Z", "topics": [], "card_type": "text",
          "metadata": {}}]}
 
     def fake_api(method, path, payload=None, auth=True, base=None):
@@ -1130,7 +1158,7 @@ def test_archive_day_lists_the_whole_day_across_authors(monkeypatch, capsys):
     assert qs["from"] == ["2026-07-01T00:00:00Z"]   # day start
     assert qs["to"] == ["2026-07-02T00:00:00Z"]     # next day start, exclusive
     out = json.loads(capsys.readouterr().out)
-    assert {a["slug"]: a["has_media"] for a in out["articles"]} == {"lead": True, "text": False}
+    assert {a["slug"]: a["card_type"] for a in out["articles"]} == {"lead": "youtube", "text": "text"}
 
 
 def test_cli_parses_topics_verb():
@@ -1217,13 +1245,14 @@ def test_archive_exits_on_http_error(monkeypatch):
         cz.cmd_archive(SimpleNamespace(author="author-a", q="", since="", until="", limit=0))
 
 
-# ----- status (the liveness / verification verb) -----
+# ----- status (the stack-liveness verb) -----
 # `status` probes the four services independently and never raises: `_probe` is the single
-# transport chokepoint, so these stub `cz._probe` (and `cz.api` for the --slug read) and drive
-# the verb through to its exit code + printed report. No stack, no network.
+# transport chokepoint, so these stub `cz._probe` and drive the verb through to its exit code +
+# printed report. No stack, no network. (A specific piece is confirmed by preview's PREVIEW:
+# link, not by status, so status carries no per-article --slug path anymore.)
 
 def _status_ns(**over):
-    base = dict(slug="", local_only=False, json=False)
+    base = dict(local_only=False, json=False)
     base.update(over)
     return SimpleNamespace(**base)
 
@@ -1283,42 +1312,12 @@ def test_status_local_only_skips_public_probe(monkeypatch, capsys):
     assert "public" not in capsys.readouterr().out
 
 
-def test_status_slug_live_reports_permalink_exit_0(monkeypatch, capsys):
-    monkeypatch.setattr(cz, "PUBLIC_URL", "https://pub.example")
-    monkeypatch.setattr(cz, "api",
-                        lambda m, p, **k: (200, json.dumps(
-                            {"slug": "mi-nota", "title": "Mi Título",
-                             "content_hash": "deadbeef1234"}).encode()))
-    # every probe live, including the resolved permalink
-    monkeypatch.setattr(cz, "_probe", _probe_map({}))
-    rc = cz.cmd_status(_status_ns(slug="mi-nota"))
-    out = capsys.readouterr().out
-    assert rc == 0
-    assert "mi-nota-deadbeef" in out and "Mi Título" in out and "[live now]" in out
-
-
-def test_status_slug_not_found_exits_1(monkeypatch, capsys):
-    # A 404 from the backend means the piece is not published (wrong slug / unpublished).
-    monkeypatch.setattr(cz, "api", lambda m, p, **k: (404, b"{}"))
-    monkeypatch.setattr(cz, "_probe", _probe_map({}))
-    rc = cz.cmd_status(_status_ns(slug="ghost", local_only=True))
-    out = capsys.readouterr().out
-    assert rc == 1  # verification gate fails even though the stack is up
-    assert "no published 'ghost'" in out and "ONLINE" in out
-
-
-def test_status_slug_found_but_not_rendered_exits_1(monkeypatch, capsys):
-    # The article exists in the backend but its static permalink is not serving yet: the
-    # verification gate fails (exit 1) and the message says to reload, NOT to run generate.
-    monkeypatch.setattr(cz, "api",
-                        lambda m, p, **k: (200, json.dumps(
-                            {"slug": "pending", "title": "T", "content_hash": "abcd1234"}).encode()))
-    monkeypatch.setattr(cz, "_probe",
-                        _probe_map({"/a/pending-": (False, 404)}))  # permalink not rendered
-    rc = cz.cmd_status(_status_ns(slug="pending", local_only=True))
-    out = capsys.readouterr().out
-    assert rc == 1
-    assert "not rendered yet" in out and "do NOT run generate" in out
+def test_status_has_no_per_article_slug_flag():
+    # The per-article `status --slug` verification was removed: a successful `preview` prints the
+    # piece's own PREVIEW: link, which is the confirmation. status is now stack-liveness only, so
+    # the parser must reject --slug rather than silently accept a dead flag.
+    with pytest.raises(SystemExit):
+        cz.build_parser().parse_args(["status", "--slug", "mi-nota"])
 
 
 def test_status_json_shape(monkeypatch, capsys):
@@ -1327,7 +1326,8 @@ def test_status_json_shape(monkeypatch, capsys):
     rc = cz.cmd_status(_status_ns(json=True))
     data = json.loads(capsys.readouterr().out)
     assert rc == 0
-    assert data["ready"] is True and data["article_ok"] is None
+    assert data["ready"] is True
+    assert "article_ok" not in data and "article" not in data  # per-article verify is gone
     assert data["services"]["backend"]["up"] is True
     assert data["services"]["public"]["up"] is False
 
@@ -1354,7 +1354,8 @@ def test_deploy_runs_script_and_reports_success(monkeypatch, capsys):
     out = capsys.readouterr().out
     assert rc == 0
     assert captured["cmd"][0] == "bash" and captured["cmd"][1].endswith("deploy/deploy-cdn.sh")
-    assert "deploy OK" in out and "status --slug" in out  # steers verification to the verb
+    # steers verification to opening the piece's link (+ plain status), not to re-deploying
+    assert "deploy OK" in out and "public link" in out and "status" in out
 
 
 def test_deploy_relays_failure_without_workaround(monkeypatch, capsys):

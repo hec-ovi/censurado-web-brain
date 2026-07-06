@@ -487,6 +487,36 @@ def _resolve_hero(a):
     return "", ""
 
 
+_CARD_TYPES = ("text", "image", "youtube", "video")
+
+
+def _build_card(a, hero_img, hero_alt):
+    """Build the authored front-page CARD (metadata.card = {type, src, alt}) from the --card-*
+    flags. The card is WHAT THE LISTING PREVIEW SHOWS and is DECOUPLED from the body: a piece
+    whose body embeds several videos can still carry a `text` card. Returns the card dict, or
+    None when no --card-type was given (then the backend derives the card from the hero/media
+    for back-compat). For a media card with no explicit --card-src, the piece's own media is
+    borrowed: --youtube for a youtube card, the resolved hero still for an image/video card
+    (an .mp4 has no auto thumbnail, so a video card's src is a poster image)."""
+    ct = (getattr(a, "card_type", "") or "").strip().lower()
+    if not ct:
+        return None
+    if ct not in _CARD_TYPES:
+        fail(f"--card-type must be one of {'|'.join(_CARD_TYPES)} (got {ct!r}).")
+    card = {"type": ct}
+    if ct == "text":
+        return card
+    src = (getattr(a, "card_src", "") or "").strip()
+    if not src:
+        src = (getattr(a, "youtube", "") or "").strip() if ct == "youtube" else hero_img
+    if src:
+        card["src"] = src
+    alt = (getattr(a, "card_alt", "") or "").strip() or hero_alt
+    if alt:
+        card["alt"] = alt
+    return card
+
+
 def _save_snapshot_to_work(snap):
     """Append a captured post snapshot (X or Truth) to $CENSURADO_WORK/tweets.json so `preview`
     attaches its `{{tweet:id}}` card without the model handing the snapshot JSON around. Dedup by
@@ -549,6 +579,8 @@ def build_publish_payload(a):
     hero_img, hero_alt = _resolve_hero(a)   # never trust a hand-copied media hash
     if hero_img: meta["image"] = hero_img
     if hero_alt: meta["image_alt"] = hero_alt
+    card = _build_card(a, hero_img, hero_alt)  # the authored front-page card (what the preview shows)
+    if card: meta["card"] = card
     if a.youtube: meta["youtube"] = a.youtube
     if a.keywords: meta["keywords"] = _split(a.keywords)
     tweets = (_json(_read_file(a.tweets_file, "--tweets-file"), "--tweets-file", want=list)
@@ -588,16 +620,16 @@ def _day_bound(v, end=False):
 
 def cmd_archive(a):
     """List published articles from the backend read API, LIGHT (no bodies):
-    slug, published_at, title, subtitle, description, section, topics, has_media. This is
+    slug, published_at, title, subtitle, description, section, topics, card_type. This is
     the repeat-news sweep's first stage: judge candidates by title, description, and DATE
     against the event being covered, and read a candidate's full body with `get <slug>`
-    only when real doubt remains, so the sweep stays cheap on context. `has_media` (the
-    server-derived image/video flag) also feeds the portada layout: it says whether a
-    piece's card shows a picture or plain text, without opening each body.
+    only when real doubt remains, so the sweep stays cheap on context. `card_type` (the
+    server-derived label for what the piece's CARD shows: text/image/youtube/video) also
+    feeds the portada layout: it says what the card is, without opening each body.
 
     With `--day YYYY-MM-DD` and no author it lists a whole UTC day across EVERY author: the
     loader the portada arrange (`step --mode portal-review`) reads to lay out that day's
-    front page (title, subtitle/dek, description, has_media per piece)."""
+    front page (title, subtitle/dek, description, card_type per piece)."""
     author = getattr(a, "author", "") or ""
     day = getattr(a, "day", "") or ""
     since, until = (day, day) if day else (a.since, a.until)
@@ -626,7 +658,7 @@ def cmd_archive(a):
             "description": md.get("description", ""),
             "section": it.get("section", ""),
             "topics": it.get("topics", []),
-            "has_media": it.get("has_media", False),
+            "card_type": it.get("card_type", ""),
         })
     print(json.dumps(out, ensure_ascii=False, indent=2))
     return 0
@@ -721,7 +753,7 @@ def cmd_publish(a):
     sys.stderr.write(f"preview OK -> HTTP {st}. Staged to the LOCAL site {SITE} (NOT public; "
                      f"going live is a separate `make deploy`).\n")
     if url:
-        state = "live now" if live else "still rendering; give the generator a few seconds, then reload"
+        state = "live now" if live else "staged; the site repaints in a few seconds -- just open it"
         print(f"PREVIEW: {url}  [{state}]")
     print(f"NEWEST: {SITE}/latest/")
     return 0
@@ -1204,15 +1236,13 @@ def cmd_status(a):
       - public   (the deployed production origin): the live public site. WARN if down -- a
                  deploy has not landed yet (or none was made), which is not a stack failure.
       - comfyui  (the image lane): WARN if down -- optional, only image work needs it.
-    With `--slug <slug>` it also resolves that article from the backend and reports its live
-    permalink and whether the page is actually serving (the "where did my piece go / is it live"
-    check), locally and, when the public site is up, publicly. `--local-only` skips the
-    public-internet probe; `--json` prints the machine-readable verdict.
+    `--local-only` skips the public-internet probe; `--json` prints the machine-readable verdict.
 
     Exits 0 when the CORE (backend + local site) are up, 1 otherwise (WARNs never fail). It NEVER
-    writes, deploys, or regenerates anything: use it to VERIFY, then hand the human the link. If a
-    piece is not live yet, the generator watcher repaints within a few seconds on its own -- do NOT
-    run generate/deploy to force it; just re-run `status --slug` or reload the link."""
+    writes, deploys, or regenerates anything. To confirm a SPECIFIC piece is live you do NOT need
+    this verb: a successful `preview` already staged it and prints its `PREVIEW:` permalink -- that
+    link is the confirmation, just open it (the generator watcher repaints within a few seconds).
+    Do NOT loop on generate/deploy, and do NOT re-check a piece over and over, to force it."""
     checks = [
         ("backend", PUBLISH + "/healthz", {200}, True),
         ("site", SITE + "/", {200, 301, 302}, True),
@@ -1231,57 +1261,19 @@ def cmd_status(a):
         rows.append((level, f"{label:<8} {url} ({detail}){note}"))
         services[label] = {"up": up, "status": code, "url": url, "core": core}
 
-    article = None
-    if a.slug:
-        try:
-            st, body = api("GET", "/articles/" + a.slug)
-        except Exception as exc:  # backend down or hiccup: report, do not raise
-            st, body = 0, str(exc).encode()
-        if st == 200:
-            rec = _json(body, f"the article {a.slug!r}", want=dict)
-            ch = str(rec.get("content_hash", ""))
-            perm = f"{SITE}/a/{a.slug}-{ch[:8]}/" if ch else ""
-            live, _c, _d = _probe(perm, {200}) if perm else (False, 0, "no hash")
-            article = {"slug": a.slug, "title": rec.get("title", ""),
-                       "local_url": perm, "local_live": live}
-            rows.append(("OK" if live else "WARN",
-                         f"article  {a.slug!r} = {rec.get('title', '')!r}"))
-            rows.append((("OK" if live else "WARN"),
-                         f"  local   {perm or '(no permalink yet)'} "
-                         + ("[live now]" if live else "[not rendered yet; the watcher repaints in "
-                            "a few seconds -- reload, do NOT run generate]")))
-            if not a.local_only and PUBLIC_URL and services.get("public", {}).get("up") and ch:
-                pub = f"{PUBLIC_URL}/a/{a.slug}-{ch[:8]}/"
-                plive, _c2, _d2 = _probe(pub, {200})
-                article.update(public_url=pub, public_live=plive)
-                rows.append((("OK" if plive else "WARN"),
-                             f"  public  {pub} " + ("[live]" if plive else "[not deployed yet]")))
-        elif st == 404:
-            article = {"slug": a.slug, "found": False}
-            rows.append(("FAIL", f"article  no published {a.slug!r} (wrong slug, or it was "
-                                 "unpublished/soft-deleted -- republish or fix the slug)"))
-        else:
-            article = {"slug": a.slug, "backend_status": st}
-            rows.append(("WARN", f"article  could not resolve {a.slug!r} (backend HTTP {st})"))
-
     ready = not core_down
-    # When a --slug was given, the verb is ALSO a verification gate: it passes only if that piece
-    # actually resolves and serves locally (a down public is a WARN, not a fail: a deploy may not
-    # have run). So `status --slug X` exits 0 only when the stack is up AND X is live.
-    article_ok = None if not a.slug else bool(article and article.get("local_live"))
-    ok = ready and (article_ok is not False)
     if a.json:
-        print(json.dumps({"ready": ready, "article_ok": article_ok, "services": services,
-                          "article": article, "public_url": PUBLIC_URL or None},
+        print(json.dumps({"ready": ready, "services": services,
+                          "public_url": PUBLIC_URL or None},
                          ensure_ascii=False, indent=2))
-        return 0 if ok else 1
+        return 0 if ready else 1
     for level, text in rows:
         sys.stdout.write(f"  [{level}] {text}\n")
     sys.stdout.write("  --- " + ("ONLINE: backend + local site are serving."
                                  if ready else "OFFLINE: a CORE service is down.")
-                     + " Hand the human the link to verify a piece; do NOT run generate/deploy "
-                       "to check.\n")
-    return 0 if ok else 1
+                     + " A piece's own `PREVIEW:` link (printed by preview) is its confirmation; "
+                       "do NOT run generate/deploy to check.\n")
+    return 0 if ready else 1
 
 
 def cmd_deploy(a):
@@ -1295,7 +1287,7 @@ def cmd_deploy(a):
     unset, or a half-set reactions binding) it relays that exact line and stops -- do NOT try to
     work around it, fix perms, regenerate, or read the deploy/generator source; relay the message to
     the human and let them complete the one setup step, then re-run `deploy`. On success it prints
-    the public origin and reminds you to VERIFY with `status --slug`, never by re-deploying."""
+    the public origin and reminds you to VERIFY by opening the piece's link, never by re-deploying."""
     if not a.yes:
         sys.stderr.write("deploy publishes the WHOLE snapshot to the PUBLIC site "
                          f"{PUBLIC_URL or '(production)'}. This is irreversible and outward-facing. "
@@ -1319,8 +1311,9 @@ def cmd_deploy(a):
                          "`deploy --yes`. Do NOT run generate, init-perms, chmod, or read the "
                          "deploy/generator source.\n")
         return 1
-    sys.stdout.write(f"deploy OK. Live at {PUBLIC_URL or 'the production origin'}. Verify a piece "
-                     "with `status --slug <slug>` (NOT by deploying again).\n")
+    sys.stdout.write(f"deploy OK. Live at {PUBLIC_URL or 'the production origin'}. Verify by "
+                     "opening the piece's public link (NOT by deploying again); plain `status` "
+                     "confirms the public origin is serving.\n")
     return 0
 
 
@@ -1666,6 +1659,13 @@ def build_parser():
     pub.add_argument("--published-at", dest="published_at", default="", help="RFC3339; omit for now")
     pub.add_argument("--image", default="")
     pub.add_argument("--image-alt", dest="image_alt", default="")
+    pub.add_argument("--card-type", dest="card_type", default="",
+                     help="what the front-page CARD shows: text|image|youtube|video (authored, "
+                          "separate from the body). Omit to derive it from the hero/media.")
+    pub.add_argument("--card-src", dest="card_src", default="",
+                     help="the card's media ref (a /media path for an image or a video poster, or "
+                          "a YouTube id/url); defaults to the hero still, or --youtube for a youtube card")
+    pub.add_argument("--card-alt", dest="card_alt", default="", help="alt text for the card image/poster")
     pub.add_argument("--youtube", default="")
     pub.add_argument("--author-name", dest="author_name", default="")
     pub.add_argument("--author-bio", dest="author_bio", default="")
@@ -1796,9 +1796,7 @@ def build_parser():
 
     st = sub.add_parser("status",
                         help="is the portal ONLINE? liveness of backend + local site + comfyui + the "
-                             "public deploy; --slug verifies one article is serving")
-    st.add_argument("--slug", default="",
-                    help="also verify this article resolves + is serving (local and public)")
+                             "public deploy (a piece's own PREVIEW: link is its confirmation)")
     st.add_argument("--local-only", dest="local_only", action="store_true",
                     help="skip the public-internet probe (local stack only)")
     st.add_argument("--json", action="store_true", help="print the machine-readable verdict")

@@ -13,13 +13,13 @@ Do it one day at a time. For each day under review:
 
 2. Load the day's pieces in one read: `python3 cli/censurado.py archive --day <YYYY-MM-DD>`
    lists every piece published that UTC day across all authors, LIGHT: slug, title,
-   subtitle/dek, description, section, topics, and a `has_media` flag (the same image/video
-   signal the card renders on). That is the raw material you are ordering, and the whole day's
-   media map in one cheap read, so you never open a body. For each piece note the two things
-   you arrange on: its news WEIGHT (how much the story matters) and whether it carries MEDIA
-   (`has_media` true) or is TEXT-forward, because the layout alternates the two. Also note when
-   two pieces are DELIBERATELY related (opposing takes on the same event, a claim and its
-   rebuttal), which you may pair on purpose (step 4).
+   subtitle/dek, description, section, topics, and a `card_type` label (what the piece's CARD
+   shows: `text`, `image`, `youtube`, or `video`). That is the raw material you are ordering,
+   and the whole day's card map in one cheap read, so you never open a body. For each piece note
+   the two things you arrange on: its news WEIGHT (how much the story matters) and whether its
+   card carries MEDIA (`card_type` is not `text`) or is TEXT-forward, because the layout
+   alternates the two. Also note when two pieces are DELIBERATELY related (opposing takes on the
+   same event, a claim and its rebuttal), which you may pair on purpose (step 4).
 
 3. Pick the LEAD. Evaluate the day's pieces and put the single most important one first: the
    story with the most news weight (impact, reach, how many readers it matters to,

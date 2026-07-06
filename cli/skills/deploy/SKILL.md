@@ -40,13 +40,13 @@ required because this is the one public, irreversible action. The cache policy (
 with `no-store`, hashed media is immutable) is in `deploy/CACHING.md`.
 
 ## Verify the deploy landed
-On success the verb prints the public origin. Confirm the site (and a specific piece) is
-actually live with a VERB, never by deploying again or opening the generator:
+On success the verb prints the public origin. Confirm it is serving with plain `status`, never by
+deploying again or opening the generator:
 
-    python3 cli/censurado.py status --slug <slug>
+    python3 cli/censurado.py status
 
-That reports whether `elcensuradoweb.com` is serving and whether that article's public
-permalink returns 200. Hand the human the link it prints.
+To confirm a SPECIFIC piece went public, open its link: the same permalink `preview` printed for
+it, on `elcensuradoweb.com`. Hand the human that link.
 
 ## When it stops
 The verb relays the script's `FATAL:` line and exits non-zero, before anything public changes,

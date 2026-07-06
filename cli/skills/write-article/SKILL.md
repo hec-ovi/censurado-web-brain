@@ -72,7 +72,8 @@ write a `--subtitle` (the dek) and a one-line `--description` (the standfirst), 
 both. The hero image, byline, dek, SEO terms, and widget snapshots all live inside `metadata`
 (never as top-level keys): `subtitle`, `description`, `author_name` (the visible byline),
 `author_bio`, `author_avatar`, `image` + `image_alt` (the hero still), `youtube` (a lead
-video), `keywords`, and the `tweets` bag. `preview` places these for you from its flags.
+video), the authored `card` (the front-page preview, set with `--card-type` + `--card-src`),
+`keywords`, and the `tweets` bag. `preview` places these for you from its flags.
 
 Response: `201` wrote a new article, `200` a dedup replay (nothing written), both returning
 `{"id","slug"}`. Dedup identity is the trimmed `title + body + author + section` only, so
@@ -90,12 +91,17 @@ Drop a marker on its OWN line in the body and the static generator expands it:
 | `{{relacionado:<slug>}}` | a "related article" card | the backend slug of an OLDER existing article |
 | `{{tweet:<id>}}` | an X / Truth Social card that survives the post being deleted | nothing for a live X post (`preview` auto-fetches the card from the id); an explicit `truth` capture only for a Truth Social post |
 
-Three distinct media slots, do not confuse them: the portada CARD thumbnail is `metadata.image`
-(else the first body `{{video:}}` poster, else text-only); the article HERO is `metadata.image`
-(a still) or `metadata.youtube` (a lead video); the body markers render inline where you place
-them. So when the piece IS a video, embed `{{video:<id>}}` in the body and do NOT attach a hero
-image: `metadata.image` wins the card over the video poster, so setting both hides the video
-behind a still. Render or pass an image only for a piece that has no video to lead with. A `{{tweet:<id>}}` for a live X post needs NOTHING extra: write the marker exactly like
+Three independent surfaces, do not confuse them. (1) The front-page CARD (the small preview):
+choose it EXPLICITLY with `--card-type` (`text` | `image` | `youtube` | `video`) plus `--card-src`
+(an image `/media` path, or a YouTube id). The card is DECOUPLED from the body: a piece whose body
+embeds five videos can still carry a `text` card, or an `image` card. Omit `--card-type` and the
+card is derived from the hero/media for back-compat, but PREFER to set it; for an `image`/`video`
+card with no `--card-src`, the hero still is borrowed. (2) The article HERO (top of the page):
+`metadata.image` (`--image`, a still) or `metadata.youtube` (`--youtube`, a lead video). (3) The
+BODY markers below: unbounded inline content. The three are independent, so a video piece can set
+`--card-type youtube --card-src <id>` for the card, embed `{{video:<id>}}` in the body, and lead
+with `--youtube <id>` as the hero, each on purpose (an `--image` no longer secretly overrides the
+card). A `{{tweet:<id>}}` for a live X post needs NOTHING extra: write the marker exactly like
 `{{relacionado:}}` or `{{video:}}` and `preview` auto-fetches the card from the id (keyless, via
 fxtwitter). Capture explicitly ONLY to pin a snapshot the auto-fetch cannot reach: a since-deleted
 X post, or a Truth Social post (auto-fetch is X-only). Then run `censurado.py tweet <url>` (X) or
@@ -120,5 +126,7 @@ Social). The keyless path is the default, so a normal run needs no token.
 internet. At the final node, show the user the full draft (title, subtitle, description,
 body, section, topics, and any widgets), then `preview` it so they can see it live-rendered.
 The command prints a `PREVIEW: <url>  [live now]` line on success: that URL is your result,
-report it back (do not construct a link yourself). Going public is a SEPARATE `make deploy`,
-never deploy without an explicit yes.
+report it back (do not construct a link yourself). A successful `preview` IS the confirmation;
+you do NOT need to separately verify the piece is serving, and you must not re-check it in a
+loop, the site repaints on its own within a few seconds. Going public is a SEPARATE `make
+deploy`, never deploy without an explicit yes.

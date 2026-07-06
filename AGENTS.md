@@ -113,6 +113,13 @@ The only way articles enter the system. Authenticated, idempotent, single writer
   strict JSON body (unknown fields rejected, 8 MiB cap). Body schema is
   `domain.PublishInput`: `title`, `body` (markdown), `author`, `section` required;
   `topics`, `slug`, `published_at`, `metadata` optional.
+- Media model (all inside `metadata`, three independent surfaces): the front-page
+  CARD is `card = {type, src, alt}` with `type` one of `text|image|youtube|video`,
+  authored and decoupled from the body; the article HERO is `image` (a still) or
+  `youtube`/`video`; the BODY markers (`{{video:}}`, `{{tweet:}}`, `{{relacionado:}}`)
+  are unbounded inline content. Legacy pieces with no `card` derive it from the
+  hero/media. The read API returns the resolved label as `card_type`. See
+  `../censurado-web-backend/contracts/article.schema.json`.
 - Portada order is strictly `published_at` descending: the newest one is the lead
   headline. `published_at` defaults to now, so a fresh post takes the top slot. To
   add an article without moving the headline, backdate `published_at` to before the

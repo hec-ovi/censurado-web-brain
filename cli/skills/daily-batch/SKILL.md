@@ -32,15 +32,16 @@ pieces, and a front page you can no longer reason about. If the batch is large (
 four or five pieces), do it in chunks: finish a chunk, hand the human the links, and continue.
 Slower and correct beats fast and scrambled.
 
-## Verifying a piece is a VERB, not a rebuild
+## Verifying a piece is the PREVIEW link, not a rebuild or a re-check
 The `preview` step prints the live `PREVIEW:` and `NEWEST: http://localhost:8080/latest/` links
-for each piece; hand those to the human, that IS how they verify it. The generate watcher
-repaints the local site on its own within a couple of seconds. To confirm a piece is actually
-serving, use `python3 cli/censurado.py status --slug <slug>` (it resolves the live permalink and
-checks it returns 200). NEVER run `./run.sh generate`, `make generate`, `./deploy/*.sh`, or the
-test suite (`pytest` / `make test`) to make a piece appear or to check it: those touch the
-tooling, not your articles, and only burn time and loop. If a piece will not resolve, relay that
-to the human; do not debug the generator.
+for each piece; hand those to the human, that IS how they verify it, and it is the ONLY
+confirmation you need. A successful `preview` already staged the piece; the generate watcher
+repaints the local site on its own within a couple of seconds, so just open the `PREVIEW:` link.
+Do NOT re-check a piece in a loop, and NEVER run `./run.sh generate`, `make generate`,
+`./deploy/*.sh`, or the test suite (`pytest` / `make test`) to make a piece appear or to check
+it: those touch the tooling, not your articles, and only burn time and loop. Use plain
+`python3 cli/censurado.py status` only to answer "is the stack up". If a piece will not resolve,
+relay that to the human; do not debug the generator.
 
 ## Fix a piece in place; never unpublish to "fix" it
 If a published piece is wrong (title, body, tags, section), correct it with `edit <slug>` in
