@@ -74,3 +74,6 @@ scratch/
 
 # Research store (private working notes; may hold proprietary insight)
 .research/
+
+# automation run logs (local)
+automation/logs/
