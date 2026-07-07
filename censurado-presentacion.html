@@ -1,0 +1,746 @@
+<!doctype html>
+<html lang="es-AR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>El Censurado, redacción autónoma con agentes de IA</title>
+<style>
+  :root{
+    /* aligned to the El Censurado Web brand tokens */
+    --ink:#101820;
+    --ink-2:#38424b;
+    --muted:#52606d;
+    --line:#d7dce0;
+    --line-2:#aab2b9;
+    --red:#e01842;
+    --red-2:#b3123a;
+    --steel:#075f7a;
+    --steel-2:#0a6f8c;
+    --gold:#c98124;
+    --green:#1f8f6b;
+    --wash:#f4f6f8;   /* barely-there, used ONLY on tiny chips */
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;}
+  body{
+    background:#6a655d;
+    color:var(--ink);
+    font-family:"Inter",system-ui,-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    -webkit-font-smoothing:antialiased;
+    line-height:1.4;
+  }
+  .serif{font-family:Georgia,"Iowan Old Style","Times New Roman",serif;}
+
+  /* ---------- page ---------- */
+  .page{
+    position:relative;width:210mm;height:297mm;margin:10mm auto;
+    padding:15mm 16mm 12mm;background:#fff;color:var(--ink);
+    overflow:hidden;display:flex;flex-direction:column;
+    box-shadow:0 6px 30px rgba(0,0,0,.4);
+  }
+
+  /* ---------- type ---------- */
+  .kicker{font-size:8.2pt;font-weight:700;letter-spacing:.2em;text-transform:uppercase;color:var(--red);display:flex;align-items:center;gap:8px;}
+  .kicker.steel{color:var(--steel-2);}
+  .kicker::before{content:"";width:20px;height:2px;background:currentColor;display:inline-block;}
+  h1.title{font-size:34pt;line-height:1;margin:0;font-weight:600;letter-spacing:-.015em;}
+  h2.sec{font-size:20pt;line-height:1.04;margin:0;font-weight:600;letter-spacing:-.01em;}
+  .lead{font-size:10.4pt;color:var(--ink-2);max-width:66ch;}
+  .small{font-size:8.3pt;}
+  .muted{color:var(--muted);}
+
+  /* ---------- masthead ---------- */
+  .masthead{display:flex;justify-content:space-between;align-items:flex-start;gap:14px;}
+  /* El Censurado Web wordmark (reproduced from the site/panel brand) */
+  .brandmark{display:inline-flex;align-items:baseline;gap:.15em;font-family:"Inter Tight","Segoe UI",Helvetica,Arial,sans-serif;font-weight:900;line-height:.8;font-size:36pt;letter-spacing:-.01em;}
+  .brandmark .bw-el{display:inline-flex;align-items:baseline;padding:.07em .06em .05em .09em;background:var(--red);color:#101820;font-family:Impact,"Arial Black","Haettenschweiler",sans-serif;font-size:.98em;line-height:.8;border-radius:2px;}
+  .brandmark .bw-el .bw-l{display:inline-block;transform:scaleX(.82);transform-origin:left center;margin-left:-.03em;}
+  .brandmark .bw-cen{position:relative;color:var(--ink);}
+  .brandmark .bw-cen::after{content:"";position:absolute;left:-.02em;right:-.02em;top:52%;height:.08em;background:var(--red);box-shadow:0 .04em 0 rgb(16 24 32 / .5);transform:translateY(-50%);}
+  .brandmark .bw-web{color:var(--red);}
+  .brandmark .bw-web .bw-e{position:relative;display:inline-block;}
+  .brandmark .bw-web .bw-e::before{content:"";position:absolute;left:.06em;right:.02em;top:0;height:.06em;background:currentColor;transform:rotate(-8deg);}
+  .brandchip{display:flex;flex-direction:column;align-items:flex-end;gap:5px;text-align:right;font-size:7.6pt;color:var(--muted);letter-spacing:.03em;}
+  .censormark{display:inline-flex;gap:3px;align-items:center;}
+  .censormark i{display:inline-block;height:9px;border-radius:1px;background:var(--ink);}
+
+  /* ---------- icons ---------- */
+  .icon{width:1em;height:1em;stroke:currentColor;fill:none;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round;flex:none;}
+
+  /* ---------- outlined badge (low ink) ---------- */
+  .badge{width:52px;height:52px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:24px;background:#fff;border:2px solid var(--ink);color:var(--ink);}
+  .badge.red{border-color:var(--red);color:var(--red);}
+  .badge.steel{border-color:var(--steel);color:var(--steel);}
+  .ibadge{width:36px;height:36px;border-radius:9px;flex:none;display:flex;align-items:center;justify-content:center;font-size:19px;background:#fff;border:1.6px solid var(--ink);color:var(--ink);}
+  .ibadge.red{border-color:var(--red);color:var(--red);}
+  .ibadge.steel{border-color:var(--steel);color:var(--steel);}
+  .ibadge.gold{border-color:var(--gold);color:var(--gold);}
+
+  /* ---------- page 1 hero ---------- */
+  .hero{flex:1;display:flex;flex-direction:column;justify-content:center;gap:0;}
+  .flow3{display:flex;align-items:stretch;gap:0;}
+  .step{flex:1;border:1px solid var(--line);border-radius:13px;padding:15px 13px;text-align:center;display:flex;flex-direction:column;align-items:center;gap:8px;}
+  .step .snum{font-size:7.4pt;font-weight:700;letter-spacing:.16em;color:var(--muted);text-transform:uppercase;}
+  .step .sname{font-size:13pt;font-weight:650;line-height:1.05;}
+  .step .sdesc{font-size:8.8pt;color:var(--ink-2);line-height:1.32;}
+  .connect{display:flex;align-items:center;justify-content:center;width:32px;color:var(--red);}
+  .connect .icon{width:21px;height:21px;stroke-width:2.2;}
+
+  .benefits{display:grid;grid-template-columns:repeat(4,1fr);gap:9px;}
+  .bcard{border:1px solid var(--line);border-top:3px solid var(--red);border-radius:11px;padding:12px 12px;display:flex;flex-direction:column;gap:6px;}
+  .bcard.b2{border-top-color:var(--steel);}
+  .bcard.b3{border-top-color:var(--gold);}
+  .bcard.b4{border-top-color:var(--ink);}
+  .bcard .ibadge{width:30px;height:30px;font-size:16px;}
+  .bcard b{font-size:10pt;line-height:1.08;letter-spacing:-.01em;}
+  .bcard span{font-size:8.1pt;color:var(--ink-2);line-height:1.3;}
+
+  /* ---------- generic band / card ---------- */
+  .band{border:1px solid var(--line);border-radius:11px;padding:10px 12px;display:flex;align-items:center;gap:12px;}
+  .band + .band{margin-top:7px;}
+  .btext{flex:1;min-width:0;}
+  .btext h3{margin:0;font-size:11pt;font-weight:650;letter-spacing:-.01em;}
+  .btext p{margin:2px 0 0;font-size:8.5pt;color:var(--ink-2);line-height:1.3;}
+  .chips{display:flex;flex-wrap:wrap;gap:5px;margin-top:6px;align-items:center;}
+  .chip{font-size:7.7pt;font-weight:600;background:#fff;border:1px solid var(--line-2);color:var(--ink-2);border-radius:999px;padding:2.5px 9px;white-space:nowrap;}
+  .chip.steel{border-color:#b9cdd6;color:var(--steel);}
+  .chiplbl{font-size:6.9pt;font-weight:700;letter-spacing:.11em;text-transform:uppercase;color:var(--muted);margin-right:1px;}
+
+  .vflow{display:flex;justify-content:center;align-items:center;gap:8px;padding:2px 0;color:var(--red);font-size:7.5pt;font-weight:600;letter-spacing:.03em;text-transform:uppercase;}
+  .vflow .icon{width:17px;height:17px;stroke-width:2.4;}
+  .vflow.steel{color:var(--steel-2);}
+  .vflow span{color:var(--muted);}
+
+  .handoff{display:flex;align-items:center;gap:9px;margin:8px 0;font-size:7.9pt;font-weight:700;letter-spacing:.03em;color:var(--red-2);text-transform:uppercase;}
+  .handoff::before,.handoff::after{content:"";height:1px;background:repeating-linear-gradient(90deg,var(--red) 0 6px,transparent 6px 11px);flex:1;}
+
+  .dockerwrap{border:1.5px dashed var(--steel-2);border-radius:11px;padding:9px 10px;}
+  .dockerhead{display:flex;align-items:center;gap:8px;font-size:7.8pt;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:var(--steel);margin-bottom:7px;}
+  .dockerhead .icon{width:15px;height:15px;}
+  .dockerhead .cloudnote{margin-left:auto;font-weight:600;letter-spacing:.01em;text-transform:none;color:var(--steel-2);font-size:7.7pt;display:flex;align-items:center;gap:4px;}
+  .duo{display:grid;grid-template-columns:1fr 1fr;gap:8px;}
+
+  /* ---------- page 2 multiagente ---------- */
+  .orch{display:flex;flex-direction:column;align-items:stretch;}
+  .orchcard{border:1px solid var(--line);border-radius:11px;padding:10px 13px;display:flex;align-items:center;gap:11px;}
+  .orchcard.editor{border-left:3px solid var(--steel);}
+  .orchcard.portada{border-left:3px solid var(--gold);}
+  .redrow{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;}
+  .redcard{border:1px solid var(--line);border-radius:10px;padding:9px 10px;display:flex;flex-direction:column;gap:5px;}
+  .redcard .rh{display:flex;align-items:center;gap:7px;}
+  .redcard .rh .icon{width:16px;height:16px;color:var(--muted);}
+  .redcard .rname{font-size:9.4pt;font-weight:650;}
+  .redcard .rrole{font-size:7pt;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);}
+
+  .lean{font-size:6.9pt;font-weight:700;letter-spacing:.04em;text-transform:uppercase;border-radius:999px;padding:2px 7px;border:1px solid;}
+  .lean.izq{color:var(--red);border-color:#e2b3af;}
+  .lean.lib{color:var(--steel);border-color:#b9cdd6;}
+  .lean.ia{color:var(--green);border-color:#b4d2bd;}
+  .lean.alt{color:var(--gold);border-color:#e0c99a;}
+
+  .authgrid{display:grid;grid-template-columns:repeat(3,1fr);gap:9px;}
+  .authcard{border:1px solid var(--line);border-left:3px solid var(--red);border-radius:11px;padding:10px 12px;display:flex;flex-direction:column;gap:6px;}
+  .authcard.lib{border-left-color:var(--steel);}
+  .authcard.ia{border-left-color:var(--green);}
+  .authcard .an{display:flex;align-items:center;justify-content:space-between;gap:6px;}
+  .authcard .aname{font-size:10.5pt;font-weight:650;letter-spacing:-.01em;}
+  .authrow{font-size:8pt;color:var(--ink-2);line-height:1.3;}
+  .authrow b{color:var(--ink);font-weight:650;}
+  .angle{font-size:8.2pt;color:var(--ink-2);border-top:1px dashed var(--line);padding-top:6px;margin-top:1px;}
+  .angle .q{color:var(--red-2);font-style:italic;}
+  .authcard.lib .angle .q{color:var(--steel);}
+  .authcard.ia .angle .q{color:var(--green);}
+
+  .noteline{display:flex;gap:9px;align-items:flex-start;border:1px solid var(--line);border-left:3px solid var(--steel);border-radius:9px;padding:9px 11px;}
+  .noteline .icon{width:19px;height:19px;color:var(--steel-2);flex:none;margin-top:1px;}
+  .noteline p{margin:0;font-size:8.5pt;color:var(--ink-2);line-height:1.35;}
+  .noteline b{color:var(--ink);}
+
+  /* ---------- services strip ---------- */
+  .svcs{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;}
+  .svc{border:1px solid var(--line);border-radius:10px;padding:9px 10px;}
+  .svc .sh{display:flex;align-items:center;gap:7px;}
+  .svc .sh .ibadge{width:26px;height:26px;font-size:14px;border-radius:7px;}
+  .svc b{font-size:9pt;}
+  .svc code{font-family:"SF Mono",ui-monospace,Consolas,monospace;font-size:7pt;color:var(--steel);}
+  .svc p{margin:5px 0 0;font-size:7.7pt;color:var(--ink-2);line-height:1.28;}
+
+  /* ---------- page 4 loops ---------- */
+  .defrow{display:grid;grid-template-columns:repeat(3,1fr);gap:9px;}
+  .def{border:1px solid var(--line);border-top:3px solid var(--steel);border-radius:11px;padding:11px 12px;}
+  .def.d2{border-top-color:var(--red);}
+  .def.d3{border-top-color:var(--gold);}
+  .def h4{margin:0 0 4px;font-size:10pt;display:flex;align-items:center;gap:7px;letter-spacing:-.01em;}
+  .def h4 .icon{width:16px;height:16px;color:var(--steel-2);}
+  .def.d2 h4 .icon{color:var(--red);}
+  .def.d3 h4 .icon{color:var(--gold);}
+  .def p{margin:0;font-size:8.4pt;color:var(--ink-2);line-height:1.35;}
+  .def .kw{font-weight:650;color:var(--ink);}
+
+  .walk{display:flex;flex-wrap:wrap;align-items:center;gap:6px 4px;}
+  .node{display:flex;align-items:center;gap:6px;border:1px solid var(--line);border-radius:9px;padding:6px 9px;font-size:8.4pt;font-weight:600;}
+  .node .n{font-size:6.8pt;font-weight:700;color:#fff;background:var(--ink);border-radius:5px;padding:1px 5px;}
+  .node .icon{width:14px;height:14px;color:var(--steel-2);}
+  .node.loopnode{border-color:var(--red);color:var(--red-2);}
+  .node.loopnode .n{background:var(--red);}
+  .node.loopnode .icon{color:var(--red);}
+  .node.pub{border-color:var(--ink);}
+  .sep{color:var(--line-2);font-weight:700;}
+
+  .loopbox{display:flex;align-items:stretch;gap:0;border:1.4px solid var(--red);border-radius:11px;overflow:hidden;}
+  .loopbox .lside{border-right:1.4px solid var(--red);padding:11px 12px;display:flex;flex-direction:column;justify-content:center;gap:2px;width:148px;flex:none;color:var(--red-2);}
+  .loopbox .lside .icon{width:24px;height:24px;color:var(--red);margin-bottom:3px;}
+  .loopbox .lside b{font-size:10.5pt;line-height:1.05;}
+  .loopbox .lside span{font-size:7.6pt;color:var(--muted);}
+  .loopbox .lbody{padding:10px 13px;display:flex;flex-direction:column;justify-content:center;gap:7px;flex:1;}
+  .cyc{display:flex;align-items:center;gap:9px;}
+  .cyc .pill{border:1px solid #e2b3af;border-radius:8px;padding:6px 10px;font-size:8.5pt;font-weight:600;color:var(--red-2);display:flex;align-items:center;gap:7px;flex:1;}
+  .cyc .pill .icon{width:15px;height:15px;color:var(--red);}
+  .cyc .cycarrow{color:var(--red);display:flex;}
+  .cyc .cycarrow .icon{width:21px;height:21px;stroke-width:2.2;}
+  .loopbox .lbody .note{font-size:7.9pt;color:var(--ink-2);line-height:1.35;}
+
+  .autobox{border:1px solid var(--line);border-left:3px solid var(--steel);border-radius:11px;padding:11px 13px;}
+  .autobox .ahead{display:flex;align-items:center;gap:8px;margin-bottom:8px;}
+  .autobox .ahead .icon{width:18px;height:18px;color:var(--steel-2);}
+  .autobox .ahead b{font-size:11pt;letter-spacing:-.01em;}
+  .autobox .ahead .tag{margin-left:auto;font-size:7pt;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:var(--steel);border:1px solid #b9cdd6;border-radius:999px;padding:2px 9px;}
+  .chain{display:flex;align-items:center;flex-wrap:wrap;gap:5px 0;}
+  .cstep{border:1px solid var(--line);border-radius:8px;padding:6px 9px;font-size:8pt;font-weight:600;color:var(--ink-2);display:flex;align-items:center;gap:6px;}
+  .cstep .icon{width:14px;height:14px;color:var(--steel-2);}
+  .carrow{color:var(--steel-2);padding:0 5px;display:flex;}
+  .carrow .icon{width:15px;height:15px;stroke-width:2.4;}
+  .autobox .foot{margin-top:8px;font-size:8pt;color:var(--ink-2);line-height:1.32;}
+
+  .close{border:1px solid var(--ink);border-radius:11px;padding:13px 16px;display:flex;align-items:center;gap:16px;}
+  .close .big{font-size:15pt;font-weight:600;line-height:1.08;letter-spacing:-.01em;}
+  .close .vlist{display:flex;gap:6px;margin-top:6px;flex-wrap:wrap;}
+  .close .vlist span{font-size:7.6pt;font-weight:600;border:1px solid var(--line-2);border-radius:999px;padding:2px 9px;color:var(--ink-2);}
+  .close .cta{margin-left:auto;text-align:right;}
+  .close .cta .url{font-size:14pt;font-weight:700;color:var(--red);}
+  .close .cta .u2{font-size:7.6pt;color:var(--muted);letter-spacing:.02em;}
+
+  /* ---------- page 3 agentic detail ---------- */
+  .layerlbl{font-size:6.9pt;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:var(--muted);margin:0 0 5px;}
+  .parallel{position:relative;}
+  .parallel .ribbon{position:absolute;top:-8px;left:50%;transform:translateX(-50%);font-size:6.7pt;font-weight:700;letter-spacing:.13em;text-transform:uppercase;color:var(--steel);background:#fff;border:1px solid #b9cdd6;border-radius:999px;padding:2px 10px;z-index:2;}
+  .agentrow{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;border:1.4px dashed var(--steel-2);border-radius:11px;padding:13px 9px 9px;}
+  .agentcard{border:1px solid var(--line);border-top:3px solid var(--steel);border-radius:9px;padding:8px 9px;display:flex;flex-direction:column;gap:2px;}
+  .agentcard .ah{display:flex;align-items:center;gap:6px;font-size:6.9pt;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);}
+  .agentcard .ah .icon{width:13px;height:13px;color:var(--steel-2);}
+  .agentcard .aname2{font-size:9.4pt;font-weight:650;}
+  .agentcard .aflow{font-size:7.3pt;color:var(--ink-2);}
+
+  .steps{display:flex;flex-direction:column;gap:6px;}
+  .stepitem{display:flex;gap:10px;align-items:flex-start;border:1px solid var(--line);border-radius:9px;padding:7px 10px;}
+  .stepitem.loop{border-color:var(--red);}
+  .snum2{width:21px;height:21px;border-radius:50%;flex:none;border:1.6px solid var(--steel);color:var(--steel);display:flex;align-items:center;justify-content:center;font-size:7.6pt;font-weight:700;margin-top:1px;}
+  .stepitem.loop .snum2{border-color:var(--red);color:var(--red);}
+  .sbody{flex:1;min-width:0;}
+  .sbody .st{font-size:9pt;font-weight:650;display:flex;align-items:center;gap:7px;}
+  .sbody .st .icon{width:14px;height:14px;color:var(--steel-2);}
+  .stepitem.loop .st .icon{color:var(--red);}
+  .sbody .sd{font-size:7.9pt;color:var(--ink-2);line-height:1.28;margin-top:1px;}
+  .stag{font-size:6.5pt;font-weight:700;letter-spacing:.05em;text-transform:uppercase;border:1px solid var(--line-2);border-radius:999px;padding:1.5px 7px;color:var(--muted);white-space:nowrap;align-self:center;flex:none;}
+  .stag.src{color:var(--steel);border-color:#b9cdd6;}
+  .stag.rev{color:var(--red);border-color:#e2b3af;}
+
+  /* ---------- footer ---------- */
+  .foot-rule{margin-top:auto;padding-top:8px;border-top:1.5px solid var(--ink);display:flex;justify-content:space-between;align-items:center;font-size:7.3pt;color:var(--muted);letter-spacing:.03em;}
+  .foot-rule .pg{font-weight:700;color:var(--ink);}
+  .aviso{font-style:italic;}
+
+  /* ---------- screen tools ---------- */
+  .toolbar{position:fixed;right:16px;bottom:16px;z-index:50;}
+  .toolbar button{font:600 10pt/1 system-ui,sans-serif;color:#fff;background:var(--red);border:none;padding:11px 16px;border-radius:999px;box-shadow:0 4px 16px rgba(0,0,0,.35);cursor:pointer;}
+  .toolbar button:hover{background:var(--red-2);}
+
+  @media print{
+    body{background:#fff;}
+    .page{margin:0;box-shadow:none;page-break-after:always;}
+    .page:last-child{page-break-after:auto;}
+    .toolbar{display:none;}
+    *{-webkit-print-color-adjust:exact;print-color-adjust:exact;}
+  }
+  @page{size:A4;margin:0;}
+</style>
+</head>
+<body>
+
+<!-- ================= ICON SPRITE ================= -->
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <symbol id="ic-user" viewBox="0 0 24 24"><circle cx="12" cy="8" r="4"/><path d="M4 20c0-4 4-6 8-6s8 2 8 6"/></symbol>
+  <symbol id="ic-users" viewBox="0 0 24 24"><circle cx="9" cy="8" r="3.4"/><path d="M3 19c0-3.3 3-5 6-5s6 1.7 6 5"/><path d="M16 5.2A3.4 3.4 0 0 1 16 12M21 19c0-2.6-1.4-4.2-3.4-4.8"/></symbol>
+  <symbol id="ic-chat" viewBox="0 0 24 24"><path d="M4 5h16v11H9l-4 3v-3H4z"/><path d="M8 9h8M8 12h5"/></symbol>
+  <symbol id="ic-bot" viewBox="0 0 24 24"><rect x="4" y="7" width="16" height="12" rx="3"/><path d="M12 4v3M9 12h.01M15 12h.01M9 16h6"/><path d="M2 12v2M22 12v2"/></symbol>
+  <symbol id="ic-globe" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3c3 3 3 15 0 18M12 3c-3 3-3 15 0 18"/></symbol>
+  <symbol id="ic-box" viewBox="0 0 24 24"><path d="M12 3l8 4.5v9L12 21l-8-4.5v-9z"/><path d="M4 7.5l8 4.5 8-4.5M12 12v9"/></symbol>
+  <symbol id="ic-server" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="7" rx="2"/><rect x="3" y="13" width="18" height="7" rx="2"/><path d="M7 7.5h.01M7 16.5h.01"/></symbol>
+  <symbol id="ic-gear" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3.2"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M19.1 4.9L17 7M7 17l-2.1 2.1"/></symbol>
+  <symbol id="ic-loop" viewBox="0 0 24 24"><path d="M4 12a8 8 0 0 1 14-5.3M20 12a8 8 0 0 1-14 5.3"/><path d="M18 3v4h-4M6 21v-4h4"/></symbol>
+  <symbol id="ic-clock" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></symbol>
+  <symbol id="ic-pen" viewBox="0 0 24 24"><path d="M4 20h4L19 9a2.1 2.1 0 0 0-3-3L5 17z"/><path d="M14 8l3 3"/></symbol>
+  <symbol id="ic-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="M20 20l-4-4"/></symbol>
+  <symbol id="ic-shield" viewBox="0 0 24 24"><path d="M12 3l7 3v5c0 4.5-3 8-7 10-4-2-7-5.5-7-10V6z"/><path d="M9 12l2 2 4-4"/></symbol>
+  <symbol id="ic-image" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="8.5" cy="9.5" r="1.6"/><path d="M4 17l5-5 4 4 3-3 4 4"/></symbol>
+  <symbol id="ic-brain" viewBox="0 0 24 24"><path d="M9 4a3 3 0 0 0-3 3 3 3 0 0 0-1 5 3 3 0 0 0 2 4 3 3 0 0 0 5 1V4.5A2.5 2.5 0 0 0 9 4z"/><path d="M15 4a3 3 0 0 1 3 3 3 3 0 0 1 1 5 3 3 0 0 1-2 4 3 3 0 0 1-5 1"/></symbol>
+  <symbol id="ic-down" viewBox="0 0 24 24"><path d="M12 4v15M6 13l6 6 6-6"/></symbol>
+  <symbol id="ic-right" viewBox="0 0 24 24"><path d="M4 12h15M13 6l6 6-6 6"/></symbol>
+  <symbol id="ic-bolt" viewBox="0 0 24 24"><path d="M13 2L4 14h6l-1 8 9-12h-6z"/></symbol>
+  <symbol id="ic-cloud" viewBox="0 0 24 24"><path d="M7 18a4 4 0 0 1-.5-8A6 6 0 0 1 18 9.5 3.5 3.5 0 0 1 17.5 18z"/></symbol>
+  <symbol id="ic-phone" viewBox="0 0 24 24"><rect x="7" y="3" width="10" height="18" rx="2.5"/><path d="M11 18h2"/></symbol>
+  <symbol id="ic-hand" viewBox="0 0 24 24"><path d="M6 10V6a1.5 1.5 0 0 1 3 0v3M9 9V4.5a1.5 1.5 0 0 1 3 0V9M12 9V5.5a1.5 1.5 0 0 1 3 0V11M15 10.5a1.5 1.5 0 0 1 3 0V15a6 6 0 0 1-6 6h-1a6 6 0 0 1-5.2-3l-2-3.4a1.6 1.6 0 0 1 2.7-1.6L6 15"/></symbol>
+  <symbol id="ic-lock" viewBox="0 0 24 24"><rect x="5" y="10" width="14" height="10" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/></symbol>
+  <symbol id="ic-split" viewBox="0 0 24 24"><path d="M12 3v6M12 9c0 3-4 3-4 6v3M12 9c0 3 4 3 4 6v3"/><circle cx="12" cy="3.5" r="1.4"/><circle cx="8" cy="20" r="1.4"/><circle cx="16" cy="20" r="1.4"/></symbol>
+  <symbol id="ic-scale" viewBox="0 0 24 24"><path d="M12 4v16M7 20h10M6 7l-3 6h6zM6 7l6-1M18 7l-3 6h6zM18 7l-6-1"/></symbol>
+</svg>
+
+
+<!-- ======================================================= -->
+<!-- PAGE 1 : LA IDEA                                         -->
+<!-- ======================================================= -->
+<section class="page">
+  <div class="masthead">
+    <div>
+      <div class="kicker">Presentación</div>
+      <div class="brandmark" style="margin-top:10px;" aria-label="El Censurado Web">
+        <span class="bw-el"><span>E</span><span class="bw-l">L</span></span>
+        <span class="bw-cen">censurado</span>
+        <span class="bw-web">W<span class="bw-e">e</span>b</span>
+      </div>
+      <p class="lead serif" style="font-size:12.5pt;margin-top:11px;">
+        Un diario que se escribe, se ilustra y se publica casi solo. Vos das la orden;
+        un <b>equipo de agentes de IA</b> hace el resto.
+      </p>
+    </div>
+    <div class="brandchip">
+      <div class="censormark"><i style="width:14px"></i><i style="width:22px"></i><i style="width:10px"></i></div>
+      <div>Redacción autónoma<br>con múltiples agentes</div>
+      <div style="color:var(--red);font-weight:700;letter-spacing:.06em">elcensuradoweb.com</div>
+    </div>
+  </div>
+
+  <div class="hero">
+    <div class="kicker" style="margin-bottom:7px;">Cómo funciona, en 3 pasos</div>
+    <div class="flow3">
+      <div class="step">
+        <div class="badge red"><svg class="icon"><use href="#ic-user"/></svg></div>
+        <div class="snum">Paso 1 · Vos</div>
+        <div class="sname serif">Le hablás</div>
+        <div class="sdesc">Desde WhatsApp, Telegram o la app del CLI. "Cubrí las noticias de hoy."</div>
+      </div>
+      <div class="connect"><svg class="icon"><use href="#ic-right"/></svg></div>
+      <div class="step">
+        <div class="badge"><svg class="icon"><use href="#ic-users"/></svg></div>
+        <div class="snum">Paso 2 · Los agentes</div>
+        <div class="sname serif">Trabajan en equipo</div>
+        <div class="sdesc">Un editor reparte; varios redactores escriben, cada uno con su autor, y se corrigen solos.</div>
+      </div>
+      <div class="connect"><svg class="icon"><use href="#ic-right"/></svg></div>
+      <div class="step">
+        <div class="badge steel"><svg class="icon"><use href="#ic-globe"/></svg></div>
+        <div class="snum">Paso 3 · Tu web</div>
+        <div class="sname serif">Se publica</div>
+        <div class="sdesc">Las notas aparecen en tu sitio, elcensuradoweb.com, listas para leer.</div>
+      </div>
+    </div>
+
+    <div class="kicker" style="margin:6mm 0 0;">Por qué conviene</div>
+    <div class="benefits" style="margin-top:2mm;">
+      <div class="bcard">
+        <div class="ibadge red"><svg class="icon"><use href="#ic-users"/></svg></div>
+        <b>Sistema multiagente</b>
+        <span>Un agente editor coordina y muchos redactores escriben, cada uno un autor distinto.</span>
+      </div>
+      <div class="bcard b2">
+        <div class="ibadge steel"><svg class="icon"><use href="#ic-cloud"/></svg></div>
+        <b>Local o en la nube, 24/7</b>
+        <span>Corre en tu computadora o en un servidor, siempre prendido.</span>
+      </div>
+      <div class="bcard b3">
+        <div class="ibadge gold"><svg class="icon"><use href="#ic-clock"/></svg></div>
+        <b>Lotes automáticos</b>
+        <span>Publica varias noticias por día, de varios autores, sin nadie mirando.</span>
+      </div>
+      <div class="bcard b4">
+        <div class="ibadge"><svg class="icon"><use href="#ic-bolt"/></svg></div>
+        <b>Cuota opcional</b>
+        <span>Corre con la suscripción del CLI que ya pagás, sin factura de API por nota. ¿Querés más potencia? Sumás cuota cuando la necesitás.</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="foot-rule">
+    <span>El Censurado Web &nbsp;·&nbsp; Redacción autónoma con agentes de IA</span>
+    <span class="pg">01 / 05</span>
+  </div>
+</section>
+
+
+<!-- ======================================================= -->
+<!-- PAGE 2 : EL SISTEMA MULTIAGENTE                          -->
+<!-- ======================================================= -->
+<section class="page">
+  <div class="kicker steel">El sistema multiagente</div>
+  <h2 class="sec serif" style="margin-top:8px;">Muchos agentes, un diario</h2>
+  <p class="lead" style="font-size:9.6pt;margin-top:6px;">
+    No es un agente solo: es un equipo. Un agente <b>editor</b> barre la actualidad y reparte el trabajo;
+    un agente <b>redactor por nota</b> escribe cada tema encarnando a un autor distinto; y un agente de
+    <b>portada</b> ordena la tapa. Cada redactor corre por su cuenta y se revisa a sí mismo.
+  </p>
+
+  <div class="orch" style="margin-top:11px;">
+    <div class="orchcard editor">
+      <div class="ibadge steel"><svg class="icon"><use href="#ic-search"/></svg></div>
+      <div class="btext">
+        <h3>Agente editor</h3>
+        <p>Barre las noticias, agrupa lo que es la misma historia y le asigna cada tema al autor cuyo tema encaja.</p>
+      </div>
+    </div>
+
+    <div class="vflow steel"><svg class="icon"><use href="#ic-split"/></svg><span>reparte: un agente redactor por nota</span></div>
+
+    <div class="redrow">
+      <div class="redcard">
+        <div class="rh"><svg class="icon"><use href="#ic-pen"/></svg><span class="rrole">Redactor</span></div>
+        <div class="rname">Camila Duarte</div>
+        <span class="lean izq" style="align-self:flex-start">Izquierda</span>
+      </div>
+      <div class="redcard">
+        <div class="rh"><svg class="icon"><use href="#ic-pen"/></svg><span class="rrole">Redactor</span></div>
+        <div class="rname">Tomás Reinoso</div>
+        <span class="lean lib" style="align-self:flex-start">Libertario</span>
+      </div>
+      <div class="redcard">
+        <div class="rh"><svg class="icon"><use href="#ic-pen"/></svg><span class="rrole">Redactor</span></div>
+        <div class="rname">Sofía Vera</div>
+        <span class="lean ia" style="align-self:flex-start">IA / Técnica</span>
+      </div>
+    </div>
+
+    <div class="vflow steel"><svg class="icon"><use href="#ic-down"/></svg><span>cada nota, ya publicada</span></div>
+
+    <div class="orchcard portada">
+      <div class="ibadge gold"><svg class="icon"><use href="#ic-globe"/></svg></div>
+      <div class="btext">
+        <h3>Agente de portada</h3>
+        <p>Cuando el lote terminó, arma la tapa del día: qué va arriba, qué se destaca, en qué orden.</p>
+      </div>
+    </div>
+  </div>
+
+  <div class="noteline" style="margin-top:12px;">
+    <svg class="icon"><use href="#ic-users"/></svg>
+    <p><b>Un lote = muchas noticias a la vez.</b> Le pedís "las noticias de hoy" y el sistema arma un lote de 3 a 6 notas, cada una de un autor distinto y con su propia investigación. Escalá a varios autores en paralelo, o dejá que el lote corra solo todos los días.</p>
+  </div>
+
+  <div class="kicker" style="margin-top:14px;">Autores con sesgo, a propósito</div>
+  <p class="lead" style="font-size:9pt;margin:6px 0 9px;">
+    Cada autor es una persona ficticia con voz propia. El sesgo no es un accidente: lo <b>hereda de las fuentes
+    que vos le asignás</b> y de su personalidad. La misma noticia, contada por dos autores, da dos notas distintas.
+  </p>
+
+  <div class="authgrid">
+    <div class="authcard">
+      <div class="an"><span class="aname serif">Camila Duarte</span><span class="lean izq">Izquierda</span></div>
+      <div class="authrow"><b>Fuentes:</b> Página/12, El Destape, Tiempo Argentino</div>
+      <div class="authrow"><b>Personalidad:</b> combativa, mirada social</div>
+      <div class="angle">Ángulo: <span class="q">"el costo humano de la medida"</span></div>
+    </div>
+    <div class="authcard lib">
+      <div class="an"><span class="aname serif">Tomás Reinoso</span><span class="lean lib">Libertario</span></div>
+      <div class="authrow"><b>Fuentes:</b> Infobae, La Nación, prensa promercado</div>
+      <div class="authrow"><b>Personalidad:</b> oficialista, promercado</div>
+      <div class="angle">Ángulo: <span class="q">"defiende el rumbo del gobierno"</span></div>
+    </div>
+    <div class="authcard ia">
+      <div class="an"><span class="aname serif">Sofía Vera</span><span class="lean ia">IA / Técnica</span></div>
+      <div class="authrow"><b>Fuentes:</b> arXiv, blogs técnicos, papers</div>
+      <div class="authrow"><b>Personalidad:</b> sobria, sin grieta</div>
+      <div class="angle">Ángulo: <span class="q">"cómo funciona por dentro"</span></div>
+    </div>
+  </div>
+  <p class="small muted" style="margin-top:7px;">Y los que quieras: económico, cultural, conspiranoico. Cada uno con sus fuentes y su tono.</p>
+
+  <div class="foot-rule">
+    <span>El Censurado Web &nbsp;·&nbsp; Sistema multiagente y autores</span>
+    <span class="pg">02 / 05</span>
+  </div>
+</section>
+
+
+<!-- ======================================================= -->
+<!-- PAGE 3 : LA PARTE AGENTICA EN DETALLE                    -->
+<!-- ======================================================= -->
+<section class="page">
+  <div class="kicker steel">La parte agéntica, en detalle</div>
+  <h2 class="sec serif" style="margin-top:8px;">Cómo se reparte y cómo escribe cada agente</h2>
+  <p class="lead" style="font-size:9.4pt;margin-top:6px;">
+    La parte agéntica tiene capas. Arriba, un agente planifica el lote y <b>levanta varios agentes a la vez</b>.
+    Abajo, cada uno escribe una nota corriendo el mismo flujo, con sus fuentes y sus revisiones.
+  </p>
+
+  <div style="margin-top:10px;">
+    <div class="layerlbl">Capa 1 · Lote (batch)</div>
+    <div class="band">
+      <div class="ibadge steel"><svg class="icon"><use href="#ic-split"/></svg></div>
+      <div class="btext"><h3>Agente editor</h3><p>Barre la actualidad, arma el lote y levanta un agente redactor por nota.</p></div>
+    </div>
+
+    <div class="vflow steel"><svg class="icon"><use href="#ic-down"/></svg><span>los levanta al mismo tiempo</span></div>
+
+    <div class="layerlbl">Capa 2 · Redactores en paralelo</div>
+    <div class="parallel">
+      <div class="agentrow">
+        <div class="ribbon">En paralelo</div>
+        <div class="agentcard">
+          <div class="ah"><svg class="icon"><use href="#ic-bot"/></svg> Agente</div>
+          <div class="aname2">Camila</div>
+          <div class="aflow">corre el flujo completo</div>
+        </div>
+        <div class="agentcard">
+          <div class="ah"><svg class="icon"><use href="#ic-bot"/></svg> Agente</div>
+          <div class="aname2">Tomás</div>
+          <div class="aflow">corre el flujo completo</div>
+        </div>
+        <div class="agentcard">
+          <div class="ah"><svg class="icon"><use href="#ic-bot"/></svg> Agente</div>
+          <div class="aname2">Sofía</div>
+          <div class="aflow">corre el flujo completo</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="vflow steel"><svg class="icon"><use href="#ic-down"/></svg><span>cuando todos terminan</span></div>
+
+    <div class="layerlbl">Capa 3 · Portada</div>
+    <div class="band">
+      <div class="ibadge gold"><svg class="icon"><use href="#ic-globe"/></svg></div>
+      <div class="btext"><h3>Agente de portada</h3><p>Arma la tapa del día con todo lo que salió: qué va arriba y en qué orden.</p></div>
+    </div>
+  </div>
+
+  <div class="kicker" style="margin-top:12px;">Adentro de un agente redactor: su flujo</div>
+  <div class="steps" style="margin-top:8px;">
+    <div class="stepitem">
+      <div class="snum2">1</div>
+      <div class="sbody"><div class="st">Elegí el autor</div><div class="sd">Carga la voz, el sesgo y las fuentes del autor desde el backend.</div></div>
+    </div>
+    <div class="stepitem">
+      <div class="snum2">2</div>
+      <div class="sbody"><div class="st"><svg class="icon"><use href="#ic-search"/></svg> Investigá y cruzá fuentes</div><div class="sd">Lee las fuentes del autor (feeds y sitemaps, frescos al minuto) y busca en la web; cruza varias fuentes independientes de distinto sesgo (izquierda, neutral, derecha) y arma un registro.</div></div>
+      <span class="stag src">Fuentes</span>
+    </div>
+    <div class="stepitem">
+      <div class="snum2">3</div>
+      <div class="sbody"><div class="st">Esquema</div><div class="sd">Fija el ángulo y la estructura antes de escribir.</div></div>
+    </div>
+    <div class="stepitem">
+      <div class="snum2">4</div>
+      <div class="sbody"><div class="st"><svg class="icon"><use href="#ic-pen"/></svg> Redacción</div><div class="sd">Escribe la nota en la voz del autor.</div></div>
+    </div>
+    <div class="stepitem">
+      <div class="snum2">5</div>
+      <div class="sbody"><div class="st"><svg class="icon"><use href="#ic-shield"/></svg> Evaluación (puerta)</div><div class="sd">Se juzga en 6 dimensiones: cruce de fuentes, acentos y ñ, entidades, título honesto (máx. 5 palabras), densidad y cero relleno o clichés de IA.</div></div>
+      <span class="stag rev">Revisión</span>
+    </div>
+    <div class="stepitem loop">
+      <div class="snum2">6</div>
+      <div class="sbody"><div class="st"><svg class="icon"><use href="#ic-loop"/></svg> Corrección (bucle)</div><div class="sd">Reescribe lo que falló y vuelve a evaluar, hasta pasar las seis o agotar los intentos.</div></div>
+      <span class="stag rev">Bucle</span>
+    </div>
+    <div class="stepitem">
+      <div class="snum2">7</div>
+      <div class="sbody"><div class="st"><svg class="icon"><use href="#ic-shield"/></svg> Verificación de datos</div><div class="sd">Chequea los hechos centrales antes de seguir.</div></div>
+      <span class="stag rev">Revisión</span>
+    </div>
+    <div class="stepitem">
+      <div class="snum2">8</div>
+      <div class="sbody"><div class="st"><svg class="icon"><use href="#ic-image"/></svg> Enriquecido y etiquetado</div><div class="sd">Suma video, tweets citados y notas relacionadas; corrige ortografía y etiqueta personas y organizaciones.</div></div>
+    </div>
+    <div class="stepitem">
+      <div class="snum2">9</div>
+      <div class="sbody"><div class="st"><svg class="icon"><use href="#ic-globe"/></svg> Ilustración y publicación</div><div class="sd">Genera la foto de portada en ComfyUI y postea la nota al backend por la API.</div></div>
+    </div>
+  </div>
+
+  <div class="foot-rule">
+    <span>El Censurado Web &nbsp;·&nbsp; La parte agéntica en detalle</span>
+    <span class="pg">03 / 05</span>
+  </div>
+</section>
+
+
+<!-- ======================================================= -->
+<!-- PAGE 4 : EL RECORRIDO CAPA POR CAPA                      -->
+<!-- ======================================================= -->
+<section class="page">
+  <div class="kicker">El recorrido de punta a punta</div>
+  <h2 class="sec serif" style="margin-top:8px;">Capa por capa</h2>
+  <p class="lead" style="font-size:9.4pt;margin-top:6px;">
+    De la persona a la página publicada. El humano manda arriba; a partir de la línea, todo lo hacen los agentes.
+  </p>
+
+  <div style="margin-top:10px;">
+    <div class="band">
+      <div class="ibadge red"><svg class="icon"><use href="#ic-user"/></svg></div>
+      <div class="btext"><h3>Humano / Operador</h3><p>Das la orden y, si querés, aprobás la nota antes de publicar. Poco más.</p></div>
+    </div>
+    <div class="vflow"><svg class="icon"><use href="#ic-down"/></svg></div>
+    <div class="band">
+      <div class="ibadge"><svg class="icon"><use href="#ic-chat"/></svg></div>
+      <div class="btext">
+        <h3>Cómo le hablás</h3>
+        <p>Desde el celular o el navegador. No hace falta estar frente a la máquina.</p>
+        <div class="chips">
+          <span class="chip">WhatsApp</span><span class="chip">Telegram</span>
+          <span class="chip">App de Claude</span><span class="chip">App de Codex</span><span class="chip">Control remoto</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="handoff"><svg class="icon" style="width:14px;height:14px;color:var(--red)"><use href="#ic-down"/></svg>&nbsp;Acá toman el control los agentes</div>
+
+    <div class="band">
+      <div class="ibadge steel"><svg class="icon"><use href="#ic-bot"/></svg></div>
+      <div class="btext">
+        <h3>Los agentes (el CLI)</h3>
+        <p>Cualquier modelo, dentro de cualquier CLI. Usan una sola herramienta: los "verbos" de Censurado (investigar, escribir, publicar).</p>
+        <div class="chips">
+          <span class="chiplbl">Modelo</span>
+          <span class="chip steel">Claude</span><span class="chip steel">Codex (GPT)</span><span class="chip steel">Gemini</span><span class="chip steel">Kimi</span><span class="chip steel">Modelo local</span>
+        </div>
+        <div class="chips">
+          <span class="chiplbl">CLI</span>
+          <span class="chip">Claude oficial</span><span class="chip">Codex oficial</span><span class="chip">Hermes</span><span class="chip">OpenCode</span><span class="chip">OpenClaw</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="vflow steel"><svg class="icon"><use href="#ic-down"/></svg></div>
+
+    <div class="dockerwrap">
+      <div class="dockerhead">
+        <svg class="icon"><use href="#ic-box"/></svg> Grupo Docker: el cerebro + el backend
+        <span class="cloudnote"><svg class="icon" style="width:12px;height:12px"><use href="#ic-cloud"/></svg> en la nube o local, 24/7</span>
+      </div>
+      <div class="duo">
+        <div class="band" style="align-items:flex-start">
+          <div class="ibadge steel"><svg class="icon"><use href="#ic-brain"/></svg></div>
+          <div class="btext"><h3>Brain</h3><p>La receta editorial y los verbos que los agentes ejecutan. No guarda datos ni corre un modelo.</p></div>
+        </div>
+        <div class="band" style="align-items:flex-start">
+          <div class="ibadge"><svg class="icon"><use href="#ic-server"/></svg></div>
+          <div class="btext"><h3>Backend + Panel</h3><p>Los datos y la API. Trae un <b>panel de administración</b> web, por si querés editar a mano.</p></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="vflow steel"><svg class="icon"><use href="#ic-down"/></svg></div>
+
+    <div class="band" style="border-color:var(--ink)">
+      <div class="ibadge red"><svg class="icon"><use href="#ic-globe"/></svg></div>
+      <div class="btext"><h3>Publicación directa &nbsp;→&nbsp; elcensuradoweb.com</h3><p>Se genera el sitio y se publica en tu web. Sin pasos manuales en el medio.</p></div>
+    </div>
+  </div>
+
+  <div class="kicker steel" style="margin-top:13px;">Adentro del Docker: cuatro servicios</div>
+  <div class="svcs" style="margin-top:8px;">
+    <div class="svc"><div class="sh"><div class="ibadge"><svg class="icon"><use href="#ic-server"/></svg></div><div><b>Backend</b> <code>publish</code></div></div><p>Guarda todo y sirve el panel. La única puerta de escritura.</p></div>
+    <div class="svc"><div class="sh"><div class="ibadge steel"><svg class="icon"><use href="#ic-gear"/></svg></div><div><b>Generador</b> <code>generate</code></div></div><p>Reconstruye el sitio a los pocos segundos de cada publicación.</p></div>
+    <div class="svc"><div class="sh"><div class="ibadge red"><svg class="icon"><use href="#ic-globe"/></svg></div><div><b>Sitio</b> <code>site</code></div></div><p>Sirve el portal. Lo único expuesto; después sube a la web pública.</p></div>
+    <div class="svc"><div class="sh"><div class="ibadge gold"><svg class="icon"><use href="#ic-image"/></svg></div><div><b>Imágenes</b> <code>comfyui</code></div></div><p>Genera la foto de cada nota. Opcional: solo si tenés GPU.</p></div>
+  </div>
+
+  <div class="foot-rule">
+    <span>El Censurado Web &nbsp;·&nbsp; Arquitectura de extremo a extremo</span>
+    <span class="pg">04 / 05</span>
+  </div>
+</section>
+
+
+<!-- ======================================================= -->
+<!-- PAGE 5 : LOS BUCLES + CIERRE                             -->
+<!-- ======================================================= -->
+<section class="page">
+  <div class="kicker steel">La parte agéntica</div>
+  <h2 class="sec serif" style="margin-top:8px;">Los bucles: cómo se corrigen solos</h2>
+
+  <div class="defrow" style="margin-top:11px;">
+    <div class="def">
+      <h4 class="serif"><svg class="icon"><use href="#ic-users"/></svg> Sistema multiagente</h4>
+      <p>Varios agentes se <span class="kw">reparten el trabajo</span> y se pasan la posta: uno edita, otros redactan, otro arma la tapa.</p>
+    </div>
+    <div class="def d2">
+      <h4 class="serif"><svg class="icon"><use href="#ic-right"/></svg> Flujo agéntico</h4>
+      <p>Una <span class="kw">receta de pasos fijos</span> que el agente sigue en orden, uno a uno. No ve toda la receta de golpe, así no se saltea ninguno.</p>
+    </div>
+    <div class="def d3">
+      <h4 class="serif"><svg class="icon"><use href="#ic-loop"/></svg> Bucle agéntico</h4>
+      <p>El agente <span class="kw">repite un paso</span> (escribir, revisar, corregir) hasta que el resultado pasa la prueba. Se juzga a sí mismo.</p>
+    </div>
+  </div>
+
+  <div class="kicker" style="margin-top:14px;">El bucle que garantiza la calidad</div>
+
+  <div class="loopbox" style="margin-top:9px;">
+    <div class="lside">
+      <svg class="icon"><use href="#ic-loop"/></svg>
+      <b class="serif">El bucle de calidad</b>
+      <span>se autorrevisa hasta aprobar</span>
+    </div>
+    <div class="lbody">
+      <div class="cyc">
+        <div class="pill"><svg class="icon"><use href="#ic-shield"/></svg> EVALÚA: 6 pruebas (fuentes cruzadas de varios sesgos, ortografía, título honesto, densidad, sin relleno)</div>
+        <div class="cycarrow"><svg class="icon"><use href="#ic-loop"/></svg></div>
+        <div class="pill"><svg class="icon"><use href="#ic-pen"/></svg> RE-ESCRIBE lo que falló, en su propia voz</div>
+      </div>
+      <div class="note">Si alguna prueba falla, la nota <b>no se publica</b>: vuelve a escribirse y se evalúa otra vez, hasta pasar las seis o agotar los intentos. El operador no revisa nada de esto.</div>
+    </div>
+  </div>
+
+  <div class="autobox" style="margin-top:12px;">
+    <div class="ahead">
+      <svg class="icon"><use href="#ic-clock"/></svg>
+      <b class="serif">El bucle diario, automático</b>
+      <span class="tag">Sin operador</span>
+    </div>
+    <div class="chain">
+      <div class="cstep"><svg class="icon"><use href="#ic-clock"/></svg> Automatizador (cron / n8n)</div>
+      <span class="carrow"><svg class="icon"><use href="#ic-right"/></svg></span>
+      <div class="cstep"><svg class="icon"><use href="#ic-search"/></svg> El editor barre el día</div>
+      <span class="carrow"><svg class="icon"><use href="#ic-right"/></svg></span>
+      <div class="cstep">Asigna a cada autor</div>
+      <span class="carrow"><svg class="icon"><use href="#ic-right"/></svg></span>
+      <div class="cstep"><svg class="icon"><use href="#ic-pen"/></svg> Cada redactor escribe su nota</div>
+      <span class="carrow"><svg class="icon"><use href="#ic-right"/></svg></span>
+      <div class="cstep"><svg class="icon"><use href="#ic-globe"/></svg> Arma la portada</div>
+    </div>
+    <div class="foot">La ronda entera se dispara sola, varias veces al día. Cada nota pasa igual su puerta de calidad. Salir a producción sigue siendo una decisión humana, por seguridad.</div>
+  </div>
+
+  <div class="close" style="margin-top:13px;">
+    <div>
+      <div class="big serif">Le hablás. Se publica.</div>
+      <div class="vlist">
+        <span>De punta a punta</span><span>Multiagente</span><span>Local o nube</span><span>Se automatiza</span><span>Cuota opcional</span>
+      </div>
+    </div>
+    <div class="cta">
+      <div class="url">elcensuradoweb.com</div>
+      <div class="u2">Contenido generado por IA con personas ficticias</div>
+    </div>
+  </div>
+
+  <div class="foot-rule">
+    <span class="aviso">Aviso editorial: sitio abiertamente generado por IA; los autores son personas ficticias.</span>
+    <span class="pg">05 / 05</span>
+  </div>
+</section>
+
+<div class="toolbar">
+  <button onclick="window.print()">Imprimir / Guardar como PDF</button>
+</div>
+
+</body>
+</html>
