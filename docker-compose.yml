@@ -215,6 +215,63 @@ services:
       - "${SITE_PORT:-8080}:80"
     networks: [censurado]
 
+  # --- tg-bridge: OPT-IN Telegram bot front-end for a headless agent (codex | agy) -----
+  # Gated behind the `bridge` profile, so a plain `up` never starts it. A Telegram bot
+  # fronts the agent: an allow-listed user messages the bot, the bridge runs the selected
+  # CLI against this repo + the live backend, and replies in chat. Auth for the agents is
+  # set up OUTSIDE the bridge (host ~/.codex and ~/.gemini, mounted read-write for token
+  # refresh); the bridge only runs the CLI and reports failures. It runs as your HOST uid
+  # (TG_UID/TG_GID) so those mounts + the ./data/tg-bridge dir are readable/writable.
+  # A tiny admin panel (pick agent, edit allowlist, show bot QR) is localhost-only.
+  # Bring up:  docker compose --profile bridge up -d --build tg-bridge
+  tg-bridge:
+    profiles: ["bridge"]
+    build:
+      context: ./bridge/telegram
+      args:
+        TG_AGENT_INSTALL: ${TG_AGENT_INSTALL:-npm i -g @openai/codex @google/gemini-cli && ln -sf $(which gemini) /usr/local/bin/agy}
+    image: censurado-tg-bridge:local
+    container_name: censurado-tg-bridge
+    restart: unless-stopped
+    user: "${TG_UID:-1000}:${TG_GID:-1000}"
+    environment:
+      # Soft defaults so a plain `up` (no bridge profile) never fails to interpolate; the
+      # router itself fails loudly at startup if the token is missing when you DO start it.
+      TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
+      TG_ADMIN_TOKEN: ${TG_ADMIN_TOKEN:-}
+      TG_ALLOWED_IDS: ${TG_ALLOWED_IDS:-}
+      DEFAULT_AGENT: ${DEFAULT_AGENT:-codex}
+      REPO_DIR: /repo
+      DATA_DIR: /data
+      HOME: /data
+      CODEX_HOME: /data/.codex
+      AGENT_TIMEOUT: ${TG_AGENT_TIMEOUT:-1800}
+      TG_ADMIN_HOST: 0.0.0.0
+      # The agent's CLI reaches the backend by service name on this network.
+      CENSURADO_PUBLISH: http://publish:8082
+      CENSURADO_COMFY: http://comfyui:8188
+      CENSURADO_SITE: http://site:80
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+    volumes:
+      # This newsroom repo, READ-ONLY: the agent sees cli/SKILL.md + AGENTS.md and reads
+      # the operator token from /repo/.env, but cannot edit code.
+      - .:/repo:ro
+      # Writable state: session map, live config.json (agent + allowlist), per-chat scratch,
+      # and the agents' HOME caches. A host bind so it is owned by your uid.
+      - ${CENSURADO_DATA_DIR:-./data}/tg-bridge:/data
+      # External auth, mounted from the host (set up outside the bridge; rw for refresh).
+      # Point TG_CODEX_HOME / TG_GEMINI_HOME at your real ~/.codex and ~/.gemini in .env;
+      # the fallbacks are empty local dirs (the bridge just reports "logged out" if unset).
+      - ${TG_CODEX_HOME:-./data/tg-bridge/codex}:/data/.codex
+      - ${TG_GEMINI_HOME:-./data/tg-bridge/gemini}:/data/.gemini
+    ports:
+      # Admin panel, localhost-only (reach over host or SSH tunnel). NEVER 0.0.0.0.
+      - "127.0.0.1:${TG_PANEL_PORT:-8090}:8090"
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    tmpfs: [/tmp]
+    networks: [censurado]
+
   # There is no config-plane service: the newsroom is a stateless agentic CLI run on the
   # HOST (python3 cli/censurado.py), living in THIS repo alongside this compose. It reads
   # authors/sources from the publish backend over HTTP and the newsroom recipe
