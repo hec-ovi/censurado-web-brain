@@ -4,10 +4,13 @@ Structure the finished article into its publish fields. This is a formatting and
 step: do not rewrite the body, add facts, or change the angle. You lift the existing parts
 into the fields below and craft the sharpest honest headline and dek the facts support.
 
-Each article has four authored layers; keep them distinct, none restating another:
+Each article has three authored layers; keep them distinct, none restating another:
 
-- **title**: the most compact, arresting headline the story can honestly carry, drawn from
-  the piece. **IMPORTANT: no more than 5 words.** It renders on one line on the portada, so
+- **title**: the most compact, informative headline the story can honestly carry, drawn from
+  the piece. **IMPORTANT: no more than 5 words, and objective and informative above all** (an
+  attention hook is welcome only when it does not cost objectivity). Name a person in the title
+  ONLY when they are very well known or hold an executive office (presidente, gobernador,
+  intendente, ministro); otherwise keep the person out of the title and let the body name them. It renders on one line on the portada, so
   cut every word that is not load-bearing until only the hook is left; if it runs past five
   words you are smuggling a second idea or context the dek should carry, so cut to the single
   sharpest thing. A headline is a promise: the body must deliver
@@ -20,15 +23,12 @@ Each article has four authored layers; keep them distinct, none restating anothe
   concrete fact, strong active present-tense verb, visible stakes, tension or reversal).
   A title is ONE whole thought: never two halves spliced by a `;`, a `:`, or a dash (em,
   en, or a hyphen between clauses). If it needs a splice, it is two drafts; pick one.
-- **subtitle** (the dek): one concentrated line under the title, the single most shocking
-  true fact the story holds, the one that makes the reader need the rest. It does NOT repeat
-  the title's words or subject; it pays off the stakes the title teases and sets up the
-  opening line. Shock with the fact, not with adjectives. The same splice ban applies: no
-  `;`, no `:`, no dash separators.
-- **description** (the standfirst): a single tight paragraph, opinionated and magnetic, that
-  delivers the whole story densely from the author's point of view; a reader who stops here
-  still knows what happened, why it matters, and where the author stands. Compact but not
-  clipped, every sentence earning attention. Never a blurb about the author.
+- **description** (the bajada): one concentrated line under the title, between 20 and 30
+  words, that delivers the sharpest true fact or stakes the story holds and makes the reader
+  need the rest. It does NOT repeat the title's words or subject; it complements the title
+  with new information and sets up the opening line. Shock with the fact, not with adjectives.
+  It is ONE whole thought, never two halves spliced by a `;`, a `:`, or a dash. Do NOT write a
+  separate subtitle: the piece carries only a title and this bajada.
 - **body**: the complete Markdown body, exactly as finished. Do not truncate or summarize.
 
 Also set:

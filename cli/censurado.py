@@ -762,11 +762,11 @@ def cmd_publish(a):
     if a.dry_run:
         print(json.dumps(payload, ensure_ascii=False, indent=2))
         return 0
-    missing = [f for f, v in (("subtitle", a.subtitle), ("description", a.description))
+    missing = [f for f, v in (("description", a.description),)
                if not (v or "").strip()]
     if missing:
-        sys.stderr.write("preview needs both a --subtitle and a one-line --description. "
-                         "Add them, then run preview again.\n")
+        sys.stderr.write("preview needs a one-line --description (the bajada). "
+                         "Add it, then run preview again.\n")
         return 1
     # Any tweet card the body embeds ({{tweet:id}}) whose snapshot is not attached yet: fetch it
     # now from the id, so a correct marker always renders even if the model forgot to run `tweet`.

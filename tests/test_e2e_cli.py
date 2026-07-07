@@ -106,7 +106,10 @@ def _content_hash(slug: str) -> str:
 
 
 def _latest_count(slug: str) -> int:
-    return _http(SITE + "/latest/")[1].count(slug)
+    # Count the card link path, not a raw slug substring: each card's share links embed the
+    # article URL url-encoded (%2Fa%2F...), so the bare slug now appears several times per card.
+    # The unencoded "/a/<slug>" path appears once per card (the card-link href).
+    return _http(SITE + "/latest/")[1].count("/a/" + slug)
 
 
 def _persona(handle: str) -> dict:

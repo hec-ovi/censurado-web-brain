@@ -18,5 +18,5 @@ dash slipped in (commas, periods, or parentheses instead), and the Markdown is c
 line). This is the last plain read before the desk sees it.
 
 Keep every existing citation; add no citation to a source not in your ledger; introduce no
-new factual claim. There is no length limit; do not shorten by dropping substance, only by
-removing noise.
+new factual claim. Trim gerunds (-ando / -iendo) to a minimum, rewriting them to finite verbs.
+There is no length limit; do not shorten by dropping substance, only by removing noise.

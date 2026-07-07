@@ -219,15 +219,25 @@ def _preview_ns(**over):
     return SimpleNamespace(**base)
 
 
-def test_preview_refuses_without_subtitle_or_description(monkeypatch, capsys):
+def test_preview_refuses_without_description(monkeypatch, capsys):
     posted = []
     monkeypatch.setattr(cz, "_req", lambda *a, **k: (posted.append(1), (201, b"{}"))[1])
     monkeypatch.setattr(cz, "token", lambda: "t")
     rc = cz.cmd_publish(_preview_ns(subtitle="", description=""))
     out = capsys.readouterr()
     assert rc == 1
-    assert "subtitle" in out.err and "description" in out.err   # names both missing fields
-    assert not posted                                   # refused before any POST
+    assert "description" in out.err            # names the missing bajada
+    assert "subtitle" not in out.err           # subtitle is no longer required
+    assert not posted                          # refused before any POST
+
+
+def test_preview_payload_omits_empty_subtitle():
+    # Subtitles are gone: an empty subtitle is not carried into the payload, while the
+    # bajada (description) rides as before.
+    payload = cz.build_publish_payload(_pub_ns(subtitle="", description="Una bajada de una línea."))
+    md = payload["metadata"]
+    assert not md.get("subtitle")
+    assert md["description"] == "Una bajada de una línea."
 
 
 FX_FACETS = {

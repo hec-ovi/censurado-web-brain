@@ -63,8 +63,8 @@ def test_finalize_prompt_carries_headline_discipline():
     assert "stakes" in low
     # The dek must not parrot the title.
     assert "does not repeat the title" in low
-    # The standfirst is the live `description` field, and the body is never truncated.
-    assert "description" in low and "standfirst" in low
+    # The bajada is the live `description` field, and the body is never truncated.
+    assert "description" in low and "bajada" in low
     assert "do not truncate" in low
 
 

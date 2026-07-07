@@ -70,7 +70,7 @@ def test_evaluate_gates_all_six_dimensions():
         "cross-sourcing",
         "accents",
         "entities",
-        "title and subtitle",
+        "title and bajada",
         "compression",
         "non-redundancy",
     ):
@@ -90,15 +90,31 @@ def test_draft_node_enforces_the_anti_slop_discipline():
     assert "over-hedging" in low
 
 
-def test_finalize_titles_are_attention_first_not_word_capped():
-    # The title/subtitle/description are attention-first: the old hard word-cap is gone
-    # (compactness is qualitative), the pull is honest, and the standfirst is an opinionated
-    # paragraph rather than a neutral one-or-two-sentence blurb.
+def test_loop_nodes_carry_global_spanish_format_rules():
+    # The Spanish editorial format rules live in the shared workflow loop (they apply to every
+    # author), not in any per-persona prompt: politics is written in the third person, gerunds
+    # are minimized, titles are objective, and the bajada is bounded.
+    draft = _flat("50-draft.md")
+    assert "third person" in draft and "politics" in draft
+    assert "gerund" in draft
+    ev = _flat("60-evaluate.md")
+    assert "third person" in ev and "gerund" in ev
+    enrich = _flat("80-enrich.md")
+    assert "gerund" in enrich
+    fin = _flat("90-finalize.md")
+    assert "objective" in fin and "20 and 30 words" in fin
+
+
+def test_finalize_titles_are_objective_and_bajada_is_bounded():
+    # Titles are objective and informative and word-capped (max 5 words); the piece carries a
+    # title and a single bajada of 20 to 30 words, and no separate subtitle.
     low = _flat("90-finalize.md")
-    assert "5 words" not in low and "five words" not in low
-    assert "compact" in low
-    assert "attention" in low or "magnetic" in low
-    assert "opinionated" in low
+    assert "5 words" in low
+    assert "objective" in low
+    assert "three authored layers" in low
+    assert "bajada" in low
+    assert "20 and 30 words" in low
+    assert "subtitle" in low  # only to forbid it ("do not write a separate subtitle")
 
 
 def test_draft_node_demands_entertaining_varied_texture():

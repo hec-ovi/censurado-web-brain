@@ -14,17 +14,20 @@ dimensions PASS or REVISE, with a short, specific note on what to fix when it is
    missing opening mark, or ASCII-only Spanish is a REVISE, listing the offending words.
 3. **Entities.** The proper-noun entities (people, organizations, places) are named
    correctly and will be tagged. A misnamed or untagged central entity is a REVISE.
-4. **Title and subtitle.** The title is honest AND arresting: it is NO MORE THAN 5 WORDS, and
-   it passes the honesty gates (promise kept by the body, no withheld subject, no overclaim,
-   numbers in context, no fake urgency, earned emotion) and lands a strong hook (a front-loaded
-   concrete fact, a strong active present-tense verb, visible stakes, or a tension or reversal).
-   The subtitle does NOT repeat the title's words or subject, and neither is spliced by a `;`,
-   a `:`, or a dash. A title over five words, any failed honesty gate, no hook, a spliced title
-   or subtitle, or a parroting subtitle is a REVISE.
+4. **Title and bajada.** The title is honest, objective, and informative: it is NO MORE THAN 5
+   WORDS, passes the honesty gates (promise kept by the body, no withheld subject, no overclaim,
+   numbers in context, no fake urgency), and names a person only when they are very well known or
+   hold an executive office. The bajada (the description) is between 20 and 30 words, does NOT
+   repeat the title's words or subject, complements it with new information, and is not spliced by
+   a `;`, a `:`, or a dash. There is NO subtitle. A title over five words, a non-objective or
+   sensational title, a failed honesty gate, a spliced title, a bajada outside 20 to 30 words, or
+   a bajada that parrots the title is a REVISE.
 5. **Compression and density.** Each layer is dense, high information per word. Padding,
    filler, or a coasting layer is a REVISE, naming the slack passages.
 6. **Non-redundancy and slop.** No layer restates an earlier one, no repeated wording, and
-   the close does not restate the opening. No AI-slop tell survives: an em or en dash, a
+   the close does not restate the opening. A politics-section piece is in the THIRD person (a
+   first-person "yo" in a politics piece is a REVISE), and gerunds (-ando / -iendo) are sparse,
+   with finite verbs preferred. No AI-slop tell survives: an em or en dash, a
    "no es X, es Y" inversion or an aphorism built on a negation, a candor tic ("la verdad
    es que", "seamos honestos"), three adjectives standing in for a fact, a thing (a market,
    a law, a country) given feelings or will. Any of these is a REVISE.
