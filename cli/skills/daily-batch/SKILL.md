@@ -22,7 +22,7 @@ The `10-batch-plan` node sweeps trending news, clusters it, assigns each story t
 and emits the queue. Then write EACH queued item as its own full `single-article` walk via the
 `write-article` sub-skill: `python3 cli/censurado.py step --mode single-article`, node by node,
 through to `preview`. Do not shortcut a queued item; every piece still passes its own sourcing
-floor, honest-headline gate, and evaluate/respin loop.
+floor, accurate-headline gate, and evaluate/respin loop.
 
 ## Do it yourself, serially. No subagents, no scripts.
 Walk the queue ONE piece at a time, yourself: finish a piece through `preview` before you start

@@ -45,7 +45,7 @@ def test_load_prompt_reads_the_role_play_synthesis_prompt():
 
 def test_finalize_prompt_carries_headline_discipline():
     # The finalize step-gate node is where the title and dek are authored. It must ship
-    # the honest-but-arresting headline rubric (promise kept, name the concrete noun, the
+    # the accurate-but-arresting headline rubric (promise kept, name the concrete noun, the
     # dek does not repeat the title), keep the body uncapped, and lift the standfirst into
     # the live `description` field (the retired `summary` field is gone).
     text = load_prompt(PROMPTS_DIR, "workflow", "90-finalize.md")
@@ -55,7 +55,7 @@ def test_finalize_prompt_carries_headline_discipline():
     assert "{{TOPIC_CAP}}" in text
     # The hard word cap on titles (the 5-word constraint) is present and prominent.
     assert "no more than 5 words" in low
-    # The honesty gate and the pull hooks are present.
+    # The title-promise gate and the pull hooks are present.
     assert "a headline is a promise" in low
     assert "promise kept" in low
     assert "no withheld subject" in low and "name the real thing" in low

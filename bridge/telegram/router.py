@@ -523,7 +523,7 @@ def _task_nota(f: dict) -> str:
         f"- Autor que firma (handle): {f['autor']}\n"
         f"- Tema / angulo / link: {f['tema']}\n"
         "Recorre el walk `step --mode single-article` paso a paso (respeta los gates de fuentes, "
-        "titular honesto y evaluacion), previsualiza con `preview`, y cuando quede lista PUBLICALA a "
+        "titular objetivo y evaluacion), previsualiza con `preview`, y cuando quede lista PUBLICALA a "
         "produccion con `python3 cli/censurado.py publicar --yes` (desde Telegram las notas van "
         "directo al sitio publico). Devolve el link final."
     )

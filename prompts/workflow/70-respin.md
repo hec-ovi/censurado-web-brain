@@ -6,7 +6,7 @@ tone.
 
 You get up to {{RESPIN_PASSES}} self-revision passes. Each pass keeps every grounded fact
 and every citation and changes only form, wording, and structure. Interrogate the draft
-honestly:
+rigorously:
 
 - What is repeated across the sections? Cut it.
 - Which sources are noise, off-topic, or a duplicate of another? Use the signal, drop the

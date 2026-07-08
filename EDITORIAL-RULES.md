@@ -33,7 +33,7 @@ you read with `editorial-rules <language>`, not literals in this file.
 - Give the local context the reader needs; explain any technical term the first time.
 
 ## 3. Title, dek, and standfirst (distinct layers, none repeating another)
-- Title: the most compact, magnetic headline the story can honestly carry, no more than five
+- Title: the most compact, magnetic headline the story can accurately carry, no more than five
   words. It is a promise the body keeps. Name the real thing (never "this" or "what happened"),
   no overclaim, figures in context, no fake urgency. ONE whole thought: never two halves
   spliced by a `;`, a `:`, or a dash.
@@ -87,7 +87,7 @@ its own byline.
 - keywords: the narrower search terms proper to THIS article, drawn only from its text.
 
 ## Final checklist (before you hand it in)
-1. Title honest and magnetic, one whole thought, no splices, at most five words.
+1. Title accurate and magnetic, one whole thought, no splices, at most five words.
 2. Dek that does not repeat the title; standfirst that tells the whole story with stance.
 3. Central fact attributed to named sources as plain text; figures with dates; confirmed is not
    one party's version.

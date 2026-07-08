@@ -2,11 +2,11 @@
 
 Structure the finished article into its publish fields. This is a formatting and titling
 step: do not rewrite the body, add facts, or change the angle. You lift the existing parts
-into the fields below and craft the sharpest honest headline and dek the facts support.
+into the fields below and craft the sharpest accurate headline and dek the facts support.
 
 Each article has three authored layers; keep them distinct, none restating another:
 
-- **title**: the most compact, informative headline the story can honestly carry, drawn from
+- **title**: the most compact, informative headline the story can accurately carry, drawn from
   the piece. **IMPORTANT: no more than 5 words, and objective and informative above all** (an
   attention hook is welcome only when it does not cost objectivity). Name a person in the title
   ONLY when they are very well known or hold an executive office (a president, governor,
@@ -14,8 +14,8 @@ Each article has three authored layers; keep them distinct, none restating anoth
   cut every word that is not load-bearing until only the hook is left; if it runs past five
   words you are smuggling a second idea or context the dek should carry, so cut to the single
   sharpest thing. A headline is a promise: the body must deliver
-  exactly what it implies. Within that, go for the jugular of attention, but honestly. Draft
-  several and keep the one that is both most magnetic AND fully honest: promise kept, no
+  exactly what it implies. Within that, get creative to earn attention. Draft
+  several and keep the one that is both most magnetic AND accurate: promise kept, no
   withheld subject (name the real thing, never "this" or "what happened"), no overclaim, numbers
   in context, no fake urgency, earned emotion. The pull comes from the sharpest true detail,
   never from hollow adjectives (the words `editorial-rules` lists as banned are slop, not hooks).

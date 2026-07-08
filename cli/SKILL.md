@@ -103,5 +103,5 @@ or rerun generate/publicar in a loop, you are already off the rails. Instead:
 ## The one rule for writing
 Writing an article is a GATED WALK served ONE step at a time, never one shot. Always go
 through `cli/skills/write-article/SKILL.md`: it walks `censurado.py step` node by node so the
-sourcing floor, the honest-headline gate, and the evaluate/respin loop all fire. Never draft
+sourcing floor, the accurate-headline gate, and the evaluate/respin loop all fire. Never draft
 a whole piece from memory and never skip a gate.

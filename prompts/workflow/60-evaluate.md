@@ -17,13 +17,13 @@ dimensions PASS or REVISE, with a short, specific note on what to fix when it is
    a language that needs them is a REVISE, listing the offending words.
 3. **Entities.** The proper-noun entities (people, organizations, places) are named
    correctly and will be tagged. A misnamed or untagged central entity is a REVISE.
-4. **Title and bajada.** The title is honest, objective, and informative: it is NO MORE THAN 5
-   WORDS, passes the honesty gates (promise kept by the body, no withheld subject, no overclaim,
+4. **Title and bajada.** The title is objective, accurate, and informative: it is NO MORE THAN 5
+   WORDS, passes the accuracy gates (promise kept by the body, no withheld subject, no overclaim,
    numbers in context, no fake urgency), and names a person only when they are very well known or
    hold an executive office. The bajada (the description) is between 20 and 30 words, does NOT
    repeat the title's words or subject, complements it with new information, and is not spliced by
    a `;`, a `:`, or a dash. There is NO subtitle. A title over five words, a non-objective or
-   sensational title, a failed honesty gate, a spliced title, a bajada outside 20 to 30 words, or
+   sensational title, a failed accuracy gate, a spliced title, a bajada outside 20 to 30 words, or
    a bajada that parrots the title is a REVISE.
 5. **Compression and density.** Each layer is dense, high information per word. Padding,
    filler, or a coasting layer is a REVISE, naming the slack passages.
