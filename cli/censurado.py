@@ -606,6 +606,10 @@ def build_publish_payload(a):
     hero_img, hero_alt = _resolve_hero(a)   # never trust a hand-copied media hash
     if hero_img: meta["image"] = hero_img
     if hero_alt: meta["image_alt"] = hero_alt
+    caption = (getattr(a, "image_caption", "") or "").strip()  # site-rendered, not baked in
+    credit = (getattr(a, "image_credit", "") or "").strip()
+    if caption: meta["image_caption"] = caption
+    if credit: meta["image_credit"] = credit
     card = _build_card(a, hero_img, hero_alt, body)  # the front-page card, always explicit (derived if unset)
     if card: meta["card"] = card
     if a.youtube: meta["youtube"] = a.youtube
@@ -1747,6 +1751,11 @@ def build_parser():
     pub.add_argument("--published-at", dest="published_at", default="", help="RFC3339; omit for now")
     pub.add_argument("--image", default="")
     pub.add_argument("--image-alt", dest="image_alt", default="")
+    pub.add_argument("--image-caption", dest="image_caption", default="",
+                     help="optional epígrafe the SITE renders as text under the hero "
+                          "(never baked into the image pixels)")
+    pub.add_argument("--image-credit", dest="image_credit", default="",
+                     help="optional source credit under the hero, e.g. 'Prensa Municipalidad de X'")
     pub.add_argument("--card-type", dest="card_type", default="",
                      help="what the front-page CARD shows: text|image|youtube|video (authored, "
                           "separate from the body). Omit to derive it from the hero/media.")

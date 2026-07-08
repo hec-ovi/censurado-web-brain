@@ -98,7 +98,8 @@ def _pub_ns(**over):
     base = dict(author="author-a", title="Un título", section="politics",
                 subtitle="Una bajada", description="Un standfirst.", body="# Cuerpo\n\ntexto",
                 body_file="", topics="política argentina, javier milei", keywords="",
-                slug="", published_at="", image="", image_alt="", youtube="",
+                slug="", published_at="", image="", image_alt="", image_caption="",
+                image_credit="", youtube="",
                 author_name="Autor A", author_bio="", author_avatar="", tweets_file="")
     base.update(over)
     return SimpleNamespace(**base)
@@ -194,12 +195,17 @@ def test_cli_publish_dry_run_no_network(tmp_path):
                           "--author-name", "Autor A",
                           "--title", "Un título", "--section", "politics",
                           "--subtitle", "Una bajada", "--body-file", str(body),
+                          "--image-caption", "El acto en la plaza central.",
+                          "--image-credit", "Prensa Municipalidad de X",
                           "--topics", "política argentina, javier milei", "--dry-run"],
                          capture_output=True, text=True, check=True)
     payload = json.loads(out.stdout)
     assert payload["author"] == "author-a" and payload["section"] == "politics"
     assert payload["metadata"]["subtitle"] == "Una bajada"
     assert payload["metadata"]["author_name"] == "Autor A"
+    # The optional hero caption/credit ride in metadata as site-rendered text.
+    assert payload["metadata"]["image_caption"] == "El acto en la plaza central."
+    assert payload["metadata"]["image_credit"] == "Prensa Municipalidad de X"
     assert payload["body"].startswith("# Cuerpo")
 
 
@@ -213,7 +219,8 @@ def _preview_ns(**over):
     base = dict(dry_run=False, author="lara-arianna", author_name="Lara", author_bio="",
                 author_avatar="", title="Un título", section="politics", subtitle="Una bajada",
                 description="Un resumen de una línea.", body="cuerpo", body_file="", topics="",
-                keywords="", slug="", published_at="", image="", image_alt="", youtube="",
+                keywords="", slug="", published_at="", image="", image_alt="", image_caption="",
+                image_credit="", youtube="",
                 tweets_file="", idempotency="")
     base.update(over)
     return SimpleNamespace(**base)
@@ -238,6 +245,24 @@ def test_preview_payload_omits_empty_subtitle():
     md = payload["metadata"]
     assert not md.get("subtitle")
     assert md["description"] == "Una bajada de una línea."
+
+
+def test_preview_payload_carries_image_caption_and_credit():
+    # The optional hero caption + source credit land in metadata as their own keys, for the
+    # site to render as text under the hero (never baked into the image pixels).
+    p = cz.build_publish_payload(_pub_ns(image_caption="El acto en la plaza.",
+                                         image_credit="Prensa Municipalidad de X"))
+    md = p["metadata"]
+    assert md["image_caption"] == "El acto en la plaza."
+    assert md["image_credit"] == "Prensa Municipalidad de X"
+
+
+def test_preview_payload_omits_empty_image_caption_and_credit():
+    # Both are optional: absent -> the keys never enter metadata (so the site renders no
+    # empty figcaption).
+    md = cz.build_publish_payload(_pub_ns()).get("metadata", {})
+    assert "image_caption" not in md
+    assert "image_credit" not in md
 
 
 FX_FACETS = {

@@ -71,9 +71,11 @@ markers you place in the body are below.
 write a `--subtitle` (the dek) and a one-line `--description` (the standfirst), preview needs
 both. The hero image, byline, dek, SEO terms, and widget snapshots all live inside `metadata`
 (never as top-level keys): `subtitle`, `description`, `author_name` (the visible byline),
-`author_bio`, `author_avatar`, `image` + `image_alt` (the hero still), `youtube` (a lead
-video), the authored `card` (the front-page preview, set with `--card-type` + `--card-src`),
-`keywords`, and the `tweets` bag. `preview` places these for you from its flags.
+`author_bio`, `author_avatar`, `image` + `image_alt` (the hero still), the optional
+`image_caption` + `image_credit` (an epígrafe and a source credit the site renders as text under
+the hero, never baked into the image), `youtube` (a lead video), the authored `card` (the
+front-page preview, set with `--card-type` + `--card-src`), `keywords`, and the `tweets` bag.
+`preview` places these for you from its flags.
 
 Response: `201` wrote a new article, `200` a dedup replay (nothing written), both returning
 `{"id","slug"}`. Dedup identity is the trimmed `title + body + author + section` only, so

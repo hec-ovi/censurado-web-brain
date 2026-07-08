@@ -43,6 +43,10 @@ never write "no people" or "without text", describe the scene you want instead. 
 text to none or a few quoted words; the page's own typography carries the headline. Also write a
 short one-line Spanish `alt` for accessibility. No length limit, write as much as the image needs.
 
+An epígrafe or a source credit does NOT belong in the pixels either. If the hero needs one, pass
+`--image-caption "<epígrafe>"` and/or `--image-credit "<Prensa Municipalidad de X>"` at `preview`
+and the site renders them as text under the hero. Both are optional; omit them and nothing shows.
+
 ## Render and attach
     python3 cli/censurado.py image --prompt "<subject -> arrangement -> style -> context>" --alt "<one line in Spanish>"
 
