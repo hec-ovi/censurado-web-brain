@@ -24,10 +24,16 @@ so a plain `docker compose up` never starts it. It talks to the newsroom over th
 API the CLI uses; it never imports the newsroom code. Secrets (mailbox creds, allowlist) live in a
 gitignored `.env` and are never handed to any agent.
 
-## The worker (bespoke Python preferred over n8n)
-The trust gate is the crux (we publish "official" content), and it is awkward to express robustly in
-n8n Function nodes, so a small bespoke Python worker is the recommended shape. n8n is a fine
-alternative only if a non-engineer must maintain visual multi-source routing.
+## Orchestrator: n8n (chosen direction)
+Chosen direction (operator, 2026-07-08): plug this into **n8n** as the orchestrator. n8n owns the
+triggers and routing (its Email/IMAP trigger, Telegram trigger, and Webhook), running in its own
+opt-in container. The one caveat from the research: the trust gate (sender allowlist + DKIM/DMARC
+verification, the crux since we publish "official" content) is awkward to express robustly inside n8n
+Function nodes, so keep it as a small dedicated verify step, an HTTP call from n8n to a tiny
+"is-this-really-official?" endpoint (or the newsroom's ingest endpoint) that does the DKIM/allowlist
+check before a draft is created. So: n8n for triggers + routing, a thin trust-gate service for the
+security-critical decision. (A fully bespoke Python worker remains the fallback if n8n proves too
+heavy.)
 
 Pipeline:
 1. **Ingest.** IMAP IDLE (`aioimaplib`) on a dedicated mailbox; fall back to polling. Gmail API
