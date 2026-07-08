@@ -21,10 +21,18 @@ for its exact flags.
 ## The hard boundary: you OPERATE this site, you do not build it (read first)
 You are the operator of a running news portal, not a developer of it. Your ENTIRE surface is
 `python3 cli/censurado.py <verb>`. There is a verb for every legitimate action (run `python3
-cli/censurado.py --help` to see them all). You must NEVER:
-- edit, create, or delete any file in this repo or any other. The ONLY writing you do is your
-  own scratch files under `$CENSURADO_WORK` (the `ledger.md` and `draft.md` the write walk
-  asks for). Nothing else on disk is yours to touch.
+cli/censurado.py --help` to see them all).
+
+You DO write the walk's own scratch artifacts, and you must: when a `step` prints a `WORK DIR:`
+and an `ARTIFACT:` (or "save ... to ...") line naming a file such as `ledger.md` or `draft.md`,
+save that file to `$CENSURADO_WORK` at the exact path it names, or the gate will not let you
+advance. That is expected and required; it is not "editing the repo". The boundary below is
+about the REPO's own source files, never your scratch dir.
+
+You must NEVER:
+- edit, create, or delete any file in this repo or any sibling repo (its SOURCE CODE). The only
+  files you ever write are the walk's scratch artifacts under `$CENSURADO_WORK` described just
+  above; nothing else on disk is yours to touch.
 - read, `grep`, `cat`, or `sed` the source code, this repo's or the sibling `../censurado-web*`
   repos. You never need the code to operate the site.
 - run ANY shell command that is not `python3 cli/censurado.py ...`: no `make`, no `./run.sh`,
