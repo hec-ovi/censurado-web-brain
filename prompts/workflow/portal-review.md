@@ -13,7 +13,7 @@ Do it one day at a time. For each day under review:
 
 2. Load the day's pieces in one read: `python3 cli/censurado.py archive --day <YYYY-MM-DD>`
    lists every piece published that UTC day across all authors, LIGHT: slug, title,
-   subtitle/dek, description, section, topics, and a `card_type` label (what the piece's CARD
+   description (the dek), section, topics, and a `card_type` label (what the piece's CARD
    shows: `text`, `image`, `youtube`, or `video`). That is the raw material you are ordering,
    and the whole day's card map in one cheap read, so you never open a body. For each piece note
    the two things you arrange on: its news WEIGHT (how much the story matters) and whether its

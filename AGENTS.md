@@ -3,7 +3,7 @@
 > **Which agent are you? Read this first.**
 >
 > **If you are OPERATING the portal** (writing, publishing, editing, or managing content, the
-> daily/weekly sweep, authors, layout, images, deploy) then this file is NOT your manual. Your
+> daily/weekly sweep, authors, layout, images, publicar) then this file is NOT your manual. Your
 > entire surface is `python3 cli/censurado.py <verb>`, driven by the skill in
 > [`cli/SKILL.md`](cli/SKILL.md). You do not build or run the stack, you do not edit files, and
 > you do not run shell commands: no `make`, no `./run.sh`, no `docker`, no `generate`, no
@@ -211,6 +211,7 @@ context: `../comfyui-strix-docker/`.
 - `cli/workflow/parameters.json` the enforced numeric floor/caps the walk fills into nodes.
 - `prompts/` the editorial recipe (workflow nodes + manifest, persona synthesize, style).
 - `newsroom/` the maintenance CLI (`censurado-brain`): `status` (backend health probe),
+  `normalize` (whole-corpus contract pass; `check` (default), `links`, `sections` subcommands),
   `topics cleanse`, `embeds recheck`. Installed package; needs httpx + the corpus helpers.
 - `docker-compose.yml` the whole topology (services, network, volumes, ports).
 - `.env.example` every config field and which are secrets.
@@ -229,7 +230,9 @@ context: `../comfyui-strix-docker/`.
 - Operator panel (embedded SPA + Go login, served on the publish port): `internal/adminweb/`.
 - Domain + storage (the public libs the generator imports): `domain/`, `store/`,
   `content/`, `media/`.
-- Publish contracts: `contracts/article.schema.json`, `contracts/batch-*.schema.json`.
+- Publish contracts: `contracts/article.schema.json`, `contracts/authors.schema.json`
+  (author upsert write shape, guarded by a drift test against the Go `authorInput`),
+  `contracts/batch-*.schema.json`.
 
 **Generator + public frontend (`../censurado-web`)**
 - Generator: `internal/generate/`, `cmd/censurado/generate/` (one-shot or `-watch`).

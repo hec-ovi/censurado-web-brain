@@ -3,7 +3,7 @@
 One focused pass over the whole piece for correct Spanish and correct names. This is where
 the accents rule lives, so do it carefully.
 
-**Accents (critical).** Read the title, subtitle, description, body, AND the topic tags.
+**Accents (critical).** Read the title, description, body, AND the topic tags.
 Every word carries its accents (á, é, í, ó, ú, ü), its ñ where the word needs it, and every
 question and exclamation carries its opening ¿ or ¡. Fix any stripped accent, missing ñ, or
 missing opening mark. "programacion", "numero", "publico", "analisis", "economia" are

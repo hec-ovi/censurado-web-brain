@@ -22,6 +22,33 @@ risk, and long polling needs no public endpoint. Full comparison and sourcing:
 One worker thread per chat: same user runs serially (so a resumed session can't be
 corrupted), different users run concurrently.
 
+## Guided commands (structured shortcuts)
+
+Alongside the freeform agent, four slash commands run a short wizard that asks for the fields
+one at a time, then hands the agent a fully-specified task instead of an open-ended prompt:
+
+- `/crear_autor` (aliases `/crearautor`, `/nuevo_autor`, `/nuevoautor`): asks name, beat,
+  who-they-are, and style, then creates the author.
+- `/modificar_autor` (aliases `/editar_autor`, ...): asks a handle, a field, and the new value,
+  then changes only that field.
+- `/nota` (aliases `/nueva_nota`, `/articulo`, ...): asks which author signs and the topic/link,
+  then walks the single-article gate and publishes to production.
+- `/editar_nota` (aliases `/corregir_nota`, ...): asks for a slug/link and the change, then edits
+  the body/metadata and republishes.
+
+Inline (no wizard, no agent): `/comandos` (also `/ayuda`, `/help`, `/start`) lists the commands,
+`/autores` lists the authors, `/cancelar` drops the command in progress. Any other message goes
+straight to the agent as before. The wizard state is per chat, and the one-worker-per-chat rule
+keeps it race-free.
+
+## Long-run progress
+
+A turn can take minutes, so the bridge keeps the user posted while the agent runs. It streams a
+"typing" indicator on an interval, and once a turn passes `progress_after` seconds it posts a
+"still working" message and refreshes it in place (via `editMessageText`) every
+`progress_interval` seconds with the elapsed time, then rewrites it to "Listo." when the reply is
+ready.
+
 ## Auth is external, on purpose
 
 The bridge does NOT manage model auth. `codex` (OpenAI / ChatGPT) and `agy` (Google

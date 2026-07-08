@@ -62,9 +62,9 @@ The static site is not rebuilt inside the publish request: `generate` is a separ
 ### The newsroom (this repo)
 
 - `cli/censurado.py` is the agent-facing CLI: publish/edit an article, upload media, render a hero, capture a tweet/truth snapshot, read and curate authors and sources over the backend, and walk the editorial `step` gate. It is stdlib-only (no install), so a driver runs it directly.
-- `cli/SKILL.md` is the resolver skill that routes a CLI agent to the right fat sub-skill under `cli/skills/` (write-article, daily-batch, authors, sources, portada, prompts, media, deploy, websearch).
+- `cli/SKILL.md` is the resolver skill that routes a CLI agent to the right fat sub-skill under `cli/skills/` (write-article, daily-batch, authors, sources, portada, prompts, media, publicar, websearch).
 - `prompts/` is the editorial recipe: the `workflow/*` step-gate nodes + `manifest.json`, the `persona/synthesize.md` author guide, and `editorial/style.md`. Plain files, git is their history, no server and no database.
-- `newsroom/` is the maintenance CLI (`censurado-brain`): a backend health probe (`status`) plus the `topics cleanse` and `embeds recheck` sweeps. It needs the package installed (httpx + the corpus helpers); the authoring CLI does not.
+- `newsroom/` is the maintenance CLI (`censurado-brain`): a backend health probe (`status`), the `normalize` whole-corpus contract pass (subcommands `check` (default), `links`, `sections`), plus the `topics cleanse` and `embeds recheck` sweeps. It needs the package installed (httpx + the corpus helpers); the authoring CLI does not.
 
 ### ComfyUI
 
@@ -239,7 +239,7 @@ make install                 # once: create the venv, install the package + dev 
 make test                    # the whole suite (or: .venv/bin/pytest tests -q)
 ```
 
-The suite runs locally, no CI. It covers the authoring CLI (the tweet/truth snapshot mapping, the fail-soft error handling, the local step gate and its artifact enforcement), the maintenance sweeps (status probe, topic cleanse, embeds recheck), the editorial prompt drift-guards (the parameters stay client-filled placeholders, the anti-slop rules survive, every manifest node exists on disk), the article-contract mirror (hashing, slug, sections, schema drift), the skill package (the resolver routes only to sub-skills that exist), and the compose wiring via `docker compose config` (the real parser: the service set with no config-plane service, `site` the only public port, `generate` a resident watcher, the db and media on persistent bind mounts). No images are built and no GPU is needed.
+The suite runs locally, no CI. It covers the authoring CLI (the tweet/truth snapshot mapping, the fail-soft error handling, the local step gate and its artifact enforcement), the maintenance sweeps (status probe, normalize contract pass, topic cleanse, embeds recheck), the editorial prompt drift-guards (the parameters stay client-filled placeholders, the anti-slop rules survive, every manifest node exists on disk), the article-contract mirror (hashing, slug, sections, schema drift), the skill package (the resolver routes only to sub-skills that exist), and the compose wiring via `docker compose config` (the real parser: the service set with no config-plane service, `site` the only public port, `generate` a resident watcher, the db and media on persistent bind mounts). No images are built and no GPU is needed.
 
 ## Layout
 
@@ -250,7 +250,7 @@ cli/skills/            the fat sub-skills (write-article, daily-batch, authors, 
 cli/workflow/          the enforced numeric floor/caps (parameters.json) the walk fills into nodes
 cli/templates/         the ComfyUI render graph (flux2_klein)
 prompts/               the editorial recipe: workflow step-gate nodes + manifest, persona + editorial
-newsroom/              the maintenance CLI (censurado-brain): status probe + topic cleanse + embeds recheck
+newsroom/              the maintenance CLI (censurado-brain): status probe + normalize contract pass + topic cleanse + embeds recheck
 docker-compose.yml     the whole stack (services, network, volumes, ports)
 AGENTS.md              agent-oriented map: the cross-service contracts and pointers
 deploy/                deploy-cdn.sh (push to Cloudflare Pages) + CACHING.md (cache policy)

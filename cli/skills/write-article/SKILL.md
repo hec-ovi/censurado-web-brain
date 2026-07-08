@@ -62,15 +62,15 @@ The nodes hand you the exact command at each step; these are the ones you will r
 - Hero image (node 95): `python3 cli/censurado.py image --prompt "..." --alt "..."`.
 - Preview to the site (node 99): `python3 cli/censurado.py preview --author <id> --title "..." --body-file draft.md ...`.
 
-Run any verb with `--help` for its flags. `preview`/`publish` build the strict JSON for you
+Run any verb with `--help` for its flags. `preview` builds the strict JSON for you
 from these flags, so you never hand-build the request. The field contract and the widget
 markers you place in the body are below.
 
-## The publish contract (what `preview`/`publish` sends)
+## The publish contract (what `preview` sends)
 `title`, `body` (markdown), `author` (the persona slug), and `section` are REQUIRED; also
-write a `--subtitle` (the dek) and a one-line `--description` (the standfirst), preview needs
-both. The hero image, byline, dek, SEO terms, and widget snapshots all live inside `metadata`
-(never as top-level keys): `subtitle`, `description`, `author_name` (the visible byline),
+write a one-line `--description` (the "bajada", ~20-30 words), which preview needs. The hero
+image, byline, dek, SEO terms, and widget snapshots all live inside `metadata`
+(never as top-level keys): `description`, `author_name` (the visible byline),
 `author_bio`, `author_avatar`, `image` + `image_alt` (the hero still), the optional
 `image_caption` + `image_credit` (an epígrafe and a source credit the site renders as text under
 the hero, never baked into the image), `youtube` (a lead video), the authored `card` (the
@@ -127,7 +127,7 @@ Social). The keyless path is the default, so a normal run needs no token.
 
 ## Show the user, then preview (never publish to production)
 `preview` only stages the piece to the LOCAL site (`localhost:8080`), not the public
-internet. At the final node, show the user the full draft (title, subtitle, description,
+internet. At the final node, show the user the full draft (title, description,
 body, section, topics, and any widgets), then `preview` it so they can see it live-rendered.
 The command prints a `PREVIEW: <url>  [live now]` line on success: that URL is your result,
 report it back (do not construct a link yourself). A successful `preview` IS the confirmation;

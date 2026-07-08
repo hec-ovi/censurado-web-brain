@@ -1365,14 +1365,14 @@ def cmd_status(a):
 def cmd_deploy(a):
     """Publish the WHOLE current local snapshot to the PUBLIC production site (Cloudflare Pages)
     by running deploy/deploy-cdn.sh, so the operating agent NEVER has to touch a shell script,
-    make target, or the generator: `deploy` is a verb like every other. This is the ONE public,
-    irreversible, outward-facing action, so it REFUSES without --yes (the deploy sub-skill still
+    make target, or the generator: `publicar` is a verb like every other. This is the ONE public,
+    irreversible, outward-facing action, so it REFUSES without --yes (the publicar sub-skill still
     requires you to show the human what will go live and get an explicit yes first).
 
     It streams the script's own output, and on the script's `FATAL:` early-exit (CLOUDFLARE_ACCOUNT_ID
     unset, or a half-set reactions binding) it relays that exact line and stops -- do NOT try to
     work around it, fix perms, regenerate, or read the deploy/generator source; relay the message to
-    the human and let them complete the one setup step, then re-run `deploy`. On success it prints
+    the human and let them complete the one setup step, then re-run `publicar`. On success it prints
     the public origin and reminds you to VERIFY by opening the piece's link, never by re-deploying."""
     if not a.yes:
         sys.stderr.write("publicar publishes the WHOLE snapshot to the PUBLIC site "
