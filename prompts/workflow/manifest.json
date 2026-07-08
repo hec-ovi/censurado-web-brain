@@ -7,6 +7,7 @@
     "daily": ["10-batch-plan"],
     "weekly": ["10-batch-plan"],
     "last-hour": ["10-batch-plan"],
+    "redactor": ["redactor"],
     "publicar": ["publicar"],
     "normalize-topics": ["normalize-topics"],
     "portal-review": ["portal-review"],

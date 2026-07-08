@@ -28,6 +28,10 @@ Offer these to the human if it is not already obvious, and pick one:
   each story to the author whose beat fits, and emit an assignment queue. Each queued
   article is then written as its OWN separate `single-article` walk, so you never draft a whole
   batch inside one context.
+- **redactor**: the editor-in-chief sweep. Read every author, scan the freshest news of the
+  last ~60 minutes across the whole landscape with plain web search (no assigned feeds), and
+  assign each story to the best-fit author. Emits the same assignment queue; each item is then
+  written as its own separate `single-article` walk.
 
 There are also one-shot maintenance walks, not article writing, run directly when asked:
 **publicar** (push the live site to production, i.e. go live), **normalize-topics** (curate an

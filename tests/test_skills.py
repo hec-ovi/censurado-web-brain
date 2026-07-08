@@ -147,6 +147,25 @@ def test_daily_batch_routes_bulk_topic_merges_to_the_cleanse_walk():
     assert "edit <slug>" in body, "the per-article edit fix must survive"
 
 
+def test_redactor_skill_describes_the_assignment_sweep():
+    # The redactor sub-skill is the assignment desk: a plain web-search sweep of the freshest news
+    # (last ~60 minutes, no assigned feeds), assign each story to the best-fit author, then write
+    # each as its own single-article walk. Assert in the BODY so the frontmatter alone cannot pass.
+    body = _body(SKILLS_DIR / "redactor" / "SKILL.md").lower()
+    assert "step --mode redactor" in body, "redactor body must name the mode verb"
+    assert "plain web-search" in body or "plain web search" in body, "must be a plain web-search sweep"
+    assert "60 minutes" in body, "must carry the last-hour freshness window"
+    assert "single-article" in body, "each assignment becomes its own single-article walk"
+    assert "assign" in body, "the redactor assigns stories to authors"
+    assert "publicar --yes" in body, "going live stays the separate human-gated verb"
+
+
+def test_redactor_skill_is_routed_from_the_resolver():
+    # A fresh agent given only cli/SKILL.md must be able to reach the redactor desk.
+    routed = set(re.findall(r"skills/([\w-]+)/SKILL\.md", RESOLVER.read_text(encoding="utf-8")))
+    assert "redactor" in routed, "the resolver must route to the redactor sub-skill"
+
+
 def test_resolver_routes_the_topic_cleanse_and_topics_verbs():
     # cli/SKILL.md is always loaded, so the corpus-wide topic merge and the tag inventory must
     # be reachable from the dispatcher, not just from the daily-batch tail.

@@ -80,6 +80,7 @@ or rerun generate/publicar in a loop, you are already off the rails. Instead:
 | write an institutional / unsigned piece (an official release or "gacetilla", no persona byline) | read `cli/skills/write-article/SKILL.md`, then walk the lighter formal lane: `python3 cli/censurado.py step --mode institucional` (signed by "Redacción", provided image, no AI hero) |
 | search the web, find real sources, read a page | read `cli/skills/websearch/SKILL.md` |
 | run the daily / weekly batch, sweep the day, refresh the portal | read `cli/skills/daily-batch/SKILL.md` |
+| assign the freshest news to authors ("who covers what right now", triage the last-hour news, the editor-in-chief sweep) | read `cli/skills/redactor/SKILL.md`, then `python3 cli/censurado.py step --mode redactor` |
 | add / remove / inspect an author (create a writer, retire one, read a voice) | read `cli/skills/authors/SKILL.md` |
 | change which outlets an author reads, or the sourcing floor (how many sources per article) | read `cli/skills/sources/SKILL.md` |
 | reorder the front page, feature/unfeature a story (portada) | read `cli/skills/portada/SKILL.md` |
