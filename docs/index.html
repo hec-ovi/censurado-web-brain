@@ -1,0 +1,1022 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Censurado · Newsroom Docs</title>
+<meta name="description" content="Documentacion interactiva de la redaccion agentica Censurado: el workflow con compuertas, los modos, la arquitectura, los contratos y los verbos de la CLI.">
+<style>
+:root{
+  --bg:#0d0a0b; --surface:#161213; --surface-2:#1e1819; --surface-3:#251d1f;
+  --line:#3a2f32; --line-soft:#2a2224; --text:#f5eff1; --muted:#b6a8ac; --faint:#7e7074;
+  --red:#ff3b5f; --red-deep:#e01842; --steel:#3ba9c9; --gold:#e0a84a; --green:#3fb98a; --violet:#b39cf0;
+  --shadow:rgba(0,0,0,.55);
+  --sans:ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  --mono:ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  --nav-w:262px;
+}
+*{box-sizing:border-box}
+html,body{margin:0;padding:0}
+html{-webkit-text-size-adjust:100%}
+body{
+  background:var(--bg); color:var(--text);
+  font-family:var(--sans); font-size:13px; line-height:1.55;
+  overflow:hidden;
+  -webkit-font-smoothing:antialiased; text-rendering:optimizeLegibility;
+}
+::selection{background:rgba(255,59,95,.28)}
+a{color:var(--red); text-decoration:none}
+a:hover{text-decoration:underline}
+:focus-visible{outline:2px solid var(--red); outline-offset:2px; border-radius:4px}
+button{font-family:inherit}
+h1,h2,h3,h4{margin:0; font-weight:650; letter-spacing:-.01em}
+
+/* ---------- app shell ---------- */
+#app{
+  position:fixed; inset:0;
+  display:grid; grid-template-columns:var(--nav-w) 1fr;
+  background:var(--bg);
+}
+
+/* ---------- left nav ---------- */
+#nav{
+  display:flex; flex-direction:column; min-height:0;
+  background:linear-gradient(180deg,#171213,#120e0f);
+  border-right:1px solid var(--line);
+}
+.brand{padding:20px 18px 14px; border-bottom:1px solid var(--line-soft)}
+.eyebrow{
+  font-family:var(--mono); font-size:10.5px; letter-spacing:.34em; font-weight:700;
+  color:var(--red); text-transform:uppercase;
+}
+.brand h1{font-size:18px; margin-top:6px; line-height:1.15}
+.brand .subtitle{color:var(--muted); font-size:11.5px; margin-top:6px; max-width:210px}
+
+.navlist{flex:1 1 auto; min-height:0; overflow-y:auto; padding:10px 10px 14px}
+.navlist::-webkit-scrollbar{width:9px}
+.navlist::-webkit-scrollbar-thumb{background:var(--surface-3); border-radius:9px}
+
+.navsec{margin-bottom:2px}
+.navsec>button{
+  width:100%; display:flex; align-items:center; gap:9px;
+  background:transparent; border:1px solid transparent; border-radius:9px;
+  color:var(--text); padding:8px 9px; cursor:pointer; text-align:left; font-size:12.5px;
+}
+.navsec>button:hover{background:var(--surface-2)}
+.navsec.active>button{background:var(--surface-3); border-color:var(--line)}
+.navsec.active>button .nsecLabel{color:var(--text)}
+.nsecLabel{flex:1 1 auto; font-weight:550}
+.dot{width:9px; height:9px; border-radius:50%; flex:0 0 auto; box-shadow:0 0 0 3px rgba(255,255,255,.03)}
+.star{font-size:10px; color:var(--gold)}
+.caret{color:var(--faint); font-size:10px; transition:transform .18s ease}
+.navsec.open .caret{transform:rotate(90deg)}
+
+.subitems{list-style:none; margin:2px 0 6px; padding:0 0 0 24px; display:none}
+.navsec.open .subitems{display:block}
+.subitems li{margin:0}
+.subitems button{
+  width:100%; text-align:left; background:transparent; border:0; cursor:pointer;
+  color:var(--muted); font-family:var(--mono); font-size:11px; padding:4px 8px; border-radius:6px;
+  border-left:1px solid var(--line-soft); margin-left:2px;
+  white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+}
+.subitems button:hover{color:var(--text); background:var(--surface-2)}
+
+.navfoot{
+  padding:11px 18px; border-top:1px solid var(--line-soft);
+  color:var(--faint); font-size:11px; font-family:var(--mono);
+}
+
+/* ---------- main ---------- */
+#main{display:grid; grid-template-rows:auto 1fr; min-width:0; min-height:0}
+.topbar{
+  display:flex; align-items:center; gap:16px; justify-content:space-between;
+  padding:14px 20px; border-bottom:1px solid var(--line);
+  background:linear-gradient(180deg,#151011,#120e0f);
+}
+.crumb{min-width:0}
+.crumb h2{font-size:16px; display:flex; align-items:center; gap:8px}
+.crumb .crumbSub{color:var(--muted); font-size:11.5px; margin-top:3px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap}
+.modeToggle{
+  display:inline-flex; background:var(--surface); border:1px solid var(--line);
+  border-radius:10px; padding:3px; flex:0 0 auto;
+}
+.segbtn{
+  background:transparent; border:0; color:var(--muted); cursor:pointer;
+  padding:6px 15px; border-radius:8px; font-size:12px; font-weight:600; letter-spacing:.01em;
+}
+.segbtn:hover{color:var(--text)}
+.segbtn.active{background:var(--red); color:#1a0308; box-shadow:0 3px 10px rgba(255,59,95,.28)}
+
+/* ---------- stage ---------- */
+#stage{
+  position:relative; min-width:0; min-height:0; overflow:hidden;
+  background:
+    linear-gradient(var(--line-soft) 1px, transparent 1px) 0 0/36px 36px,
+    linear-gradient(90deg, var(--line-soft) 1px, transparent 1px) 0 0/36px 36px,
+    radial-gradient(1200px 620px at 78% -12%, rgba(255,59,95,.06), transparent 60%),
+    var(--bg);
+}
+
+/* ---------- map ---------- */
+.mapWrap{position:absolute; inset:0}
+#atlas{width:100%; height:100%; display:block; touch-action:none; cursor:grab}
+#atlas.grabbing{cursor:grabbing}
+.node{cursor:pointer}
+.nbox{fill:var(--surface-2); stroke:var(--line); stroke-width:1.4; filter:drop-shadow(0 5px 12px var(--shadow))}
+.node:hover .nbox,.node:focus-visible .nbox{stroke:var(--red)}
+.node:focus-visible{outline:none}
+.node:focus-visible .nbox{stroke-width:2}
+.nlabel{fill:var(--text); font-weight:650; font-size:13px; font-family:var(--mono)}
+.nkind{font-size:10px; font-family:var(--mono); letter-spacing:.06em; text-transform:uppercase; opacity:.92}
+.nnote{fill:var(--faint); font-size:10px; font-family:var(--sans)}
+.edge{fill:none; stroke-width:1.7}
+.elabel{fill:var(--muted); font-size:10px; font-family:var(--mono)}
+.elabel-bg{fill:var(--bg); opacity:.9; stroke:var(--line-soft); stroke-width:.75; rx:4}
+.grp{fill:rgba(59,169,201,.05); stroke:var(--steel); stroke-width:1.2; stroke-dasharray:5 5; rx:16}
+.grpLabel{fill:var(--steel); font-size:11px; font-family:var(--mono); letter-spacing:.05em; text-transform:uppercase}
+
+.mapctl{position:absolute; left:14px; bottom:14px; display:flex; gap:7px; z-index:4}
+.mapctl button{
+  background:var(--surface); border:1px solid var(--line); color:var(--text);
+  padding:6px 12px; border-radius:8px; cursor:pointer; font-size:11.5px; font-weight:600;
+  box-shadow:0 4px 12px var(--shadow);
+}
+.mapctl button:hover{border-color:var(--red); color:var(--red)}
+.legend{
+  position:absolute; left:14px; top:14px; z-index:4;
+  background:rgba(20,15,16,.82); backdrop-filter:blur(3px);
+  border:1px solid var(--line); border-radius:11px; padding:9px 11px;
+  display:flex; flex-direction:column; gap:5px; max-width:230px;
+}
+.legend .lgttl{font-family:var(--mono); font-size:10px; letter-spacing:.14em; text-transform:uppercase; color:var(--faint); margin-bottom:2px}
+.pill{display:flex; align-items:center; gap:8px; font-size:11px; color:var(--muted)}
+.hint{
+  position:absolute; right:14px; bottom:14px; z-index:4;
+  font-family:var(--mono); font-size:10.5px; color:var(--faint);
+  background:rgba(20,15,16,.7); border:1px solid var(--line-soft); border-radius:8px; padding:5px 9px;
+}
+
+/* ---------- text view ---------- */
+.textWrap{position:absolute; inset:0; overflow-y:auto; overflow-x:hidden; padding:26px 24px 90px}
+.textWrap::-webkit-scrollbar{width:11px}
+.textWrap::-webkit-scrollbar-thumb{background:var(--surface-3); border-radius:11px}
+.doc{max-width:1080px; margin:0 auto}
+.lede{color:var(--muted); font-size:14px; line-height:1.62; max-width:70ch; margin:0 0 22px}
+.lede strong{color:var(--text); font-weight:650}
+
+.doc-section{
+  border:1px solid var(--line); border-radius:16px;
+  background:linear-gradient(180deg,var(--surface),#141011);
+  padding:18px 18px 20px; margin-bottom:18px;
+}
+.ds-head{margin-bottom:14px}
+.ds-head h3{font-size:15px}
+.ds-head .ds-sub{color:var(--muted); font-size:12px; margin-top:4px; max-width:74ch}
+.eyebrow-s{font-family:var(--mono); font-size:10px; letter-spacing:.2em; text-transform:uppercase; color:var(--red); display:block; margin-bottom:5px}
+
+.cardgrid{display:grid; grid-template-columns:repeat(auto-fill,minmax(268px,1fr)); gap:12px}
+.card{
+  border:1px solid var(--line); border-radius:13px; background:var(--surface-2);
+  padding:12px 13px; min-width:0;
+}
+.card.wide{grid-column:1/-1}
+.ct{display:flex; align-items:center; gap:8px; flex-wrap:wrap}
+.clabel{font-family:var(--mono); font-size:12.5px; font-weight:650; color:var(--text)}
+.kindtag{
+  font-family:var(--mono); font-size:9.5px; letter-spacing:.08em; text-transform:uppercase;
+  color:var(--muted); border:1px solid var(--line); border-radius:20px; padding:1px 8px; margin-left:auto;
+}
+.sum{color:var(--muted); font-size:12px; margin-top:7px; line-height:1.55}
+.sum b{color:var(--text); font-weight:600}
+.row{margin-top:9px; display:flex; gap:6px; flex-wrap:wrap; align-items:center}
+.row .lbl{font-family:var(--mono); font-size:10px; color:var(--faint); text-transform:uppercase; letter-spacing:.06em}
+.flag{
+  font-family:var(--mono); font-size:10px; padding:2px 8px; border-radius:20px; border:1px solid;
+}
+.flag.gate{color:var(--gold); border-color:rgba(224,168,74,.5); background:rgba(224,168,74,.08)}
+.flag.loop{color:var(--violet); border-color:rgba(179,156,240,.5); background:rgba(179,156,240,.08)}
+.flag.gated{color:var(--faint); border-color:var(--line); background:rgba(126,112,116,.08)}
+.flag.emit{color:var(--green); border-color:rgba(63,185,138,.5); background:rgba(63,185,138,.08)}
+
+.chips{display:flex; gap:6px; flex-wrap:wrap; margin-top:8px}
+.chip{
+  font-family:var(--mono); font-size:11px; color:var(--text);
+  background:var(--surface-3); border:1px solid var(--line); border-radius:7px; padding:3px 9px;
+}
+.chip.mut{color:var(--muted)}
+.grouplbl{font-family:var(--mono); font-size:11px; letter-spacing:.12em; text-transform:uppercase; color:var(--steel); margin:12px 0 2px; display:block}
+.grouplbl.write{color:var(--red)} .grouplbl.curate{color:var(--steel)} .grouplbl.operate{color:var(--green)} .grouplbl.brain{color:var(--violet)}
+
+.jsonbox{
+  background:#0b0809; border:1px solid var(--line); border-radius:11px;
+  padding:13px 14px; overflow-x:auto; margin:12px 0 2px;
+  font-family:var(--mono); font-size:12px; line-height:1.6; color:var(--text);
+}
+.jsonbox code{font-family:inherit}
+.jsonbox .k{color:var(--steel)}
+.jsonbox .s{color:var(--gold)}
+.jsonbox .n{color:var(--violet)}
+.jsonbox .b{color:var(--red)}
+
+.tree{
+  font-family:var(--mono); font-size:12px; line-height:1.7;
+  background:#0b0809; border:1px solid var(--line); border-radius:11px;
+  padding:14px 15px; overflow-x:auto;
+}
+.trow{white-space:pre}
+.trow .tname{color:var(--text)}
+.trow .tdir{color:var(--steel); font-weight:600}
+.trow .tfile{color:var(--gold)}
+.trow .tguide{color:var(--faint)}
+.trow .tcom{color:var(--faint)}
+
+.overviewGrid{display:grid; grid-template-columns:repeat(auto-fill,minmax(240px,1fr)); gap:13px}
+a.ocard{
+  display:flex; flex-direction:column; gap:6px; text-decoration:none;
+  border:1px solid var(--line); border-radius:14px; background:var(--surface-2);
+  padding:14px 15px; color:var(--text);
+}
+a.ocard:hover{border-color:var(--red); text-decoration:none; transform:translateY(-1px); background:var(--surface-3)}
+a.ocard{transition:transform .15s ease, border-color .15s ease, background .15s ease}
+.ocard .otop{display:flex; align-items:center; gap:9px}
+.ocard .otitle{font-size:13.5px; font-weight:650}
+.ocard .odesc{color:var(--muted); font-size:11.5px; line-height:1.5}
+.ocard .ogo{font-family:var(--mono); font-size:10px; color:var(--red); letter-spacing:.08em; text-transform:uppercase; margin-top:2px}
+
+.callout{
+  border:1px solid var(--line); border-left:3px solid var(--red); border-radius:10px;
+  background:rgba(255,59,95,.05); padding:11px 13px; color:var(--muted); font-size:12px; margin-top:12px;
+}
+.callout b{color:var(--text)}
+
+/* ---------- slide panel ---------- */
+#panel{
+  position:fixed; top:0; right:0; height:100%; width:48%; max-width:640px; min-width:340px; z-index:40;
+  background:linear-gradient(180deg,var(--surface),#120e0f);
+  border-left:1px solid var(--line); box-shadow:-24px 0 60px var(--shadow);
+  transform:translateX(101%); transition:transform .28s cubic-bezier(.22,.61,.36,1);
+  display:flex; flex-direction:column;
+}
+#panel.open{transform:translateX(0)}
+.pclose{
+  align-self:flex-end; margin:12px 14px 0; background:var(--surface-3); border:1px solid var(--line);
+  color:var(--muted); cursor:pointer; padding:5px 11px; border-radius:8px; font-size:11.5px; font-family:var(--mono);
+}
+.pclose:hover{color:var(--red); border-color:var(--red)}
+.pbody{padding:8px 22px 30px; overflow-y:auto}
+.pbody .pkind{font-family:var(--mono); font-size:10.5px; letter-spacing:.12em; text-transform:uppercase; font-weight:700}
+.pbody .ptitle{font-size:19px; font-family:var(--mono); margin:6px 0 10px}
+.pbody .psum{color:var(--text); font-size:13.5px; line-height:1.6}
+.pbody .pdetails{margin:14px 0 0; padding-left:18px; color:var(--muted); font-size:12.5px; line-height:1.62}
+.pbody .pdetails li{margin-bottom:8px}
+.pbody .pdetails code, .pbody .psum code{font-family:var(--mono); font-size:11.5px; background:var(--surface-3); border:1px solid var(--line); border-radius:5px; padding:1px 5px; color:var(--text)}
+.pbody .chips{margin-top:12px}
+
+/* ---------- responsive ---------- */
+@media (max-width:820px){
+  body{overflow:auto}
+  #app{grid-template-columns:1fr; grid-template-rows:auto 1fr; position:fixed; inset:0}
+  #nav{border-right:0; border-bottom:1px solid var(--line); max-height:44vh}
+  .brand{padding:14px 16px 10px}
+  .navlist{max-height:none}
+  #panel{width:100%; max-width:none; min-width:0}
+  .topbar{padding:11px 14px}
+  .textWrap{padding:18px 14px 80px}
+}
+@media (prefers-reduced-motion:reduce){
+  *,*::before,*::after{transition:none!important; animation:none!important; scroll-behavior:auto!important}
+  a.ocard:hover{transform:none}
+}
+</style>
+</head>
+<body>
+<div id="app">
+  <aside id="nav" aria-label="Secciones">
+    <div class="brand">
+      <div class="eyebrow">CENSURADO</div>
+      <h1>Newsroom Docs</h1>
+      <div class="subtitle">La receta agentica de una redaccion de IA autohospedada.</div>
+    </div>
+    <nav class="navlist" id="navlist" aria-label="Navegacion de secciones"></nav>
+    <div class="navfoot">Built from the live recipe.</div>
+  </aside>
+
+  <main id="main">
+    <header class="topbar">
+      <div class="crumb">
+        <h2 id="crumbTitle">Overview</h2>
+        <div class="crumbSub" id="crumbSub"></div>
+      </div>
+      <div class="modeToggle" role="tablist" aria-label="Modo de vista">
+        <button class="segbtn" id="mMap" role="tab" aria-selected="false">Mapa</button>
+        <button class="segbtn active" id="mText" role="tab" aria-selected="true">Texto</button>
+      </div>
+    </header>
+    <section id="stage" aria-live="polite"></section>
+  </main>
+
+  <aside id="panel" aria-hidden="true" aria-label="Detalle del nodo">
+    <button class="pclose" id="pclose" aria-label="Cerrar panel">Cerrar &#10005;</button>
+    <div class="pbody" id="pbody"></div>
+  </aside>
+</div>
+
+<script>
+"use strict";
+(function(){
+  var NODE_W=200, NODE_H=64;
+  var LANE={red:'var(--red)',steel:'var(--steel)',gold:'var(--gold)',green:'var(--green)',violet:'var(--violet)',faint:'var(--faint)'};
+  var EDGE={
+    flow:{stroke:'var(--muted)',dash:'',m:'m-muted'},
+    pass:{stroke:'var(--green)',dash:'',m:'m-green'},
+    loop:{stroke:'var(--violet)',dash:'',m:'m-violet'},
+    gated:{stroke:'var(--faint)',dash:'6 5',m:'m-faint'},
+    seam:{stroke:'var(--steel)',dash:'6 5',m:'m-steel'},
+    media:{stroke:'var(--gold)',dash:'4 4',m:'m-gold'}
+  };
+
+  function esc(s){return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
+  function hl(str){
+    return esc(str).replace(/("(?:\\.|[^"\\])*"(\s*:)?|\b(?:true|false|null)\b|-?\d+(?:\.\d+)?)/g, function(m){
+      var cls='n';
+      if(m.charAt(0)==='"'){ cls = /:\s*$/.test(m)?'k':'s'; }
+      else if(/^(true|false|null)$/.test(m)) cls='b';
+      return '<span class="'+cls+'">'+m+'</span>';
+    });
+  }
+
+  /* ---------- text builders ---------- */
+  var el={
+    card:function(o){
+      return '<div class="card'+(o.wide?' wide':'')+'"'+(o.id?(' id="'+o.id+'"'):'')+'>'
+        +'<div class="ct"><span class="dot" style="background:'+(o.color||'var(--red)')+'"></span>'
+        +'<span class="clabel">'+o.label+'</span>'+(o.tag?('<span class="kindtag">'+o.tag+'</span>'):'')+'</div>'
+        +(o.sum?('<div class="sum">'+o.sum+'</div>'):'')
+        +(o.extra||'')+'</div>';
+    },
+    chips:function(arr,mut){return '<div class="chips">'+arr.map(function(c){return '<span class="chip'+(mut?' mut':'')+'">'+esc(c)+'</span>';}).join('')+'</div>';},
+    json:function(s){return '<pre class="jsonbox"><code>'+hl(s)+'</code></pre>';}
+  };
+
+  /* =====================================================================
+     CONTENT MODEL
+     ===================================================================== */
+
+  // Workflow pipeline nodes ------------------------------------------------
+  var COL=function(c){return 48+c*236;};
+  var WF=[
+    {id:'15-pick-author',c:0,y:220,kind:'setup',lane:'steel',
+      summary:'Carga el autor (voz, sesgo, fuentes asignadas) desde el backend.',
+      details:['El nodo pide la persona al store: su registro de voz, su sesgo declarado y la lista de medios que tiene permiso de nombrar.','Todo lo que sigue queda anclado a ese autor: el tema, las fuentes legibles y los medios citables.']},
+    {id:'20-fresh-titulars',c:1,y:220,kind:'setup',lane:'steel',
+      summary:'Solo modos single-author / authors: elige un tema fresco y no cubierto para ese autor.',
+      details:['Presente unicamente cuando el autor elige su propio tema (single-article recibe el tema desde afuera).','Descarta lo ya publicado para no repetir historias.']},
+    {id:'30-research',c:2,y:220,kind:'research',lane:'steel',emits:'ledger.md',
+      summary:'Lee las fuentes <b>asignadas</b> del autor (feeds + sitemaps frescos) y usa busqueda web para INFORMAR hechos.',
+      details:['Cada hecho central se valida en al menos <code>MIN_SOURCES</code> fuentes independientes de cada tendencia politica: derecha, neutral e izquierda.','Los medios hallados por busqueda web son contexto y <b>nunca se nombran</b>: solo los medios asignados del autor y los actores primarios son nombrables.','Emite <code>ledger.md</code>, el registro de hechos que la compuerta comprueba.']},
+    {id:'40-outline',c:3,y:220,kind:'structure',lane:'steel',
+      summary:'Fija el angulo y la estructura antes de escribir.',
+      details:['Decide que lidera, que sostiene la nota y en que orden, para que el borrador no divague.']},
+    {id:'50-draft',c:4,y:220,kind:'write',lane:'red',emits:'draft.md',
+      summary:'Escribe la pieza en la voz del autor, anclada en el ledger.',
+      details:['Fuentes nombradas como texto plano ("segun X"), <b>sin enlaces</b> en el cuerpo.','Solo los medios <b>asignados</b> del autor pueden nombrarse.','Emite <code>draft.md</code>.']},
+    {id:'60-evaluate',c:5,y:220,kind:'gate',lane:'gold',flag:'compuerta',
+      summary:'Juzga 6 dimensiones, cada una PASS / REVISE.',
+      details:['1. Cross-sourcing entre tendencias (y todo medio nombrado esta asignado).','2. Acentos, n con virgulilla y signos de apertura (&iquest; &iexcl;).','3. Entidades correctas.','4. Titulo honesto (max 5 palabras).','5. Densidad informativa.','6. Cero relleno / clichés de IA.','Si algo falla, la pieza baja al respin; solo con las seis en PASS sigue el flujo.']},
+    {id:'70-respin',c:6,y:70,kind:'loop',lane:'violet',flag:'bucle',
+      summary:'Reescribe lo que fallo y re-evalua.',
+      details:['Repite hasta que las seis dimensiones pasen o se agoten los intentos de respin.','Junto con 60-evaluate forma el bucle de calidad de la caminata.']},
+    {id:'75-factcheck',c:7,y:220,kind:'verify',lane:'steel',
+      summary:'Verifica los hechos centrales contra el ledger.',
+      details:['Elimina toda cita que no este en el ledger o fuera de la lista asignada del autor, conservando el hecho.']},
+    {id:'80-enrich',c:8,y:220,kind:'media',lane:'gold',
+      summary:'Anade un video de portada, capturas de tweets citados y widgets de notas relacionadas; etiqueta personas y organizaciones.',
+      details:['La linea de medios enriquece la nota sin tocar los hechos.','El etiquetado de personas y organizaciones alimenta las paginas de entidad del portal.']},
+    {id:'85-accents-entities',c:9,y:220,kind:'polish',lane:'steel',
+      summary:'Un pase enfocado en acentos del espanol y nombres de entidades correctos.',
+      details:['Ultima limpieza ortografica antes de ensamblar los metadatos.']},
+    {id:'90-finalize',c:10,y:220,kind:'assemble',lane:'red',
+      summary:'Ensambla los metadatos finales: titulo, la "bajada" / <code>description</code> (~20-30 palabras) y topics.',
+      details:['Sin subtitulo: los subtitulos fueron retirados del formato editorial.']},
+    {id:'95-image',c:11,y:220,kind:'image',lane:'gold',
+      summary:'Renderiza la imagen de portada en ComfyUI (FLUX.2) y la sube.',
+      details:['La linea de imagen es opt-in y necesita GPU; en institucional la imagen es provista y no se genera.']},
+    {id:'99-preview',c:12,y:220,kind:'preview',lane:'steel',
+      summary:'Publica la pieza en el sitio de preview <b>local</b> (localhost, solo debug, NO publico).',
+      details:['El humano aprueba aqui.','Nada de esto llega a produccion todavia.']},
+    {id:'publicar',c:13,y:220,kind:'gated',lane:'faint',flag:'gated',
+      summary:'DESHABILITADO dentro de los modos de articulo.',
+      details:['Empujar el snapshot a produccion (Cloudflare Pages, elcensuradoweb.com) es una decision humana explicita y separada.','Nunca es un paso automatico de la caminata.']}
+  ];
+  WF.forEach(function(n){n.x=COL(n.c); n.label=n.id;});
+
+  var wfEdges=[
+    {from:'15-pick-author',to:'20-fresh-titulars'},{from:'20-fresh-titulars',to:'30-research'},
+    {from:'30-research',to:'40-outline'},{from:'40-outline',to:'50-draft'},{from:'50-draft',to:'60-evaluate'},
+    {from:'60-evaluate',to:'70-respin',type:'loop',label:'revise'},
+    {from:'70-respin',to:'60-evaluate',type:'loop',label:'re-evalua'},
+    {from:'60-evaluate',to:'75-factcheck',type:'pass',label:'pass'},
+    {from:'75-factcheck',to:'80-enrich'},{from:'80-enrich',to:'85-accents-entities'},
+    {from:'85-accents-entities',to:'90-finalize'},{from:'90-finalize',to:'95-image'},
+    {from:'95-image',to:'99-preview'},
+    {from:'99-preview',to:'publicar',type:'gated',label:'humano'}
+  ];
+
+  function wfText(){
+    var cards=WF.map(function(n){
+      var extra='';
+      var rows=[];
+      if(n.emits) rows.push('<span class="flag emit">emite '+n.emits+'</span>');
+      if(n.flag==='compuerta') rows.push('<span class="flag gate">compuerta</span>');
+      if(n.flag==='bucle') rows.push('<span class="flag loop">bucle de calidad</span>');
+      if(n.flag==='gated') rows.push('<span class="flag gated">gated</span>');
+      if(rows.length) extra='<div class="row"><span class="lbl">artefacto</span>'+rows.join('')+'</div>';
+      return el.card({id:'c-workflow-'+n.id,label:n.id,tag:n.kind,color:LANE[n.lane],sum:n.summary,extra:extra});
+    }).join('');
+    return '<p class="lede"><strong>La compuerta editorial.</strong> El workflow es una lista de nodos declarada en '
+      +'<code>prompts/workflow/manifest.json</code>. El agente los camina de a uno con '
+      +'<code>censurado.py step --mode &lt;mode&gt;</code>; nunca ve la receta entera, asi que no puede saltarse un paso ni reordenarlos. '
+      +'Cada nodo emite o consume un artefacto que la compuerta comprueba (<code>30-research &rarr; ledger.md</code>, <code>50-draft &rarr; draft.md</code>). '
+      +'El modo de un solo articulo son 13 nodos; <code>publicar</code> queda gated al final.</p>'
+      +'<div class="doc-section"><div class="ds-head"><span class="eyebrow-s">single-article &middot; 13 nodos</span>'
+      +'<h3>La caminata, paso a paso</h3><p class="ds-sub">El orden es fijo. 60-evaluate + 70-respin forman el bucle de calidad; publicar esta gated.</p></div>'
+      +'<div class="cardgrid">'+cards+'</div></div>';
+  }
+
+  // ------------------------------------------------------------- MODES
+  var modesMap={
+    legend:[{c:'red',t:'modos de articulo'},{c:'steel',t:'institucional'},{c:'gold',t:'batch'},{c:'violet',t:'mantenimiento'}],
+    nodes:[
+      {id:'step engine',x:56,y:250,w:210,kind:'motor',lane:'red',label:'step engine',summary:'El mismo motor recorre distintas listas de nodos.',details:['<code>censurado.py step --mode &lt;mode&gt;</code> elige la lista declarada en <code>manifest.json</code> y la camina de a un nodo.']},
+      {id:'single-article',x:380,y:40,w:230,kind:'articulo',lane:'red',label:'single-article',summary:'La caminata completa de 13 nodos.',details:['El tema llega desde afuera; ejecuta 15 &rarr; 99 con la compuerta y el bucle de respin.']},
+      {id:'single-author / authors',x:380,y:130,w:230,kind:'articulo',lane:'red',label:'single-author / authors',summary:'Los 13 nodos; single-author anade 20-fresh-titulars.',details:['El autor elige su propio tema fresco y no cubierto en <code>20-fresh-titulars</code>.','<code>authors</code> corre la misma caminata para varios autores.']},
+      {id:'institucional',x:380,y:250,w:230,kind:'sin firma',lane:'steel',label:'institucional',summary:'Sin firma, byline de la casa "Redaccion", imagen provista (no IA), registro formal.',details:['Ruta corta: <code>10-institucional &rarr; 30-research &rarr; 50-draft-institucional &rarr; 62-semantica-calidad &rarr; 90-finalize &rarr; 99-preview &rarr; publicar</code>.','La imagen no se genera: se provee.']},
+      {id:'daily / weekly / last-hour',x:380,y:365,w:230,kind:'batch',lane:'gold',label:'daily / weekly / last-hour',summary:'Un solo nodo 10-batch-plan que barre el dia.',details:['<code>10-batch-plan</code> agrupa items de la misma historia y despacha un escritor por tema.','Cada escritor corre la caminata completa por su cuenta.']},
+      {id:'mantenimiento',x:380,y:475,w:230,kind:'single-node',lane:'violet',label:'mantenimiento',summary:'Modos de un solo nodo.',details:['<code>portal-review</code>: arma la portada del dia.','<code>normalize-topics</code>, <code>topic-cleanse</code>.','<code>publicar</code>: empuja a produccion (decision humana).']}
+    ],
+    edges:[
+      {from:'step engine',to:'single-article'},{from:'step engine',to:'single-author / authors'},
+      {from:'step engine',to:'institucional',type:'seam'},{from:'step engine',to:'daily / weekly / last-hour',type:'media'},
+      {from:'step engine',to:'mantenimiento',type:'loop'}
+    ]
+  };
+  function modesText(){
+    return '<p class="lede"><strong>Mismo motor, distinta lista de nodos.</strong> El modo solo cambia que nodos se caminan; todos salen de <code>manifest.json</code>.</p>'
+      +'<div class="doc-section"><div class="ds-head"><h3>Los modos</h3></div><div class="cardgrid">'
+      +el.card({label:'single-article',tag:'articulo',color:LANE.red,sum:'La caminata completa de 13 nodos. El tema llega desde afuera.'})
+      +el.card({label:'single-author / authors',tag:'articulo',color:LANE.red,sum:'Los 13 nodos; single-author anade <code>20-fresh-titulars</code> para que el autor elija su propio tema fresco. <code>authors</code> repite para varios.'})
+      +el.card({wide:true,label:'institucional',tag:'sin firma',color:LANE.steel,sum:'Sin firma, byline de la casa "Redaccion", imagen provista (no generada por IA), registro formal.',extra:'<div class="row"><span class="lbl">ruta</span></div>'+el.chips(['10-institucional','30-research','50-draft-institucional','62-semantica-calidad','90-finalize','99-preview','publicar'],true)})
+      +el.card({label:'daily / weekly / last-hour',tag:'batch',color:LANE.gold,sum:'Un solo nodo <code>10-batch-plan</code> que barre el dia, agrupa items de la misma historia y despacha un escritor por tema.'})
+      +el.card({label:'mantenimiento',tag:'single-node',color:LANE.violet,sum:'Modos de un solo nodo.',extra:el.chips(['portal-review','normalize-topics','topic-cleanse','publicar'],true)})
+      +'</div></div>';
+  }
+
+  // ------------------------------------------------------------- MULTI-AGENT
+  var maMap={
+    legend:[{c:'steel',t:'editor (barre y asigna)'},{c:'red',t:'writers en paralelo'},{c:'gold',t:'portada'}],
+    nodes:[
+      {id:'editor',x:56,y:240,w:200,kind:'coordina',lane:'steel',label:'editor',summary:'Barre las noticias, agrupa lo que es la misma historia y asigna cada tema al autor cuyo beat encaja.',details:['Lanza UN agente escritor por nota.','No escribe: reparte el trabajo.']},
+      {id:'writer A',x:420,y:60,w:190,kind:'autor',lane:'red',label:'writer · autor A',summary:'Encarna un autor y corre el workflow completo por su cuenta.',details:['Corre en paralelo con los demas escritores.','Se auto-revisa con la compuerta 60-evaluate y el bucle 70-respin.']},
+      {id:'writer B',x:420,y:150,w:190,kind:'autor',lane:'red',label:'writer · autor B',summary:'Otro autor, otra voz, misma caminata independiente.',details:['Cada escritor tiene sus fuentes asignadas y sus medios citables.']},
+      {id:'writer C',x:420,y:240,w:190,kind:'autor',lane:'red',label:'writer · autor C',summary:'Los escritores no se coordinan entre si durante la redaccion.',details:['El paralelismo es real: N notas se escriben a la vez.']},
+      {id:'writer N',x:420,y:330,w:190,kind:'autor',lane:'red',label:'writer · autor N',summary:'Un escritor por tema, tantos como temas haya en el barrido.',details:['El numero de writers depende del plan del editor.']},
+      {id:'portada',x:790,y:240,w:200,kind:'front page',lane:'gold',label:'portada',summary:'Cuando el batch termina, arma la portada del dia: que lidera, que es "importante" y el orden.',details:['Corre despues de que todos los escritores terminan.','Decide la jerarquia visual del portal, no el contenido de cada nota.']}
+    ],
+    edges:[
+      {from:'editor',to:'writer A'},{from:'editor',to:'writer B'},{from:'editor',to:'writer C'},{from:'editor',to:'writer N'},
+      {from:'writer A',to:'portada',type:'pass'},{from:'writer B',to:'portada',type:'pass'},{from:'writer C',to:'portada',type:'pass'},{from:'writer N',to:'portada',type:'pass'}
+    ]
+  };
+  function maText(){
+    return '<p class="lede"><strong>Es un equipo, no un agente.</strong> Un agente <code>editor</code> barre la jornada, agrupa lo que es la misma historia y asigna cada tema al autor cuyo beat encaja, lanzando un agente escritor por nota. Los escritores corren en paralelo; cuando el batch termina, un agente <code>portada</code> arma la primera plana.</p>'
+      +'<div class="doc-section"><div class="ds-head"><h3>Los tres roles</h3></div><div class="cardgrid">'
+      +el.card({label:'editor',tag:'coordina',color:LANE.steel,sum:'Barre las noticias, agrupa la misma historia, asigna cada tema por beat y lanza un escritor por nota.'})
+      +el.card({label:'writer (xN)',tag:'autor',color:LANE.red,sum:'Corren <b>en paralelo</b>, cada uno encarna un autor distinto y ejecuta el workflow completo de forma independiente, auto-revisandose.'})
+      +el.card({label:'portada',tag:'front page',color:LANE.gold,sum:'Al terminar el batch, arma la portada del dia: que lidera, que es "importante" y el orden.'})
+      +'</div></div>';
+  }
+
+  // ------------------------------------------------------------- ARCHITECTURE
+  var arMap={
+    legend:[{c:'steel',t:'operador / agente'},{c:'steel',t:'servicios docker'},{c:'gold',t:'linea de imagen'},{c:'green',t:'produccion'},{c:'faint',t:'opt-in aislado'}],
+    groups:[{x:596,y:24,w:300,h:392,label:'Docker (brain + backend, 24/7)'}],
+    nodes:[
+      {id:'operator',x:44,y:230,w:190,kind:'humano',lane:'steel',label:'Operador',summary:'Da la orden (WhatsApp, Telegram, app CLI o remoto) y opcionalmente aprueba antes de publicar.',details:['El humano decide el que y aprueba en el preview; el publicar final es siempre suyo.']},
+      {id:'agent',x:316,y:230,w:190,kind:'cualquier modelo',lane:'red',label:'Agente / CLI',summary:'Cualquier modelo en cualquier CLI. Usa una sola herramienta: los verbos de censurado.',details:['<code>python3 cli/censurado.py &lt;verb&gt;</code> es toda su superficie.','No corre el modelo dentro del stack; el stack le da los verbos.']},
+      {id:'publish',x:616,y:64,w:200,kind:'127.0.0.1:8082',lane:'steel',label:'publish',summary:'El backend: sqlite store + el UNICO escritor + sirve el panel admin.',details:['Append-only publish API, JSON read API y media store.','Es el unico proceso que escribe en la base.']},
+      {id:'generate',x:616,y:154,w:200,kind:'watcher',lane:'steel',label:'generate',summary:'Vigila la DB y reconstruye el sitio estatico incrementalmente.',details:['Permalinks direccionados por contenido: <code>/a/&lt;slug&gt;-&lt;hash8&gt;/</code>.','Shards JSON y un manifiesto quirurgico de purga de CDN.']},
+      {id:'site',x:616,y:244,w:200,kind:'unico puerto',lane:'steel',label:'site',summary:'Sirve el portal local; el unico puerto expuesto del grupo.',details:['Lo que ve el humano en el preview local sale de aqui.']},
+      {id:'comfyui',x:616,y:334,w:200,kind:'GPU opt-in',lane:'gold',label:'comfyui',summary:'La linea de imagen de portada (FLUX.2); opt-in, necesita GPU.',details:['Alimenta el nodo 95-image de la caminata.']},
+      {id:'cdn',x:952,y:230,w:200,kind:'produccion',lane:'green',label:'CDN / publico',summary:'publicar empuja el snapshot construido a Cloudflare Pages (elcensuradoweb.com).',details:['Este salto es la unica decision humana explicita del ciclo.']},
+      {id:'telegram',x:316,y:430,w:190,kind:'opt-in',lane:'faint',label:'bridge/telegram',summary:'El puente de bot opt-in corre en su propio contenedor aislado.',details:['Deja dar ordenes desde Telegram sin acoplar el stack.']},
+      {id:'official-source',x:616,y:440,w:200,kind:'opt-in',lane:'faint',label:'official-source',summary:'La automatizacion de fuentes oficiales, opt-in y aislada (n8n, diferida).',details:['Diseno solamente por ahora.']}
+    ],
+    edges:[
+      {from:'operator',to:'agent'},
+      {from:'agent',to:'publish',label:'verbos'},
+      {from:'publish',to:'generate',label:'watch DB'},
+      {from:'generate',to:'site'},
+      {from:'comfyui',to:'publish',type:'media',label:'hero'},
+      {from:'generate',to:'cdn',type:'gated',label:'publicar'},
+      {from:'telegram',to:'agent',type:'seam'},
+      {from:'official-source',to:'publish',type:'seam'}
+    ]
+  };
+  function arText(){
+    return '<p class="lede"><strong>De la orden al portal.</strong> El humano da la orden y opcionalmente aprueba; el agente usa un solo tool (los verbos de censurado); un grupo Docker corre el cerebro y el backend 24/7; <code>publicar</code> empuja el snapshot a Cloudflare Pages.</p>'
+      +'<div class="doc-section"><div class="ds-head"><h3>Las cuatro compose services</h3></div><div class="cardgrid">'
+      +el.card({label:'publish',tag:'backend',color:LANE.steel,sum:'El sqlite store + el <b>unico</b> escritor + sirve el panel admin. <code>127.0.0.1:8082</code>.'})
+      +el.card({label:'generate',tag:'watcher',color:LANE.steel,sum:'Vigila la DB y reconstruye el sitio incrementalmente: permalinks <code>/a/&lt;slug&gt;-&lt;hash8&gt;/</code>, shards JSON y un manifiesto de purga de CDN.'})
+      +el.card({label:'site',tag:'portal',color:LANE.steel,sum:'Sirve el portal local; el <b>unico</b> puerto expuesto.'})
+      +el.card({label:'comfyui',tag:'imagen',color:LANE.gold,sum:'La linea de imagen de portada; opt-in, necesita GPU.'})
+      +'</div>'
+      +'<div class="callout"><b>Opt-in aislados.</b> El bridge de Telegram y la automatizacion de fuentes oficiales corren cada uno en su propio contenedor aislado. <b>publicar</b> a Cloudflare Pages (elcensuradoweb.com) es una decision humana separada.</div>'
+      +'</div>';
+  }
+
+  // ------------------------------------------------------------- CONTRACTS
+  var coMap={
+    legend:[{c:'red',t:'brain (recipe)'},{c:'steel',t:'backend (store)'},{c:'green',t:'web (generator)'},{c:'violet',t:'schemas'}],
+    nodes:[
+      {id:'brain',x:56,y:70,w:230,kind:'recipe',lane:'red',label:'censurado-web-brain',summary:'La receta agentica: la CLI y los prompts. No guarda datos ni corre modelo.',details:['Habla con el backend por la API HTTP (Seam B).']},
+      {id:'backend',x:56,y:250,w:230,kind:'store',lane:'steel',label:'censurado-web-backend',summary:'El sqlite store, el unico escritor, la publish/read API y el media store.',details:['Expone Seam B hacia arriba y produce la forma de datos que consume el generador (Seam A).']},
+      {id:'web',x:56,y:430,w:230,kind:'generator',lane:'green',label:'censurado-web',summary:'El generador de sitio estatico y el frontend publico (elcensuradoweb.com).',details:['Importa la forma de datos Go: Seam A.']},
+      {id:'schemas',x:430,y:200,w:220,kind:'json-schema',lane:'violet',label:'schemas · drift tests',summary:'article / authors / batch-* / shard.schema.json espejan structs Go y modelos Pydantic; los drift tests los mantienen byte-equal.',details:['<code>article.schema.json</code>','<code>authors.schema.json</code> (forma de escritura del upsert de autor)','<code>batch-*.schema.json</code>','<code>shard.schema.json</code> (18 claves, incluye <code>section_label</code>)']},
+      {id:'content-hash',x:430,y:410,w:220,kind:'sha-256',lane:'gold',label:'content-addressing',summary:'content_hash = SHA-256 sobre title|body|author|section.',details:['Un re-publish recomputa el hash pero preserva <code>slug</code> + <code>created_at</code>, asi que los permalinks son estables.']}
+    ],
+    edges:[
+      {from:'brain',to:'backend',type:'seam',label:'Seam B · HTTP'},
+      {from:'backend',to:'web',type:'seam',label:'Seam A · Go'},
+      {from:'backend',to:'schemas',type:'flow'},
+      {from:'backend',to:'content-hash',type:'media'}
+    ]
+  };
+  var articleShape='{\n  "title": "El Senado sanciona la reforma en particular",\n  "body": "...markdown, sin enlaces en el cuerpo...",\n  "author": "marta-rios",\n  "section": "politica",\n  "topics": ["senado", "reforma", "congreso"],\n  "published_at": "2026-07-08T14:20:00Z",\n  "metadata": {\n    "description": "La camara alta aprobo el texto tras doce horas de debate y giro la ley a promulgacion.",\n    "image": "media/hero/a1b2c3d4.webp",\n    "image_alt": "Recinto del Senado durante la votacion",\n    "image_caption": "La votacion en particular, articulo por articulo.",\n    "image_credit": "Censurado / FLUX.2",\n    "card": { "type": "standard", "importante": false }\n  }\n}';
+  function coText(){
+    return '<p class="lede"><strong>Dos costuras congeladas</strong> mantienen los tres repos en sincronia. <b>Seam A</b> es la forma de datos Go que el generador importa. <b>Seam B</b> es la API HTTP de publish/read. Contratos JSON-Schema espejan los structs Go y los modelos Pydantic, y los drift tests los mantienen byte-equal.</p>'
+      +'<div class="doc-section"><div class="ds-head"><h3>Los schemas</h3></div>'
+      +el.chips(['article.schema.json','authors.schema.json','batch-*.schema.json','shard.schema.json'])
+      +'<div class="callout"><b>shard.schema.json</b> tiene 18 claves, incluida <code>section_label</code>. <b>authors.schema.json</b> es la forma de escritura del upsert de autor.</div></div>'
+      +'<div class="doc-section"><div class="ds-head"><h3>Direccionamiento por contenido</h3><p class="ds-sub">content_hash = SHA-256 sobre <code>title|body|author|section</code>. Un re-publish recomputa el hash pero preserva slug + created_at, asi los permalinks son estables.</p></div>'
+      +'<span class="grouplbl">article write shape</span>'+el.json(articleShape)+'</div>';
+  }
+
+  // ------------------------------------------------------------- CLI VERBS
+  var WRITE=['preview','publicar','edit','unpublish','image','media','tweet','truth'];
+  var CURATE=['archive','get','sections','portada','recomendado','create-author','remove-author','sources','topics','personas','persona','portals','style','set-prompt','set-floor'];
+  var OPERATE=['step','status','doctor'];
+  var BRAIN=['status','normalize check','normalize links','normalize sections','topics cleanse','embeds recheck'];
+  var cliMap={
+    legend:[{c:'red',t:'WRITE'},{c:'steel',t:'CURATE'},{c:'green',t:'OPERATE'},{c:'violet',t:'censurado-brain'}],
+    nodes:[
+      {id:'cli',x:56,y:230,w:230,kind:'superficie',lane:'red',label:'censurado.py <verb>',summary:'Toda la superficie del agente. Los verbos construyen el JSON estricto, asi el agente nunca arma la request a mano.',details:['<code>python3 cli/censurado.py &lt;verb&gt;</code>']},
+      {id:'WRITE',x:420,y:60,w:200,kind:'grupo',lane:'red',label:'WRITE',summary:'Verbos que escriben o publican.',details:['<code>'+WRITE.join('</code> <code>')+'</code>']},
+      {id:'CURATE',x:420,y:200,w:200,kind:'grupo',lane:'steel',label:'CURATE',summary:'Verbos que curan el portal, autores, fuentes y prompts.',details:['<code>'+CURATE.join('</code> <code>')+'</code>']},
+      {id:'OPERATE',x:420,y:340,w:200,kind:'grupo',lane:'green',label:'OPERATE',summary:'Caminar un modo y revisar salud.',details:['<code>'+OPERATE.join('</code> <code>')+'</code>']},
+      {id:'brain',x:420,y:460,w:200,kind:'CLI aparte',lane:'violet',label:'censurado-brain',summary:'La CLI de mantenimiento, separada de la del agente.',details:['<code>status</code>','<code>normalize check | links | sections</code>','<code>topics cleanse</code>','<code>embeds recheck</code>']}
+    ],
+    edges:[
+      {from:'cli',to:'WRITE'},{from:'cli',to:'CURATE'},{from:'cli',to:'OPERATE'},
+      {from:'cli',to:'brain',type:'seam',label:'aparte'}
+    ]
+  };
+  function cliText(){
+    return '<p class="lede"><strong>Toda la superficie del agente es <code>python3 cli/censurado.py &lt;verb&gt;</code>.</strong> Los verbos construyen el JSON estricto, asi el agente nunca arma una request a mano.</p>'
+      +'<div class="doc-section"><div class="ds-head"><h3>Verbos por grupo</h3></div>'
+      +'<span class="grouplbl write">WRITE</span>'+el.chips(WRITE)
+      +'<span class="grouplbl curate">CURATE</span>'+el.chips(CURATE)
+      +'<span class="grouplbl operate">OPERATE</span>'+el.chips(OPERATE)
+      +'<span class="grouplbl brain">censurado-brain (CLI de mantenimiento)</span>'+el.chips(BRAIN)
+      +'<div class="callout"><b>step</b> camina un modo; <b>status</b> y <b>doctor</b> reportan salud. La CLI de mantenimiento <b>censurado-brain</b> es un binario aparte.</div></div>';
+  }
+
+  // ------------------------------------------------------------- REPO TREE
+  var treeRows=[
+    {d:0,n:'censurado-web-brain/',t:'dir'},
+    {d:1,n:'cli/',t:'dir'},
+    {d:2,n:'censurado.py',t:'file',c:'la CLI del agente'},
+    {d:2,n:'SKILL.md',t:'file',c:'la skill resolvedora'},
+    {d:2,n:'skills/',t:'dir',c:'las sub-skills gruesas'},
+    {d:2,n:'workflow/',t:'dir'},
+    {d:3,n:'parameters.json',t:'file',c:'los pisos numericos'},
+    {d:2,n:'templates/',t:'dir',c:'el grafo de ComfyUI'},
+    {d:1,n:'prompts/',t:'dir'},
+    {d:2,n:'workflow/',t:'dir',c:'los nodos del step-gate + manifest.json'},
+    {d:2,n:'editorial/style.md',t:'file'},
+    {d:2,n:'persona/synthesize.md',t:'file'},
+    {d:1,n:'newsroom/',t:'dir',c:'la CLI de mantenimiento + los contratos aislados'},
+    {d:1,n:'bridge/telegram/',t:'dir',c:'el puente de bot opt-in'},
+    {d:1,n:'automation/official-source/',t:'dir',c:'solo diseno, diferido, n8n'},
+    {d:1,n:'docker-compose.yml',t:'file'},
+    {d:1,n:'EDITORIAL-RULES.md',t:'file'},
+    {d:1,n:'deploy/',t:'dir'},
+    {d:2,n:'deploy-cdn.sh',t:'file'}
+  ];
+  var treeMap={
+    legend:[{c:'red',t:'repo raiz'},{c:'steel',t:'directorio'},{c:'gold',t:'archivo'}],
+    nodes:[
+      {id:'root',x:44,y:270,w:210,kind:'repo',lane:'red',label:'censurado-web-brain/',summary:'La receta agentica. Sin datos, sin modelo. Carga el docker-compose.',details:['Todo lo que camina el agente vive aqui.']},
+      {id:'cli/',x:360,y:24,w:210,kind:'dir',lane:'steel',label:'cli/',summary:'censurado.py, SKILL.md, skills/, workflow/parameters.json, templates/.',details:['<code>censurado.py</code>: la CLI del agente.','<code>SKILL.md</code>: la skill resolvedora.','<code>workflow/parameters.json</code>: los pisos numericos.','<code>templates/</code>: el grafo de ComfyUI.']},
+      {id:'prompts/',x:360,y:102,w:210,kind:'dir',lane:'steel',label:'prompts/',summary:'workflow/ (step-gate + manifest.json), editorial/style.md, persona/synthesize.md.',details:['Los nodos del workflow y su manifest viven aqui.']},
+      {id:'newsroom/',x:360,y:180,w:210,kind:'dir',lane:'steel',label:'newsroom/',summary:'La CLI de mantenimiento (censurado-brain) + los contratos aislados.',details:['Aqui viven los JSON-Schema y los drift tests.']},
+      {id:'bridge/telegram/',x:360,y:258,w:210,kind:'dir',lane:'steel',label:'bridge/telegram/',summary:'El puente de bot opt-in.',details:['Contenedor aislado.']},
+      {id:'automation/official-source/',x:360,y:336,w:230,kind:'dir',lane:'steel',label:'automation/official-source/',summary:'Solo diseno, diferido, n8n.',details:['Auto-ingestion de gacetillas oficiales, aun sin implementar.']},
+      {id:'docker-compose.yml',x:360,y:414,w:210,kind:'file',lane:'gold',label:'docker-compose.yml',summary:'Define los servicios publish / generate / site / comfyui.',details:['El brain carga este compose.']},
+      {id:'EDITORIAL-RULES.md',x:360,y:492,w:210,kind:'file',lane:'gold',label:'EDITORIAL-RULES.md',summary:'Las reglas editoriales de la casa.',details:['Acentos, titulos honestos, cross-sourcing, cero clichés.']},
+      {id:'deploy/',x:360,y:570,w:210,kind:'dir',lane:'steel',label:'deploy/',summary:'deploy-cdn.sh: el empuje a Cloudflare Pages.',details:['<code>deploy/deploy-cdn.sh</code>']}
+    ],
+    edges:[
+      {from:'root',to:'cli/'},{from:'root',to:'prompts/'},{from:'root',to:'newsroom/'},
+      {from:'root',to:'bridge/telegram/'},{from:'root',to:'automation/official-source/'},
+      {from:'root',to:'docker-compose.yml'},{from:'root',to:'EDITORIAL-RULES.md'},{from:'root',to:'deploy/'}
+    ]
+  };
+  function treeText(){
+    var rows=treeRows.map(function(r){
+      var indent='';
+      for(var i=0;i<r.d;i++){indent+='   ';}
+      var guide=r.d>0?'<span class="tguide">'+(r.last?'&#9492;&#9472; ':'&#9500;&#9472; ')+'</span>':'';
+      var cls=r.t==='dir'?'tdir':'tfile';
+      var com=r.c?('   <span class="tcom"># '+r.c+'</span>'):'';
+      return '<div class="trow">'+indent+guide+'<span class="'+cls+'">'+esc(r.n)+'</span>'+com+'</div>';
+    }).join('');
+    return '<p class="lede"><strong>El layout del brain.</strong> El repo lleva la CLI, los prompts, los contratos aislados, los puentes opt-in y el compose. No guarda datos ni corre modelo.</p>'
+      +'<div class="doc-section"><div class="ds-head"><h3>Arbol del repositorio</h3></div><div class="tree">'+rows+'</div></div>';
+  }
+
+  // ------------------------------------------------------------- OVERVIEW
+  var ovMap={
+    legend:[{c:'steel',t:'operador'},{c:'red',t:'agente + recipe'},{c:'steel',t:'backend'},{c:'green',t:'generador / publico'}],
+    nodes:[
+      {id:'operator',x:44,y:250,w:180,kind:'humano',lane:'steel',label:'Operador',summary:'Da la orden y aprueba en el preview.',details:['WhatsApp, Telegram, CLI o remoto.']},
+      {id:'agent',x:280,y:250,w:190,kind:'cualquier CLI',lane:'red',label:'Agente / CLI',summary:'Cualquier modelo. Usa los verbos de censurado.',details:['<code>python3 cli/censurado.py &lt;verb&gt;</code>']},
+      {id:'brain',x:540,y:90,w:200,kind:'recipe',lane:'red',label:'brain (recipe)',summary:'censurado-web-brain: la CLI + los prompts + el compose. Sin datos, sin modelo.',details:['Declara la caminata que el agente recorre.']},
+      {id:'backend',x:540,y:250,w:200,kind:'store',lane:'steel',label:'backend (store)',summary:'censurado-web-backend: sqlite, el unico escritor, publish/read API, media, panel admin.',details:['La unica fuente de escritura del sistema.']},
+      {id:'web',x:540,y:410,w:200,kind:'generator',lane:'green',label:'web (generator)',summary:'censurado-web: genera el sitio estatico y sirve el frontend publico.',details:['Reconstruye incrementalmente desde la DB.']},
+      {id:'publico',x:820,y:250,w:200,kind:'produccion',lane:'green',label:'elcensuradoweb.com',summary:'El portal en vivo, en Cloudflare Pages.',details:['publicar empuja el snapshot aqui.']}
+    ],
+    edges:[
+      {from:'operator',to:'agent'},{from:'agent',to:'brain'},{from:'agent',to:'backend',label:'verbos'},
+      {from:'backend',to:'web',type:'seam',label:'Seam A'},{from:'web',to:'publico',type:'gated',label:'publicar'}
+    ]
+  };
+  function ovText(){
+    var cards=[
+      ['workflow','The workflow','La compuerta editorial: 13 nodos que el agente camina de a uno.',LANE.red],
+      ['modes','Modes','Mismo motor, distintas listas de nodos: articulo, institucional, batch, mantenimiento.',LANE.steel],
+      ['multiagent','Multi-agent','Un equipo: editor, writers en paralelo y portada.',LANE.violet],
+      ['architecture','Architecture','De la orden al portal: operador, agente, Docker y CDN.',LANE.steel],
+      ['contracts','Contracts','Las dos costuras congeladas y el direccionamiento por contenido.',LANE.gold],
+      ['cli','CLI verbs','La superficie del agente: WRITE, CURATE, OPERATE.',LANE.green],
+      ['tree','Repo tree','El layout del brain: cli, prompts, newsroom, bridges y compose.',LANE.steel]
+    ].map(function(c){
+      return '<a class="ocard" href="#" data-goto="'+c[0]+'"><span class="otop"><span class="dot" style="background:'+c[3]+'"></span><span class="otitle">'+c[1]+'</span></span><span class="odesc">'+c[2]+'</span><span class="ogo">Abrir &rarr;</span></a>';
+    }).join('');
+    return '<p class="lede"><strong>Censurado es un portal de noticias de IA autohospedado</strong> donde un agente LLM (cualquier modelo, en cualquier CLI) escribe, ilustra y publica articulos de autores-persona a traves de una caminata editorial con compuertas. Tres repos: '
+      +'<code>censurado-web-brain</code> (la receta agentica: la CLI + los prompts; no guarda datos, no corre modelo; lleva el docker-compose), '
+      +'<code>censurado-web-backend</code> (el sqlite store, el unico escritor, la publish API append-only, la read API JSON, el media store y el panel de admin) y '
+      +'<code>censurado-web</code> (el generador de sitio estatico y el frontend publico, en <a href="https://elcensuradoweb.com" target="_blank" rel="noopener">elcensuradoweb.com</a>). '
+      +'Toda la superficie del agente es <code>python3 cli/censurado.py &lt;verb&gt;</code>.</p>'
+      +'<div class="doc-section"><div class="ds-head"><h3>Recorre las secciones</h3></div><div class="overviewGrid">'+cards+'</div></div>';
+  }
+
+  // ------------------------------------------------------------- SECTIONS registry
+  var SECTIONS=[
+    {id:'overview',label:'Overview',dot:'var(--red)',sub:'Que es Censurado y los tres repos.',map:ovMap,text:ovText,defaultMode:'text'},
+    {id:'workflow',label:'The workflow',dot:'var(--red)',star:true,sub:'La compuerta editorial: 13 nodos, sin saltos.',mapNodes:WF,mapEdges:wfEdges,mapLegend:[{c:'steel',t:'research / process'},{c:'red',t:'write / assemble'},{c:'gold',t:'gate / image'},{c:'violet',t:'loop (respin)'},{c:'faint',t:'gated (publicar)'}],text:wfText,defaultMode:'text'},
+    {id:'modes',label:'Modes',dot:'var(--steel)',sub:'Mismo engine, distinta lista de nodos.',map:modesMap,text:modesText,defaultMode:'text'},
+    {id:'multiagent',label:'Multi-agent',dot:'var(--violet)',sub:'Editor, writers en paralelo, portada.',map:maMap,text:maText,defaultMode:'map'},
+    {id:'architecture',label:'Architecture',dot:'var(--steel)',sub:'Operador, agente, Docker, CDN.',map:arMap,text:arText,defaultMode:'map'},
+    {id:'contracts',label:'Contracts',dot:'var(--gold)',sub:'Las dos costuras congeladas.',map:coMap,text:coText,defaultMode:'text'},
+    {id:'cli',label:'CLI verbs',dot:'var(--green)',sub:'La superficie del agente.',map:cliMap,text:cliText,defaultMode:'text'},
+    {id:'tree',label:'Repo tree',dot:'var(--steel)',sub:'El layout del brain.',map:treeMap,text:treeText,defaultMode:'text'}
+  ];
+  var SEC_BY_ID={};
+  SECTIONS.forEach(function(s){
+    SEC_BY_ID[s.id]=s;
+    if(s.mapNodes){ s.map={nodes:s.mapNodes,edges:s.mapEdges,legend:s.mapLegend}; }
+  });
+
+  // Node lookup per section (for panel + edges)
+  function nodesOf(sec){ return (sec.map&&sec.map.nodes)||[]; }
+  function nodeById(sec,id){ var ns=nodesOf(sec); for(var i=0;i<ns.length;i++){ if(ns[i].id===id) return ns[i]; } return null; }
+
+  // Sub-items for nav
+  function subItemsOf(sec){
+    if(sec.id==='workflow'){ return WF.map(function(n){return {label:n.id,anchor:'c-workflow-'+n.id};}); }
+    if(sec.map&&sec.map.nodes){ return sec.map.nodes.slice(0,8).map(function(n){return {label:n.label,node:n.id};}); }
+    return [];
+  }
+
+  /* =====================================================================
+     DOM refs + state
+     ===================================================================== */
+  var navlist=document.getElementById('navlist');
+  var stage=document.getElementById('stage');
+  var crumbTitle=document.getElementById('crumbTitle');
+  var crumbSub=document.getElementById('crumbSub');
+  var mMap=document.getElementById('mMap');
+  var mText=document.getElementById('mText');
+  var panel=document.getElementById('panel');
+  var pbody=document.getElementById('pbody');
+  var pclose=document.getElementById('pclose');
+
+  var state={section:'overview',mode:'text'};
+
+  /* ---------- nav ---------- */
+  function buildNav(){
+    if(!navlist) return;
+    navlist.innerHTML='';
+    SECTIONS.forEach(function(sec){
+      var wrap=document.createElement('div');
+      wrap.className='navsec'; wrap.setAttribute('data-sec',sec.id);
+      var btn=document.createElement('button');
+      btn.type='button';
+      btn.setAttribute('aria-expanded','false');
+      btn.innerHTML='<span class="dot" style="background:'+sec.dot+'"></span>'
+        +'<span class="nsecLabel">'+esc(sec.label)+'</span>'
+        +(sec.star?'<span class="star" title="seccion estrella">&#9733;</span>':'')
+        +'<span class="caret">&#9656;</span>';
+      wrap.appendChild(btn);
+
+      var subs=subItemsOf(sec);
+      var ul=document.createElement('ul');
+      ul.className='subitems';
+      subs.forEach(function(si){
+        var li=document.createElement('li');
+        var sb=document.createElement('button');
+        sb.type='button'; sb.textContent=si.label;
+        sb.addEventListener('click',function(e){
+          e.stopPropagation();
+          selectSection(sec.id);
+          if(si.anchor){
+            setMode('text');
+            requestAnimationFrame(function(){
+              var t=document.getElementById(si.anchor);
+              if(t){ t.scrollIntoView({block:'center'}); t.style.outline='2px solid var(--red)'; setTimeout(function(){t.style.outline='';},1200); }
+            });
+          } else if(si.node){
+            setMode('map');
+            requestAnimationFrame(function(){ var n=nodeById(sec,si.node); if(n) openPanel(n); });
+          }
+        });
+        li.appendChild(sb); ul.appendChild(li);
+      });
+      wrap.appendChild(ul);
+
+      btn.addEventListener('click',function(){ selectSection(sec.id); });
+      navlist.appendChild(wrap);
+    });
+  }
+
+  function syncNav(){
+    var secs=navlist.querySelectorAll('.navsec');
+    for(var i=0;i<secs.length;i++){
+      var s=secs[i]; var id=s.getAttribute('data-sec');
+      var on=(id===state.section);
+      s.classList.toggle('active',on);
+      s.classList.toggle('open',on);
+      var b=s.querySelector('button'); if(b) b.setAttribute('aria-expanded',on?'true':'false');
+    }
+  }
+
+  /* ---------- mode toggle ---------- */
+  function setMode(mode){
+    state.mode=mode;
+    mMap.classList.toggle('active',mode==='map');
+    mText.classList.toggle('active',mode==='text');
+    mMap.setAttribute('aria-selected',mode==='map'?'true':'false');
+    mText.setAttribute('aria-selected',mode==='text'?'true':'false');
+    renderStage();
+  }
+  mMap.addEventListener('click',function(){ setMode('map'); });
+  mText.addEventListener('click',function(){ setMode('text'); });
+
+  /* ---------- section select ---------- */
+  function selectSection(id){
+    var sec=SEC_BY_ID[id]; if(!sec) return;
+    var first=(state.section!==id);
+    state.section=id;
+    crumbTitle.innerHTML=esc(sec.label)+(sec.star?' <span class="star">&#9733;</span>':'');
+    crumbSub.textContent=sec.sub||'';
+    syncNav();
+    closePanel();
+    if(first){ state.mode=sec.defaultMode||'text'; }
+    setMode(state.mode);
+  }
+
+  /* =====================================================================
+     STAGE render
+     ===================================================================== */
+  function renderStage(){
+    var sec=SEC_BY_ID[state.section];
+    closePanel();
+    if(state.mode==='map' && sec.map && sec.map.nodes && sec.map.nodes.length){
+      renderMap(sec);
+    } else {
+      renderText(sec);
+    }
+  }
+
+  function renderText(sec){
+    var html='<div class="textWrap"><div class="doc">'+(sec.text?sec.text():'')+'</div></div>';
+    stage.innerHTML=html;
+    // wire overview ocards
+    var links=stage.querySelectorAll('a.ocard[data-goto]');
+    for(var i=0;i<links.length;i++){
+      (function(a){
+        a.addEventListener('click',function(e){ e.preventDefault(); selectSection(a.getAttribute('data-goto')); });
+      })(links[i]);
+    }
+  }
+
+  /* ---------- map ---------- */
+  function markerDefs(){
+    var colors={'m-muted':'var(--muted)','m-green':'var(--green)','m-violet':'var(--violet)','m-faint':'var(--faint)','m-steel':'var(--steel)','m-gold':'var(--gold)'};
+    var out='<defs>';
+    for(var id in colors){
+      out+='<marker id="'+id+'" markerWidth="9" markerHeight="9" refX="7.5" refY="3" orient="auto" markerUnits="userSpaceOnUse"><path d="M0,0 L7.5,3 L0,6 Z" style="fill:'+colors[id]+'"></path></marker>';
+    }
+    out+='</defs>';
+    return out;
+  }
+
+  function ports(n){
+    var w=n.w||NODE_W, h=n.h||NODE_H;
+    return {
+      r:{x:n.x+w,y:n.y+h/2}, l:{x:n.x,y:n.y+h/2},
+      t:{x:n.x+w/2,y:n.y}, b:{x:n.x+w/2,y:n.y+h},
+      cx:n.x+w/2, cy:n.y+h/2, w:w, h:h
+    };
+  }
+  function edgePath(a,b,type){
+    var pa=ports(a), pb=ports(b);
+    if(type==='loop'){
+      var s=pa.l, t=pb.t;
+      if(pb.cx>pa.cx){ s=pa.t; t=pb.l; var dx=Math.max(40,(t.x-s.x)/2); return 'M'+s.x+','+s.y+' C'+(s.x)+','+(s.y-40)+' '+(t.x-dx)+','+t.y+' '+t.x+','+t.y; }
+      return 'M'+s.x+','+s.y+' C'+(s.x-70)+','+s.y+' '+t.x+','+(t.y-70)+' '+t.x+','+t.y;
+    }
+    if(pb.cx>=pa.cx){
+      var s2=pa.r, t2=pb.l, d2=Math.max(42,(t2.x-s2.x)/2);
+      return 'M'+s2.x+','+s2.y+' C'+(s2.x+d2)+','+s2.y+' '+(t2.x-d2)+','+t2.y+' '+t2.x+','+t2.y;
+    }
+    var s3=pa.b, t3=pb.b, dy=70;
+    return 'M'+s3.x+','+s3.y+' C'+s3.x+','+(s3.y+dy)+' '+t3.x+','+(t3.y+dy)+' '+t3.x+','+t3.y;
+  }
+  function midPoint(a,b){ var pa=ports(a),pb=ports(b); return {x:(pa.cx+pb.cx)/2,y:(pa.cy+pb.cy)/2}; }
+
+  function renderMap(sec){
+    var data=sec.map;
+    var legend=(data.legend||[]).map(function(l){
+      return '<div class="pill"><span class="dot" style="background:'+LANE[l.c]+'"></span>'+esc(l.t)+'</div>';
+    }).join('');
+
+    var groupsSvg=(data.groups||[]).map(function(g){
+      return '<rect class="grp" x="'+g.x+'" y="'+g.y+'" width="'+g.w+'" height="'+g.h+'" rx="16"></rect>'
+        +'<text class="grpLabel" x="'+(g.x+14)+'" y="'+(g.y+22)+'">'+esc(g.label)+'</text>';
+    }).join('');
+
+    var edgesSvg=data.edges.map(function(e){
+      var a=nodeById(sec,e.from), b=nodeById(sec,e.to);
+      if(!a||!b) return '';
+      var cfg=EDGE[e.type||'flow']||EDGE.flow;
+      var d=edgePath(a,b,e.type||'flow');
+      var path='<path class="edge" d="'+d+'" style="stroke:'+cfg.stroke+(cfg.dash?';stroke-dasharray:'+cfg.dash:'')+'" marker-end="url(#'+cfg.m+')"></path>';
+      var lbl='';
+      if(e.label){
+        var m=midPoint(a,b);
+        var tw=e.label.length*6.1+10;
+        lbl='<g transform="translate('+m.x+','+m.y+')"><rect class="elabel-bg" x="'+(-tw/2)+'" y="-9" width="'+tw+'" height="16" rx="4"></rect>'
+          +'<text class="elabel" x="0" y="2" text-anchor="middle">'+esc(e.label)+'</text></g>';
+      }
+      return path+lbl;
+    }).join('');
+
+    var nodesSvg=data.nodes.map(function(n){
+      var w=n.w||NODE_W, h=n.h||NODE_H;
+      var label=n.label||n.id;
+      return '<g class="node lane-'+n.lane+'" data-id="'+esc(n.id)+'" tabindex="0" role="button" aria-label="'+esc(label)+'" transform="translate('+n.x+','+n.y+')">'
+        +'<rect class="nbox" width="'+w+'" height="'+h+'" rx="12"></rect>'
+        +'<rect x="0" y="0" width="6" height="'+h+'" rx="3" style="fill:'+LANE[n.lane]+'"></rect>'
+        +'<text class="nlabel" x="18" y="27">'+esc(label)+'</text>'
+        +'<text class="nkind" x="18" y="46" style="fill:'+LANE[n.lane]+'">'+esc(n.kind||'')+'</text>'
+        +'</g>';
+    }).join('');
+
+    stage.innerHTML=
+      '<div class="mapWrap">'
+      +'<svg id="atlas" role="img" aria-label="Mapa de '+esc(sec.label)+'">'
+      +markerDefs()
+      +'<g id="viewport">'+groupsSvg+edgesSvg+nodesSvg+'</g>'
+      +'</svg></div>'
+      +'<div class="legend"><div class="lgttl">Leyenda</div>'+legend+'</div>'
+      +'<div class="mapctl"><button type="button" id="btnFit">Fit</button><button type="button" id="btnReset">Reset</button></div>'
+      +'<div class="hint">arrastra para moverte &middot; rueda para zoom</div>';
+
+    wireMap(sec);
+  }
+
+  var view={tx:40,ty:40,k:1};
+  function wireMap(sec){
+    var svg=document.getElementById('atlas');
+    var vp=document.getElementById('viewport');
+    if(!svg||!vp) return;
+
+    function apply(){ vp.setAttribute('transform','translate('+view.tx+','+view.ty+') scale('+view.k+')'); }
+    function bbox(){
+      var ns=sec.map.nodes, gs=sec.map.groups||[];
+      var minx=1e9,miny=1e9,maxx=-1e9,maxy=-1e9;
+      ns.forEach(function(n){ var w=n.w||NODE_W,h=n.h||NODE_H; minx=Math.min(minx,n.x); miny=Math.min(miny,n.y); maxx=Math.max(maxx,n.x+w); maxy=Math.max(maxy,n.y+h); });
+      gs.forEach(function(g){ minx=Math.min(minx,g.x); miny=Math.min(miny,g.y); maxx=Math.max(maxx,g.x+g.w); maxy=Math.max(maxy,g.y+g.h); });
+      return {minx:minx,miny:miny,maxx:maxx,maxy:maxy};
+    }
+    function fit(){
+      var bb=bbox(); var pad=54;
+      var bw=(bb.maxx-bb.minx)+pad*2, bh=(bb.maxy-bb.miny)+pad*2;
+      var sw=stage.clientWidth||900, sh=stage.clientHeight||600;
+      var k=Math.min(sw/bw, sh/bh, 1.15); if(!isFinite(k)||k<=0) k=1;
+      view.k=k;
+      view.tx=(sw-bw*k)/2 - (bb.minx-pad)*k;
+      view.ty=(sh-bh*k)/2 - (bb.miny-pad)*k;
+      apply();
+    }
+    function reset(){ view.k=1; view.tx=40; view.ty=36; apply(); }
+
+    var fitBtn=document.getElementById('btnFit'), resetBtn=document.getElementById('btnReset');
+    if(fitBtn) fitBtn.addEventListener('click',fit);
+    if(resetBtn) resetBtn.addEventListener('click',reset);
+
+    // pan
+    var dragging=false, moved=false, sx=0, sy=0, otx=0, oty=0;
+    svg.addEventListener('pointerdown',function(e){
+      if(e.target.closest('.node')) return;
+      dragging=true; moved=false; sx=e.clientX; sy=e.clientY; otx=view.tx; oty=view.ty;
+      svg.classList.add('grabbing');
+      try{ svg.setPointerCapture(e.pointerId); }catch(_){}
+    });
+    svg.addEventListener('pointermove',function(e){
+      if(!dragging) return;
+      var dx=e.clientX-sx, dy=e.clientY-sy;
+      if(Math.abs(dx)+Math.abs(dy)>3) moved=true;
+      view.tx=otx+dx; view.ty=oty+dy; apply();
+    });
+    function endDrag(e){ dragging=false; svg.classList.remove('grabbing'); if(e){ try{ svg.releasePointerCapture(e.pointerId); }catch(_){} } }
+    svg.addEventListener('pointerup',endDrag);
+    svg.addEventListener('pointercancel',endDrag);
+    svg.addEventListener('pointerleave',function(e){ if(dragging) endDrag(e); });
+
+    // zoom
+    svg.addEventListener('wheel',function(e){
+      e.preventDefault();
+      var rect=svg.getBoundingClientRect();
+      var mx=e.clientX-rect.left, my=e.clientY-rect.top;
+      var factor=e.deltaY<0?1.12:1/1.12;
+      var nk=Math.max(0.28,Math.min(2.6,view.k*factor));
+      view.tx=mx-(mx-view.tx)*(nk/view.k);
+      view.ty=my-(my-view.ty)*(nk/view.k);
+      view.k=nk; apply();
+    },{passive:false});
+
+    // node interactions
+    var nodeEls=svg.querySelectorAll('.node');
+    for(var i=0;i<nodeEls.length;i++){
+      (function(g){
+        var id=g.getAttribute('data-id');
+        g.addEventListener('click',function(){ if(moved) return; var n=nodeById(sec,id); if(n) openPanel(n); });
+        g.addEventListener('keydown',function(e){ if(e.key==='Enter'||e.key===' '){ e.preventDefault(); var n=nodeById(sec,id); if(n) openPanel(n); } });
+      })(nodeEls[i]);
+    }
+
+    requestAnimationFrame(fit);
+  }
+
+  /* ---------- panel ---------- */
+  function openPanel(node){
+    pbody.innerHTML=
+      '<div class="pkind" style="color:'+LANE[node.lane]+'">'+esc(node.kind||'')+'</div>'
+      +'<h3 class="ptitle">'+esc(node.label||node.id)+'</h3>'
+      +'<p class="psum">'+(node.summary||'')+'</p>'
+      +(node.details&&node.details.length?('<ul class="pdetails">'+node.details.map(function(d){return '<li>'+d+'</li>';}).join('')+'</ul>'):'');
+    panel.classList.add('open');
+    panel.setAttribute('aria-hidden','false');
+  }
+  function closePanel(){ panel.classList.remove('open'); panel.setAttribute('aria-hidden','true'); }
+  pclose.addEventListener('click',closePanel);
+  document.addEventListener('keydown',function(e){ if(e.key==='Escape') closePanel(); });
+
+  /* ---------- resize: refit map ---------- */
+  var rt=null;
+  window.addEventListener('resize',function(){
+    if(state.mode!=='map') return;
+    if(rt) clearTimeout(rt);
+    rt=setTimeout(function(){ var b=document.getElementById('btnFit'); if(b) b.click(); },160);
+  });
+
+  /* ---------- init ---------- */
+  buildNav();
+  selectSection('overview');
+})();
+</script>
+</body>
+</html>
