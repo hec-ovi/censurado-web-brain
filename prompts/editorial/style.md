@@ -42,8 +42,9 @@ Gate (a piece must pass these to publish):
 - confirmed vs asserted: distinguish what is confirmed from what only one party claims.
 - no invention: use only facts and quotes present in the gathered sources.
 - objective throughout: both the facts (exact and attributed) AND the framing stay neutral. Do
-  not take a side in the prose or argument. Any lean shows only in which sources and facts the
-  author foregrounds, never by editorializing and never by bending the datum.
+  not take a side in the prose or argument (unless the author's persona is explicitly an opinion,
+  satire, or fiction voice). Any lean shows only in which sources and facts the author foregrounds,
+  never by editorializing and never by bending the datum.
 
 Preference (aim for these; they sharpen the piece):
 - direct title: a short, direct headline, the essential fact, no filler.
