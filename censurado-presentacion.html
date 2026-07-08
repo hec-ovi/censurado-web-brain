@@ -372,7 +372,7 @@
 
   <div class="foot-rule">
     <span>El Censurado Web &nbsp;·&nbsp; Redacción autónoma con agentes de IA</span>
-    <span class="pg">01 / 05</span>
+    <span class="pg">01 / 06</span>
   </div>
 </section>
 
@@ -464,7 +464,7 @@
 
   <div class="foot-rule">
     <span>El Censurado Web &nbsp;·&nbsp; Sistema multiagente y autores</span>
-    <span class="pg">02 / 05</span>
+    <span class="pg">02 / 06</span>
   </div>
 </section>
 
@@ -566,13 +566,108 @@
 
   <div class="foot-rule">
     <span>El Censurado Web &nbsp;·&nbsp; La parte agéntica en detalle</span>
-    <span class="pg">03 / 05</span>
+    <span class="pg">03 / 06</span>
   </div>
 </section>
 
 
 <!-- ======================================================= -->
-<!-- PAGE 4 : EL RECORRIDO CAPA POR CAPA                      -->
+<!-- PAGE 4 : EL FLUJO REAL, NODO POR NODO                    -->
+<!-- ======================================================= -->
+<section class="page">
+  <div class="kicker steel">La receta, tal cual vive en el repositorio</div>
+  <h2 class="sec serif" style="margin-top:8px;">El flujo real, nodo por nodo</h2>
+  <p class="lead" style="font-size:9.4pt;margin-top:6px;">
+    El flujo no es una caja negra: es una lista de <b>nodos</b> declarada en
+    <code>prompts/workflow/manifest.json</code>. El agente los recorre de a uno con
+    <code>censurado.py step --mode &lt;modo&gt;</code>. Nunca ve la receta entera, así que no se
+    saltea un paso ni inventa el orden: el gate le entrega el nodo que toca y le exige su artefacto.
+  </p>
+
+  <div class="layerlbl" style="margin-top:12px;">Modo <code>single-article</code> · 13 nodos, en secuencia fija</div>
+  <div class="walk">
+    <span class="node"><span class="n">15</span>pick-author</span><span class="sep">›</span>
+    <span class="node"><span class="n">30</span><svg class="icon"><use href="#ic-search"/></svg>research</span><span class="sep">›</span>
+    <span class="node"><span class="n">40</span>outline</span><span class="sep">›</span>
+    <span class="node"><span class="n">50</span><svg class="icon"><use href="#ic-pen"/></svg>draft</span><span class="sep">›</span>
+    <span class="node loopnode"><span class="n">60</span><svg class="icon"><use href="#ic-shield"/></svg>evaluate</span><span class="sep">›</span>
+    <span class="node loopnode"><span class="n">70</span><svg class="icon"><use href="#ic-loop"/></svg>respin</span><span class="sep">›</span>
+    <span class="node"><span class="n">75</span><svg class="icon"><use href="#ic-shield"/></svg>factcheck</span><span class="sep">›</span>
+    <span class="node"><span class="n">80</span><svg class="icon"><use href="#ic-image"/></svg>enrich</span><span class="sep">›</span>
+    <span class="node"><span class="n">85</span>accents-entities</span><span class="sep">›</span>
+    <span class="node"><span class="n">90</span>finalize</span><span class="sep">›</span>
+    <span class="node"><span class="n">95</span><svg class="icon"><use href="#ic-image"/></svg>image</span><span class="sep">›</span>
+    <span class="node"><span class="n">99</span>preview</span><span class="sep">›</span>
+    <span class="node pub"><svg class="icon" style="color:var(--ink)"><use href="#ic-lock"/></svg>publicar <span class="stag">gated</span></span>
+  </div>
+  <p class="small muted" style="margin-top:7px;">
+    <b>60 evaluate &harr; 70 respin</b> es el bucle de calidad: reescribe lo que falló y vuelve a
+    juzgar, hasta pasar las 6 dimensiones o agotar los intentos. <b>publicar</b> llega
+    <b>desactivado</b> (<code>disabled</code> en el manifest): salir a producción es una orden humana
+    aparte, nunca un paso automático del flujo.
+  </p>
+
+  <div class="noteline" style="margin-top:11px;">
+    <svg class="icon"><use href="#ic-right"/></svg>
+    <p><b>Cada nodo deja un artefacto que el siguiente exige.</b>
+      <code>30-research &rarr; ledger.md</code> y <code>50-draft &rarr; draft.md</code>: no hay
+      borrador sin registro de fuentes, ni evaluación sin borrador. El gate verifica el artefacto
+      antes de avanzar, por eso el orden no se puede forzar.</p>
+  </div>
+
+  <div class="kicker" style="margin-top:13px;">Un modo por tarea (mismo motor, otra lista de nodos)</div>
+  <div class="defrow" style="margin-top:8px;">
+    <div class="def">
+      <h4 class="serif"><svg class="icon"><use href="#ic-pen"/></svg> Nota firmada</h4>
+      <p><code>single-article</code> / <code>single-author</code>: la receta completa de arriba;
+        <code>single-author</code> suma <code>20-fresh-titulars</code> para elegir el tema.</p>
+    </div>
+    <div class="def d2">
+      <h4 class="serif"><svg class="icon"><use href="#ic-server"/></svg> Institucional</h4>
+      <p><code>institucional</code>: sin firma, voz formal, foto provista. Ruta corta, sin el bucle
+        largo: <code>10 &rarr; 30 &rarr; 50-draft-institucional &rarr; 62-semantica &rarr; 90 &rarr; 99</code>.</p>
+    </div>
+    <div class="def d3">
+      <h4 class="serif"><svg class="icon"><use href="#ic-clock"/></svg> Lote</h4>
+      <p><code>daily</code> / <code>weekly</code> / <code>last-hour</code>: un solo nodo
+        <code>10-batch-plan</code> que barre la actualidad y dispara una nota por autor.</p>
+    </div>
+  </div>
+  <div class="chips" style="margin-top:8px;">
+    <span class="chiplbl">Mantenimiento</span>
+    <span class="chip">portal-review</span>
+    <span class="chip">normalize-topics</span>
+    <span class="chip">topic-cleanse</span>
+    <span class="chip">publicar</span>
+  </div>
+
+  <div class="kicker steel" style="margin-top:13px;">Una sola herramienta: los verbos del CLI</div>
+  <p class="lead" style="font-size:8.8pt;margin:6px 0 8px;">
+    El agente no toca la shell ni el generador. Su superficie entera es
+    <code>python3 cli/censurado.py &lt;verbo&gt;</code>; los verbos arman el JSON estricto por él.
+  </p>
+  <div class="chips">
+    <span class="chiplbl">Escribir</span>
+    <span class="chip steel">preview</span><span class="chip steel">publicar</span><span class="chip steel">edit</span><span class="chip steel">image</span><span class="chip steel">media</span><span class="chip steel">tweet</span><span class="chip steel">truth</span>
+  </div>
+  <div class="chips" style="margin-top:5px;">
+    <span class="chiplbl">Curar</span>
+    <span class="chip">archive</span><span class="chip">get</span><span class="chip">portada</span><span class="chip">recomendado</span><span class="chip">create-author</span><span class="chip">sources</span><span class="chip">topics</span>
+  </div>
+  <div class="chips" style="margin-top:5px;">
+    <span class="chiplbl">Operar</span>
+    <span class="chip">step</span><span class="chip">status</span><span class="chip">unpublish</span><span class="chip">doctor</span>
+  </div>
+
+  <div class="foot-rule">
+    <span>El Censurado Web &nbsp;·&nbsp; El flujo real, nodo por nodo</span>
+    <span class="pg">04 / 06</span>
+  </div>
+</section>
+
+
+<!-- ======================================================= -->
+<!-- PAGE 5 : EL RECORRIDO CAPA POR CAPA                      -->
 <!-- ======================================================= -->
 <section class="page">
   <div class="kicker">El recorrido de punta a punta</div>
@@ -654,13 +749,13 @@
 
   <div class="foot-rule">
     <span>El Censurado Web &nbsp;·&nbsp; Arquitectura de extremo a extremo</span>
-    <span class="pg">04 / 05</span>
+    <span class="pg">05 / 06</span>
   </div>
 </section>
 
 
 <!-- ======================================================= -->
-<!-- PAGE 5 : LOS BUCLES + CIERRE                             -->
+<!-- PAGE 6 : LOS BUCLES + CIERRE                             -->
 <!-- ======================================================= -->
 <section class="page">
   <div class="kicker steel">La parte agéntica</div>
@@ -734,7 +829,7 @@
 
   <div class="foot-rule">
     <span class="aviso">Aviso editorial: sitio abiertamente generado por IA; los autores son personas ficticias.</span>
-    <span class="pg">05 / 05</span>
+    <span class="pg">06 / 06</span>
   </div>
 </section>
 
