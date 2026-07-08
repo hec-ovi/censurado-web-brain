@@ -203,4 +203,4 @@ def test_cli_top_level_usage_on_unknown_command(capsys):
     # An unknown top-level command prints the usage line and exits 1.
     code = main(["teleport"])
     assert code == 1
-    assert json.loads(capsys.readouterr().out)["error"] == "usage: status|topics|embeds"
+    assert json.loads(capsys.readouterr().out)["error"] == "usage: status|topics|embeds|normalize"

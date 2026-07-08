@@ -26,10 +26,12 @@ import httpx
 import pytest
 
 from newsroom.contracts.schema import (
+    AUTHORS_SCHEMA_ID,
     BATCH_REQUEST_SCHEMA_ID,
     BATCH_RESPONSE_SCHEMA_ID,
     SCHEMA_ID,
     load_article_schema,
+    load_authors_schema,
     load_batch_request_schema,
     load_batch_response_schema,
 )
@@ -73,12 +75,17 @@ def _read_or_fail(path: Path) -> dict:
 
 def test_vendored_ids_are_pinned():
     assert load_article_schema()["$id"] == SCHEMA_ID
+    assert load_authors_schema()["$id"] == AUTHORS_SCHEMA_ID
     assert load_batch_request_schema()["$id"] == BATCH_REQUEST_SCHEMA_ID
     assert load_batch_response_schema()["$id"] == BATCH_RESPONSE_SCHEMA_ID
 
 
 def test_vendored_article_matches_platform():
     assert load_article_schema() == _load_platform_contract("article.schema.json")
+
+
+def test_vendored_authors_matches_platform():
+    assert load_authors_schema() == _load_platform_contract("authors.schema.json")
 
 
 def test_vendored_batch_request_matches_platform():

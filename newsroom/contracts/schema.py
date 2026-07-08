@@ -17,23 +17,28 @@ from pathlib import Path
 __all__ = [
     "CONTRACT_VERSION",
     "SCHEMA_ID",
+    "AUTHORS_SCHEMA_ID",
     "BATCH_REQUEST_SCHEMA_ID",
     "BATCH_RESPONSE_SCHEMA_ID",
     "ARTICLE_SCHEMA_PATH",
+    "AUTHORS_SCHEMA_PATH",
     "BATCH_REQUEST_SCHEMA_PATH",
     "BATCH_RESPONSE_SCHEMA_PATH",
     "load_article_schema",
+    "load_authors_schema",
     "load_batch_request_schema",
     "load_batch_response_schema",
 ]
 
 CONTRACT_VERSION = "v1"
 SCHEMA_ID = "https://censurado.local/contracts/article.schema.json"
+AUTHORS_SCHEMA_ID = "https://censurado.local/contracts/authors.schema.json"
 BATCH_REQUEST_SCHEMA_ID = "https://censurado.local/contracts/batch-request.schema.json"
 BATCH_RESPONSE_SCHEMA_ID = "https://censurado.local/contracts/batch-response.schema.json"
 
 _VENDORED_DIR = Path(__file__).parent / "vendored" / CONTRACT_VERSION
 ARTICLE_SCHEMA_PATH = _VENDORED_DIR / "article.schema.json"
+AUTHORS_SCHEMA_PATH = _VENDORED_DIR / "authors.schema.json"
 BATCH_REQUEST_SCHEMA_PATH = _VENDORED_DIR / "batch-request.schema.json"
 BATCH_RESPONSE_SCHEMA_PATH = _VENDORED_DIR / "batch-response.schema.json"
 
@@ -41,6 +46,12 @@ BATCH_RESPONSE_SCHEMA_PATH = _VENDORED_DIR / "batch-response.schema.json"
 def load_article_schema() -> dict:
     """Parse and return the vendored PublishArticleInput JSON Schema."""
     return json.loads(ARTICLE_SCHEMA_PATH.read_text(encoding="utf-8"))
+
+
+def load_authors_schema() -> dict:
+    """Parse and return the vendored UpsertAuthorInput JSON Schema (the ``POST /authors``
+    upsert write shape; the author analog of the article publish-input contract)."""
+    return json.loads(AUTHORS_SCHEMA_PATH.read_text(encoding="utf-8"))
 
 
 def load_batch_request_schema() -> dict:

@@ -6,6 +6,10 @@ publishes.
 
 - `article.schema.json` (`$id` `https://censurado.local/contracts/article.schema.json`):
   the single-article payload (`POST /articles`).
+- `authors.schema.json` (`$id` `https://censurado.local/contracts/authors.schema.json`):
+  the author upsert payload (`POST /authors`, admin:write), keyed on `handle`. Mirrors the
+  backend Go `authorInput`; read-only fields (`deleted`, `created_at`, `updated_at`) are not part
+  of the write shape.
 - `batch-request.schema.json` (`$id` `https://censurado.local/contracts/batch-request.schema.json`):
   the `{"articles": [...]}` body of `POST /articles:batch`. Each item is the same
   article shape plus a required per-item `idempotency_key` (one HTTP header cannot

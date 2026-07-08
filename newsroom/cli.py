@@ -233,6 +233,48 @@ def _embeds_main(
     return _EXIT["done_with_errors"] if failed else _EXIT["done"]
 
 
+# A normalize seam bundle, injected by tests so the verb is driven end to end without a network:
+# fetch every author + every full article. In production each defaults to the real read API.
+NormalizeFetch = Callable[[], list]
+
+
+def _normalize_main(
+    argv: list[str],
+    *,
+    fetch_authors_fn: NormalizeFetch | None = None,
+    fetch_articles_fn: NormalizeFetch | None = None,
+) -> int:
+    """``censurado-brain normalize``: one contract-validated pass over the WHOLE corpus. Reads every
+    author and every article and checks each against its isolated write contract
+    (``contracts.author.AuthorInput`` / ``contracts.article.PublishArticleInput``), then prints a
+    JSON verdict listing any record that would not conform (a legacy section value, a missing required
+    field, ...). It is READ-ONLY, so it is always safe to run; a rewrite is a separate, deliberate
+    step. The fetch seams are injectable so a test drives the verb without a network. Returns 0 when
+    the whole corpus conforms, 2 when some records violate their contract, 1 on a read error."""
+    parser = argparse.ArgumentParser(prog="censurado-brain normalize")
+    parser.parse_args(argv)  # no flags yet; surfaces -h and rejects stray args
+
+    from newsroom.normalize import fetch_articles_full, fetch_authors, normalize_corpus
+
+    settings = load_settings()
+    base = str(settings.publish_base_url).rstrip("/")
+    token = settings.operator_token
+
+    fetch_authors_fn = fetch_authors_fn or (lambda: fetch_authors(base, token))
+    fetch_articles_fn = fetch_articles_fn or (lambda: fetch_articles_full(base, token))
+
+    try:
+        verdict = normalize_corpus(
+            fetch_authors_fn=fetch_authors_fn, fetch_articles_fn=fetch_articles_fn
+        )
+    except Exception as exc:  # a read failure is a clean usage error, not a crash
+        _emit({"error": f"failed to read the corpus: {exc}"})
+        return _EXIT["failed"]
+
+    _emit(verdict)
+    return _EXIT["done"] if verdict["ok"] else _EXIT["done_with_errors"]
+
+
 def main(argv: list[str] | None = None, *, backend_probe: BackendProbeFn | None = None) -> int:
     """Dispatch a maintenance subcommand, print a JSON result, return an exit code.
 
@@ -250,5 +292,8 @@ def main(argv: list[str] | None = None, *, backend_probe: BackendProbeFn | None 
         # Re-check stored tweet/youtube snapshots and refresh their availability flags
         # (deleted tweet -> erased, pulled video -> unavailable).
         return _embeds_main(argv[1:])
-    _emit({"error": "usage: status|topics|embeds"})
+    if argv and argv[0] == "normalize":
+        # Validate the whole corpus (authors + articles) against the isolated write contracts.
+        return _normalize_main(argv[1:])
+    _emit({"error": "usage: status|topics|embeds|normalize"})
     return _EXIT["failed"]
