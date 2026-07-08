@@ -425,11 +425,11 @@ a.ocard{transition:transform .15s ease, border-color .15s ease, background .15s 
     {id:'99-preview',c:12,y:220,kind:'preview',lane:'steel',
       summary:'Publishes the piece to the <b>local</b> preview site (localhost, debug only, NOT public).',
       details:['The human approves here.','None of this reaches production yet.','Source: <a href="https://github.com/hec-ovi/censurado-web-brain/blob/main/prompts/workflow/99-preview.md" target="_blank" rel="noopener">prompts/workflow/99-preview.md</a>']},
-    {id:'publicar',c:13,y:220,kind:'gated',lane:'faint',flag:'gated',
+    {id:'publicar',label:'deploy',c:13,y:220,kind:'gated',lane:'faint',flag:'gated',
       summary:'DISABLED within the article modes.',
       details:['Pushing the built snapshot to production (Cloudflare Pages, elcensuradoweb.com) is an explicit, separate human decision.','It is never an automatic step of the walk.','Source: <a href="https://github.com/hec-ovi/censurado-web-brain/blob/main/prompts/workflow/publicar.md" target="_blank" rel="noopener">prompts/workflow/publicar.md</a>']}
   ];
-  WF.forEach(function(n){n.x=COL(n.c); n.label=n.id;});
+  WF.forEach(function(n){n.x=COL(n.c); n.label=n.label||n.id;});
 
   // Which modes include each node (from prompts/workflow/manifest.json).
   var MANIFEST_MODES={
@@ -550,22 +550,22 @@ a.ocard{transition:transform .15s ease, border-color .15s ease, background .15s 
     },
     '99-preview':{
       name:'Preview: stage it locally (still the last gate)',
-      what:'This node stages the finished piece to the LOCAL site (<code>localhost:8080</code>) so the human sees it exactly as it will render. It is LOCAL and DEBUG-only and never touches the public internet; going live is the separate <code>publicar --yes</code> step. It is still the last editorial gate: it never previews a piece while any evaluation dimension is still failing. By default it is interactive, showing the full draft (title, description, body, and the section, slug, topics and widgets) and asking "Good as-is, or change anything?", changing only what the human asks before previewing, unless it was told to run unattended. It previews with the toolkit (which reads the operator token and builds the strict JSON), expects a <code>201</code> and <code>{"id":...,"slug":...}</code>, and hands the printed <code>PREVIEW:</code> link back to the human. The generate watcher rebuilds within seconds, so it runs no manual generate or test suite.',
+      what:'This node stages the finished piece to the LOCAL site (<code>localhost:8080</code>) so the human sees it exactly as it will render. It is LOCAL and DEBUG-only and never touches the public internet; going live is the separate <code>deploy --yes</code> step. It is still the last editorial gate: it never previews a piece while any evaluation dimension is still failing. By default it is interactive, showing the full draft (title, description, body, and the section, slug, topics and widgets) and asking "Good as-is, or change anything?", changing only what the human asks before previewing, unless it was told to run unattended. It previews with the toolkit (which reads the operator token and builds the strict JSON), expects a <code>201</code> and <code>{"id":...,"slug":...}</code>, and hands the printed <code>PREVIEW:</code> link back to the human. The generate watcher rebuilds within seconds, so it runs no manual generate or test suite.',
       inputs:['the full publish payload (title, description, body-file, topics, image)'],
       outputs:['the piece staged on localhost:8080','the printed PREVIEW: link'],
       gate:'<ul class="stepList">'
         +'<li>Still a gate: do not preview while any evaluation dimension is failing.</li>'
         +'<li>The human approves here; nothing reaches production.</li>'
-        +'<li>Publishing to the public site is the separate <code>publicar --yes</code>, only on an explicit go-ahead.</li></ul>'
+        +'<li>Publishing to the public site is the separate <code>deploy --yes</code>, only on an explicit go-ahead.</li></ul>'
     },
     'publicar':{
       name:'Publicar: go live to production',
-      what:'This node publishes the whole static portal to the live site (elcensuradoweb.com, Cloudflare Pages). It is outward-facing and visitors see the result at once, so it is treated as the last gate: it confirms with the human unless told to run unattended. It publishes ONCE, not per article, because it regenerates the entire site from the local DB and pushes it; a batch previews everything first and then runs this a single time in its own <code>publicar</code> mode. The preconditions are best-effort (<code>CLOUDFLARE_ACCOUNT_ID</code> in the repo <code>.env</code>, and wrangler authenticated once on the host); if either is missing it tells the human and STOPS rather than failing the already-previewed article. It runs <code>publicar --yes</code> (never a .sh script or a make target), then verifies the live origin with a plain <code>status</code>.',
+      what:'This node publishes the whole static portal to the live site (elcensuradoweb.com, Cloudflare Pages). It is outward-facing and visitors see the result at once, so it is treated as the last gate: it confirms with the human unless told to run unattended. It publishes ONCE, not per article, because it regenerates the entire site from the local DB and pushes it; a batch previews everything first and then runs this a single time in its own <code>deploy</code> mode. The preconditions are best-effort (<code>CLOUDFLARE_ACCOUNT_ID</code> in the repo <code>.env</code>, and wrangler authenticated once on the host); if either is missing it tells the human and STOPS rather than failing the already-previewed article. It runs <code>deploy --yes</code> (never a .sh script or a make target), then verifies the live origin with a plain <code>status</code>.',
       inputs:['the locally previewed snapshot','CLOUDFLARE_ACCOUNT_ID (.env)','a wrangler OAuth session'],
       outputs:['the live site pushed to Cloudflare Pages (branch main)'],
       gate:'<ul class="stepList">'
         +'<li>DISABLED inside the article and institucional modes (see the <code>disabled</code> block in <code>manifest.json</code>).</li>'
-        +'<li>Going live is an explicit, separate human decision, with its own <code>publicar</code> mode and a required <code>--yes</code>.</li>'
+        +'<li>Going live is an explicit, separate human decision, with its own <code>deploy</code> mode and a required <code>--yes</code>.</li>'
         +'<li>It is never an automatic step of the walk.</li></ul>'
     }
   };
@@ -609,10 +609,10 @@ a.ocard{transition:transform .15s ease, border-color .15s ease, background .15s 
       +'<code>prompts/workflow/manifest.json</code>. The agent walks them one at a time with '
       +'<code>censurado.py step --mode &lt;mode&gt;</code>; it never sees the whole recipe, so it cannot skip a step or reorder them. '
       +'Each node emits or consumes an artifact that the gate checks (<code>30-research &rarr; ledger.md</code>, <code>50-draft &rarr; draft.md</code>). '
-      +'The single-article mode is 13 nodes; <code>publicar</code> stays gated at the end. '
+      +'The single-article mode is 13 nodes; <code>deploy</code> stays gated at the end. '
       +'Source of truth: <a href="https://github.com/hec-ovi/censurado-web-brain/blob/main/prompts/workflow/manifest.json" target="_blank" rel="noopener">prompts/workflow/manifest.json</a>.</p>'
       +'<div class="doc-section"><div class="ds-head"><span class="eyebrow-s">single-article &middot; 13 nodes</span>'
-      +'<h3>The walk, step by step</h3><p class="ds-sub">The order is fixed. 60-evaluate + 70-respin form the quality loop; publicar is gated.</p></div>'
+      +'<h3>The walk, step by step</h3><p class="ds-sub">The order is fixed. 60-evaluate + 70-respin form the quality loop; deploy is gated.</p></div>'
       +'<div class="cardgrid">'+cards+'</div></div>';
   }
 
@@ -623,9 +623,9 @@ a.ocard{transition:transform .15s ease, border-color .15s ease, background .15s 
       {id:'step engine',x:56,y:250,w:210,kind:'engine',lane:'red',label:'step engine',summary:'The same engine walks different node lists.',details:['<code>censurado.py step --mode &lt;mode&gt;</code> picks the list declared in <code>manifest.json</code> and walks it one node at a time.','Source: <a href="https://github.com/hec-ovi/censurado-web-brain/blob/main/prompts/workflow/manifest.json" target="_blank" rel="noopener">prompts/workflow/manifest.json</a>']},
       {id:'single-article',x:380,y:40,w:230,kind:'article',lane:'red',label:'single-article',summary:'The full 13-node walk.',details:['The topic comes from outside; it runs 15 &rarr; 99 with the gate and the respin loop.']},
       {id:'single-author / authors',x:380,y:130,w:230,kind:'article',lane:'red',label:'single-author / authors',summary:'The 13 nodes; single-author adds 20-fresh-titulars.',details:['The author picks its own fresh, uncovered topic in <code>20-fresh-titulars</code>.','<code>authors</code> runs the same walk for several authors.']},
-      {id:'institucional',x:380,y:250,w:230,kind:'unsigned',lane:'steel',label:'institucional',summary:'Unsigned, house byline "Redaccion", provided image (not AI), formal register.',details:['Short route: <code>10-institucional &rarr; 30-research &rarr; 50-draft-institucional &rarr; 62-semantica-calidad &rarr; 90-finalize &rarr; 99-preview &rarr; publicar</code>.','The image is not generated: it is provided.','Source: <a href="https://github.com/hec-ovi/censurado-web-brain/blob/main/prompts/workflow/10-institucional.md" target="_blank" rel="noopener">prompts/workflow/10-institucional.md</a>']},
+      {id:'institucional',x:380,y:250,w:230,kind:'unsigned',lane:'steel',label:'institucional',summary:'Unsigned, house byline "Redaccion", provided image (not AI), formal register.',details:['Short route: <code>10-institucional &rarr; 30-research &rarr; 50-draft-institucional &rarr; 62-semantica-calidad &rarr; 90-finalize &rarr; 99-preview &rarr; deploy</code>.','The image is not generated: it is provided.','Source: <a href="https://github.com/hec-ovi/censurado-web-brain/blob/main/prompts/workflow/10-institucional.md" target="_blank" rel="noopener">prompts/workflow/10-institucional.md</a>']},
       {id:'daily / weekly / last-hour',x:380,y:365,w:230,kind:'batch',lane:'gold',label:'daily / weekly / last-hour',summary:'A single 10-batch-plan node that sweeps the day.',details:['<code>10-batch-plan</code> groups items from the same story and dispatches one writer per topic.','Each writer runs the full walk on its own.','Source: <a href="https://github.com/hec-ovi/censurado-web-brain/blob/main/prompts/workflow/10-batch-plan.md" target="_blank" rel="noopener">prompts/workflow/10-batch-plan.md</a>']},
-      {id:'mantenimiento',x:380,y:475,w:230,kind:'single-node',lane:'violet',label:'maintenance',summary:'Single-node modes.',details:['<code>portal-review</code>: assembles the front page of the day.','<code>normalize-topics</code>, <code>topic-cleanse</code>.','<code>publicar</code>: pushes to production (human decision).']}
+      {id:'mantenimiento',x:380,y:475,w:230,kind:'single-node',lane:'violet',label:'maintenance',summary:'Single-node modes.',details:['<code>portal-review</code>: assembles the front page of the day.','<code>normalize-topics</code>, <code>topic-cleanse</code>.','<code>deploy</code>: pushes to production (human decision).']}
     ],
     edges:[
       {from:'step engine',to:'single-article'},{from:'step engine',to:'single-author / authors'},
@@ -675,13 +675,13 @@ a.ocard{transition:transform .15s ease, border-color .15s ease, background .15s 
     legend:[{c:'steel',t:'operator / agent'},{c:'steel',t:'docker services'},{c:'gold',t:'image line'},{c:'green',t:'production'},{c:'faint',t:'isolated opt-in'}],
     groups:[{x:596,y:24,w:300,h:392,label:'Docker (brain + backend, 24/7)'}],
     nodes:[
-      {id:'operator',x:44,y:230,w:190,kind:'human',lane:'steel',label:'Operator',summary:'Gives the order (WhatsApp, Telegram, CLI app or remote) and optionally approves before publishing.',details:['The human decides the what and approves in the preview; the final publicar is always theirs.']},
+      {id:'operator',x:44,y:230,w:190,kind:'human',lane:'steel',label:'Operator',summary:'Gives the order (WhatsApp, Telegram, CLI app or remote) and optionally approves before publishing.',details:['The human decides the what and approves in the preview; the final deploy is always theirs.']},
       {id:'agent',x:316,y:230,w:190,kind:'any model',lane:'red',label:'Agent / CLI',summary:'Any model in any CLI. It uses a single tool: the censurado verbs.',details:['<code>python3 cli/censurado.py &lt;verb&gt;</code> is its entire surface.','It does not run the model inside the stack; the stack gives it the verbs.']},
       {id:'publish',x:616,y:64,w:200,kind:'127.0.0.1:8082',lane:'steel',label:'publish',summary:'The backend: sqlite store + the ONLY writer + serves the admin panel.',details:['Append-only publish API, JSON read API and media store.','It is the only process that writes to the database.','Source: <a href="https://github.com/hec-ovi/censurado-web-brain/blob/main/docker-compose.yml" target="_blank" rel="noopener">docker-compose.yml</a>']},
       {id:'generate',x:616,y:154,w:200,kind:'watcher',lane:'steel',label:'generate',summary:'Watches the DB and rebuilds the static site incrementally.',details:['Content-addressed permalinks: <code>/a/&lt;slug&gt;-&lt;hash8&gt;/</code>.','JSON shards and a surgical CDN-purge manifest.']},
       {id:'site',x:616,y:244,w:200,kind:'single port',lane:'steel',label:'site',summary:'Serves the local portal; the only exposed port of the group.',details:['What the human sees in the local preview comes from here.']},
       {id:'comfyui',x:616,y:334,w:200,kind:'GPU opt-in',lane:'gold',label:'comfyui',summary:'The hero image line (FLUX.2); opt-in, needs a GPU.',details:['It feeds the 95-image node of the walk.']},
-      {id:'cdn',x:952,y:230,w:200,kind:'production',lane:'green',label:'CDN / public',summary:'publicar pushes the built snapshot to Cloudflare Pages (elcensuradoweb.com).',details:['This jump is the only explicit human decision of the cycle.','Source: <a href="https://github.com/hec-ovi/censurado-web-brain/blob/main/deploy/deploy-cdn.sh" target="_blank" rel="noopener">deploy/deploy-cdn.sh</a>']},
+      {id:'cdn',x:952,y:230,w:200,kind:'production',lane:'green',label:'CDN / public',summary:'deploy pushes the built snapshot to Cloudflare Pages (elcensuradoweb.com).',details:['This jump is the only explicit human decision of the cycle.','Source: <a href="https://github.com/hec-ovi/censurado-web-brain/blob/main/deploy/deploy-cdn.sh" target="_blank" rel="noopener">deploy/deploy-cdn.sh</a>']},
       {id:'telegram',x:316,y:430,w:190,kind:'opt-in',lane:'faint',label:'bridge/telegram',summary:'The opt-in bot bridge runs in its own isolated container.',details:['It lets you give orders from Telegram without coupling the stack.']},
       {id:'official-source',x:616,y:440,w:200,kind:'opt-in',lane:'faint',label:'official-source',summary:'The official-source automation, opt-in and isolated (n8n, deferred).',details:['Design only for now.']}
     ],
@@ -691,20 +691,20 @@ a.ocard{transition:transform .15s ease, border-color .15s ease, background .15s 
       {from:'publish',to:'generate',label:'watch DB'},
       {from:'generate',to:'site'},
       {from:'comfyui',to:'publish',type:'media',label:'hero'},
-      {from:'generate',to:'cdn',type:'gated',label:'publicar'},
+      {from:'generate',to:'cdn',type:'gated',label:'deploy'},
       {from:'telegram',to:'agent',type:'seam'},
       {from:'official-source',to:'publish',type:'seam'}
     ]
   };
   function arText(){
-    return '<p class="lede"><strong>From the order to the portal.</strong> The human gives the order and optionally approves; the agent uses a single tool (the censurado verbs); a Docker group runs the brain and the backend 24/7; <code>publicar</code> pushes the snapshot to Cloudflare Pages.</p>'
+    return '<p class="lede"><strong>From the order to the portal.</strong> The human gives the order and optionally approves; the agent uses a single tool (the censurado verbs); a Docker group runs the brain and the backend 24/7; <code>deploy</code> pushes the snapshot to Cloudflare Pages.</p>'
       +'<div class="doc-section"><div class="ds-head"><h3>The four compose services</h3></div><div class="cardgrid">'
       +el.card({label:'publish',tag:'backend',color:LANE.steel,sum:'The sqlite store + the <b>only</b> writer + serves the admin panel. <code>127.0.0.1:8082</code>.'})
       +el.card({label:'generate',tag:'watcher',color:LANE.steel,sum:'Watches the DB and rebuilds the site incrementally: permalinks <code>/a/&lt;slug&gt;-&lt;hash8&gt;/</code>, JSON shards and a CDN-purge manifest.'})
       +el.card({label:'site',tag:'portal',color:LANE.steel,sum:'Serves the local portal; the <b>only</b> exposed port.'})
       +el.card({label:'comfyui',tag:'image',color:LANE.gold,sum:'The hero image line; opt-in, needs a GPU.'})
       +'</div>'
-      +'<div class="callout"><b>Isolated opt-ins.</b> The Telegram bridge and the official-source automation each run in their own isolated container. <b>publicar</b> to Cloudflare Pages (elcensuradoweb.com) is a separate human decision. Source: <a href="https://github.com/hec-ovi/censurado-web-brain/blob/main/docker-compose.yml" target="_blank" rel="noopener">docker-compose.yml</a>, <a href="https://github.com/hec-ovi/censurado-web-brain/blob/main/deploy/deploy-cdn.sh" target="_blank" rel="noopener">deploy/deploy-cdn.sh</a>.</div>'
+      +'<div class="callout"><b>Isolated opt-ins.</b> The Telegram bridge and the official-source automation each run in their own isolated container. <b>deploy</b> to Cloudflare Pages (elcensuradoweb.com) is a separate human decision. Source: <a href="https://github.com/hec-ovi/censurado-web-brain/blob/main/docker-compose.yml" target="_blank" rel="noopener">docker-compose.yml</a>, <a href="https://github.com/hec-ovi/censurado-web-brain/blob/main/deploy/deploy-cdn.sh" target="_blank" rel="noopener">deploy/deploy-cdn.sh</a>.</div>'
       +'</div>';
   }
 
@@ -737,7 +737,7 @@ a.ocard{transition:transform .15s ease, border-color .15s ease, background .15s 
   }
 
   // ------------------------------------------------------------- CLI VERBS
-  var WRITE=['preview','publicar','edit','unpublish','image','media','tweet','truth'];
+  var WRITE=['preview','deploy','edit','unpublish','image','media','tweet','truth'];
   var CURATE=['archive','get','sections','portada','recomendado','create-author','remove-author','sources','topics','personas','persona','portals','style','set-prompt','set-floor'];
   var OPERATE=['step','status','doctor'];
   var BRAIN=['status','normalize check','normalize links','normalize sections','topics cleanse','embeds recheck'];
@@ -830,11 +830,11 @@ a.ocard{transition:transform .15s ease, border-color .15s ease, background .15s 
       {id:'brain',x:540,y:90,w:200,kind:'recipe',lane:'red',label:'brain (recipe)',summary:'censurado-web-brain: the CLI + the prompts + the compose. No data, no model.',details:['It declares the walk the agent runs.','Source: <a href="https://github.com/hec-ovi/censurado-web-brain" target="_blank" rel="noopener">censurado-web-brain</a>']},
       {id:'backend',x:540,y:250,w:200,kind:'store',lane:'steel',label:'backend (store)',summary:'censurado-web-backend: sqlite, the only writer, publish/read API, media, admin panel.',details:['The only write source of the system.','Source: <a href="https://github.com/hec-ovi/censurado-web-backend" target="_blank" rel="noopener">censurado-web-backend</a>']},
       {id:'web',x:540,y:410,w:200,kind:'generator',lane:'green',label:'web (generator)',summary:'censurado-web: generates the static site and serves the public frontend.',details:['It rebuilds incrementally from the DB.','Source: <a href="https://github.com/hec-ovi/censurado-web" target="_blank" rel="noopener">censurado-web</a>']},
-      {id:'publico',x:820,y:250,w:200,kind:'production',lane:'green',label:'elcensuradoweb.com',summary:'The live portal, on Cloudflare Pages.',details:['publicar pushes the snapshot here.']}
+      {id:'publico',x:820,y:250,w:200,kind:'production',lane:'green',label:'elcensuradoweb.com',summary:'The live portal, on Cloudflare Pages.',details:['deploy pushes the snapshot here.']}
     ],
     edges:[
       {from:'operator',to:'agent'},{from:'agent',to:'brain'},{from:'agent',to:'backend',label:'verbs'},
-      {from:'backend',to:'web',type:'seam',label:'Seam A'},{from:'web',to:'publico',type:'gated',label:'publicar'}
+      {from:'backend',to:'web',type:'seam',label:'Seam A'},{from:'web',to:'publico',type:'gated',label:'deploy'}
     ]
   };
   function ovText(){
@@ -860,7 +860,7 @@ a.ocard{transition:transform .15s ease, border-color .15s ease, background .15s 
   // ------------------------------------------------------------- SECTIONS registry
   var SECTIONS=[
     {id:'overview',label:'Overview',dot:'var(--red)',sub:'What Censurado is and the three repos.',map:ovMap,text:ovText,defaultMode:'text'},
-    {id:'workflow',label:'The workflow',dot:'var(--red)',star:true,sub:'The editorial gate: 13 nodes, no skips.',mapNodes:WF,mapEdges:wfEdges,mapLegend:[{c:'steel',t:'research / process'},{c:'red',t:'write / assemble'},{c:'gold',t:'gate / image'},{c:'violet',t:'loop (respin)'},{c:'faint',t:'gated (publicar)'}],text:wfText,defaultMode:'text'},
+    {id:'workflow',label:'The workflow',dot:'var(--red)',star:true,sub:'The editorial gate: 13 nodes, no skips.',mapNodes:WF,mapEdges:wfEdges,mapLegend:[{c:'steel',t:'research / process'},{c:'red',t:'write / assemble'},{c:'gold',t:'gate / image'},{c:'violet',t:'loop (respin)'},{c:'faint',t:'gated (deploy)'}],text:wfText,defaultMode:'text'},
     {id:'modes',label:'Modes',dot:'var(--steel)',sub:'Same engine, different node list.',map:modesMap,text:modesText,defaultMode:'text'},
     {id:'multiagent',label:'Multi-agent',dot:'var(--violet)',sub:'Editor, writers in parallel, portada.',map:maMap,text:maText,defaultMode:'map'},
     {id:'architecture',label:'Architecture',dot:'var(--steel)',sub:'Operator, agent, Docker, CDN.',map:arMap,text:arText,defaultMode:'map'},
@@ -971,7 +971,7 @@ a.ocard{transition:transform .15s ease, border-color .15s ease, background .15s 
     crumbTitle.innerHTML=esc(sec.label)+(sec.star?' <span class="star">&#9733;</span>':'');
     crumbSub.textContent=sec.sub||'';
     syncNav();
-    if(first){ state.mode=sec.defaultMode||'text'; }
+    if(first){ state.mode='map'; }
     setMode(state.mode);
   }
 
