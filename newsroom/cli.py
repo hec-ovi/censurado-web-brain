@@ -294,12 +294,65 @@ def _normalize_links_main(
     return _EXIT["done_with_errors"] if (args.apply and summary.get("failed")) else _EXIT["done"]
 
 
+def _normalize_sections_main(
+    argv: list[str],
+    *,
+    fetch_articles_fn: NormalizeFetch | None = None,
+    apply: Callable[[list], tuple] | None = None,
+) -> int:
+    """``censurado-brain normalize sections [--apply]``: remap legacy section values to their
+    canonical form (``SECTION_CANONICAL``, e.g. ``economics`` -> ``misterio-y-conspiracion``) so the
+    stored section matches the pinned vocabulary. Dry-run by default; ``--apply`` writes each remap
+    over the operator edit lane (``PUT /articles``), preserving each permalink. Injectable seams."""
+    parser = argparse.ArgumentParser(prog="censurado-brain normalize sections")
+    parser.add_argument(
+        "--apply", action="store_true",
+        help="write the remaps (default: dry-run, report the plan and write nothing)",
+    )
+    args = parser.parse_args(argv)
+
+    from newsroom.normalize import apply_section_remap, fetch_articles_full, plan_section_remap
+
+    settings = load_settings()
+    base = str(settings.publish_base_url).rstrip("/")
+    read_token = settings.operator_token
+    edit_token = settings.admin_token or settings.operator_token
+
+    fetch_articles_fn = fetch_articles_fn or (lambda: fetch_articles_full(base, read_token))
+    apply = apply or (lambda plan: apply_section_remap(plan, base_url=base, read_token=read_token, edit_token=edit_token))
+
+    try:
+        articles = fetch_articles_fn()
+    except Exception as exc:
+        _emit({"error": f"failed to read the corpus: {exc}"})
+        return _EXIT["failed"]
+
+    plan = plan_section_remap(articles)
+    summary = {
+        "scanned": len(articles),
+        "articles_remapped": len(plan),
+        "dry_run": not args.apply,
+        "sample": [{"slug": p["slug"], "from": p["from"], "to": p["to"]} for p in plan[:10]],
+    }
+    if args.apply and plan:
+        try:
+            applied, failed = apply(plan)
+        except Exception as exc:
+            _emit({"error": f"apply failed: {exc}"})
+            return _EXIT["failed"]
+        summary["applied"] = applied
+        summary["failed"] = failed
+    _emit(summary)
+    return _EXIT["done_with_errors"] if (args.apply and summary.get("failed")) else _EXIT["done"]
+
+
 def _normalize_main(
     argv: list[str],
     *,
     fetch_authors_fn: NormalizeFetch | None = None,
     fetch_articles_fn: NormalizeFetch | None = None,
     apply_links: Callable[[list], tuple] | None = None,
+    apply_sections: Callable[[list], tuple] | None = None,
 ) -> int:
     """``censurado-brain normalize [check|links]``: whole-corpus maintenance in ONE place.
 
@@ -309,12 +362,16 @@ def _normalize_main(
       would not conform. Always safe to run.
     - ``normalize links [--apply]``: strip broken/invented source-citation links from every body
       (see ``_normalize_links_main``); dry-run by default.
+    - ``normalize sections [--apply]``: remap legacy section values to their canonical form
+      (see ``_normalize_sections_main``); dry-run by default.
 
     The seams are injectable so a test drives the verb without a network. Returns 0 when the corpus
     conforms / the pass succeeds, 2 when some records violate their contract or an apply partially
     failed, 1 on a read error."""
     if argv and argv[0] == "links":
         return _normalize_links_main(argv[1:], fetch_articles_fn=fetch_articles_fn, apply=apply_links)
+    if argv and argv[0] == "sections":
+        return _normalize_sections_main(argv[1:], fetch_articles_fn=fetch_articles_fn, apply=apply_sections)
     if argv and argv[0] == "check":
         argv = argv[1:]
 

@@ -159,3 +159,39 @@ def test_normalize_links_verb_apply_writes_over_the_edit_lane():
     assert out["dry_run"] is False and out["applied"] == 1
     # the plan handed to apply carries the STRIPPED body (no URLs)
     assert "http://" not in applied_plans[0][0]["new_body"]
+
+
+# ---------------------------------------------------------------- legacy section remap
+from newsroom.normalize import SECTION_CANONICAL, plan_section_remap  # noqa: E402
+
+
+def test_plan_section_remap_targets_only_legacy_sections():
+    arts = [
+        _article(slug="ok", section="politics"),
+        _article(slug="legacy", section="economics"),
+    ]
+    plan = plan_section_remap(arts)
+    assert [p["slug"] for p in plan] == ["legacy"]
+    assert plan[0]["from"] == "economics"
+    assert plan[0]["to"] == SECTION_CANONICAL["economics"] == "misterio-y-conspiracion"
+
+
+def test_normalize_sections_verb_dry_run_then_apply():
+    arts = [_article(slug="legacy", section="economics"), _article(slug="ok", section="tech")]
+    # dry-run: reports one remap, never calls apply
+    calls = []
+    buf = io.StringIO()
+    with redirect_stdout(buf):
+        rc = cli._normalize_main(["sections"], fetch_articles_fn=lambda: arts,
+                                 apply_sections=lambda plan: calls.append(plan) or (len(plan), []))
+    out = json.loads(buf.getvalue())
+    assert rc == 0 and out["dry_run"] is True and out["articles_remapped"] == 1 and calls == []
+    # apply: hands the remap plan to the writer
+    applied_plans = []
+    buf2 = io.StringIO()
+    with redirect_stdout(buf2):
+        rc2 = cli._normalize_main(["sections", "--apply"], fetch_articles_fn=lambda: arts,
+                                  apply_sections=lambda plan: applied_plans.append(plan) or (len(plan), []))
+    out2 = json.loads(buf2.getvalue())
+    assert rc2 == 0 and out2["applied"] == 1
+    assert applied_plans[0][0]["to"] == "misterio-y-conspiracion"

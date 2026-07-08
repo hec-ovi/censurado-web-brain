@@ -35,7 +35,16 @@ __all__ = [
     "strip_source_links",
     "plan_link_strip",
     "apply_link_strip",
+    "SECTION_CANONICAL",
+    "plan_section_remap",
+    "apply_section_remap",
 ]
+
+# Legacy section values remapped to their canonical form. Mirrors the generator's
+# canonicalSectionSlug, which folds these at RENDER time; this re-stores the canonical value in the
+# DB so the stored section matches the pinned vocabulary (contracts.sections.SECTION_ENUM) and the
+# normalize check stops flagging it.
+SECTION_CANONICAL = {"economics": "misterio-y-conspiracion"}
 
 # An inline Markdown link [text](url) that is NOT an image embed ![alt](url). The negative
 # lookbehind on the "!" leaves images alone; {{widget}} markers are not [ ]( ) so they never match.
@@ -67,6 +76,56 @@ def plan_link_strip(articles: list[dict]) -> list[dict]:
         if n:
             plan.append({"slug": a["slug"], "stripped": n, "new_body": new_body})
     return plan
+
+
+def plan_section_remap(articles: list[dict]) -> list[dict]:
+    """The per-article change plan for the legacy-section remap: every article stored under a
+    section in ``SECTION_CANONICAL`` and the canonical value it should carry. Articles already on a
+    canonical section are skipped."""
+    return [
+        {"slug": a["slug"], "from": a["section"], "to": SECTION_CANONICAL[a["section"]]}
+        for a in articles
+        if a.get("section") in SECTION_CANONICAL
+    ]
+
+
+def apply_section_remap(plan: list[dict], *, base_url: str, read_token: str, edit_token: str) -> tuple[int, list[str]]:
+    """Write each canonical section back over the operator edit lane: ``GET /articles/{slug}`` for
+    the full record, then ``PUT`` it with only the section replaced. The PUT recomputes the content
+    hash (section is hashed) and preserves slug + created_at, so the permalink is stable. Returns
+    ``(applied_count, failures)``."""
+    base = base_url.rstrip("/")
+    applied = 0
+    failed: list[str] = []
+    for item in plan:
+        try:
+            got = httpx.get(
+                f"{base}/articles/{item['slug']}",
+                headers={"Authorization": f"Bearer {read_token}"},
+                timeout=30.0,
+            )
+            got.raise_for_status()
+            art = got.json()
+            payload = {
+                "title": art["title"],
+                "body": art["body"],
+                "author": art["author"],
+                "section": item["to"],
+                "topics": art.get("topics") or [],
+                "published_at": art.get("published_at"),
+                "metadata": art.get("metadata") or {},
+            }
+            put = httpx.put(
+                f"{base}/articles/{item['slug']}",
+                json=payload,
+                headers={"Authorization": f"Bearer {edit_token}"},
+                timeout=60.0,
+            )
+            put.raise_for_status()
+            applied += 1
+        except (httpx.HTTPError, KeyError) as exc:
+            failed.append(f"{item['slug']}: {exc}")
+    return applied, failed
 
 
 def apply_link_strip(plan: list[dict], *, base_url: str, read_token: str, edit_token: str) -> tuple[int, list[str]]:
