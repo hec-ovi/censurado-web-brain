@@ -37,7 +37,7 @@ Pass a JSON object; the positional date is merged in and wins over any date insi
 
 Every slug must be a real published article; a typo puts an empty card on the page, so pull the
 slugs from `archive` / the site rather than typing them from memory. The change is local (the
-preview site regenerates in a couple of seconds); going public is still a separate `make deploy`.
+preview site regenerates in a couple of seconds); going public is still a separate `publicar --yes`.
 
 ## Recomendado rail (global, front page)
 

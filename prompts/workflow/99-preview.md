@@ -1,9 +1,10 @@
-# Preview (put it on your site, still the last gate)
+# Preview: stage it locally (debug), still the last gate
 
 `preview` stages the finished piece to your LOCAL site (`localhost:8080`), so the user can
-see it exactly as it will render. It is NOT public: going live to the public internet is a
-SEPARATE `make deploy` step, never done here. This is still the last editorial gate: do NOT
-preview a piece while any evaluation dimension is still failing.
+see it exactly as it will render. It is LOCAL and DEBUG-only: it never touches the public
+internet. Going live is the SEPARATE `publicar --yes` step (that is what "publicar" / "publish"
+means), never done here. This is still the last editorial gate: do NOT preview a piece while
+any evaluation dimension is still failing.
 
 **Interactive (the default).** Show the user the full draft: title, subtitle, description,
 body, and the section, slug, topics, and any widgets you propose. Ask: **"Good as-is, or
@@ -33,5 +34,5 @@ reads `still rendering` for a beat if the generate watcher has not rebuilt yet, 
 resolves). The generate watcher rebuilds the site on its own within a couple of seconds, so do
 NOT run `./run.sh generate`, `make generate`, or the test suite (`pytest` / `make test`) here:
 they verify the tooling, not your article, and only slow the walk. Handing over the link IS the
-verification step. Publishing to production (the public site) is a separate `make deploy` and
+verification step. Publishing to production (the public site) is a separate `publicar --yes` and
 only happens on an explicit go-ahead. This article is done.

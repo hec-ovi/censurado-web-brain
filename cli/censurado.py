@@ -806,8 +806,8 @@ def cmd_publish(a):
     except Exception:
         pass
     url, live = _await_preview_url(slug)
-    sys.stderr.write(f"preview OK -> HTTP {st}. Staged to the LOCAL site {SITE} (NOT public; "
-                     f"going live is a separate `make deploy`).\n")
+    sys.stderr.write(f"preview OK -> HTTP {st}. Staged to the LOCAL site {SITE} (debug-only, NOT "
+                     f"public; going live is a separate `publicar --yes`).\n")
     if url:
         state = "live now" if live else "staged; the site repaints in a few seconds -- just open it"
         print(f"PREVIEW: {url}  [{state}]")
@@ -1371,7 +1371,7 @@ def cmd_deploy(a):
     the human and let them complete the one setup step, then re-run `deploy`. On success it prints
     the public origin and reminds you to VERIFY by opening the piece's link, never by re-deploying."""
     if not a.yes:
-        sys.stderr.write("deploy publishes the WHOLE snapshot to the PUBLIC site "
+        sys.stderr.write("publicar publishes the WHOLE snapshot to the PUBLIC site "
                          f"{PUBLIC_URL or '(production)'}. This is irreversible and outward-facing. "
                          "Show the human what will go live, get an explicit yes, then re-run with "
                          "--yes.\n")
@@ -1379,8 +1379,7 @@ def cmd_deploy(a):
     script = _REPO / "deploy" / "deploy-cdn.sh"
     if not script.is_file():
         fail(f"deploy script not found at {script} (expected deploy/deploy-cdn.sh in the repo).")
-    sys.stdout.write(f"Deploying the local snapshot to {PUBLIC_URL or 'production'} "
-                     "(deploy/deploy-cdn.sh)...\n")
+    sys.stdout.write(f"Publishing the local snapshot to {PUBLIC_URL or 'production'}...\n")
     sys.stdout.flush()
     try:
         proc = subprocess.run(["bash", str(script)], cwd=str(_REPO), check=False)
@@ -1388,13 +1387,13 @@ def cmd_deploy(a):
         fail(f"could not launch the deploy script ({exc}). This is the one infra action; if it "
              "cannot run, tell the human -- do not improvise a workaround.")
     if proc.returncode != 0:
-        sys.stderr.write(f"deploy FAILED (deploy-cdn.sh exited {proc.returncode}). Relay the last "
-                         "line above to the human and let them fix that ONE step, then re-run "
-                         "`deploy --yes`. Do NOT run generate, init-perms, chmod, or read the "
-                         "deploy/generator source.\n")
+        sys.stderr.write(f"publicar FAILED (the publish script exited {proc.returncode}). Relay the "
+                         "last line above to the human and let them fix that ONE step, then re-run "
+                         "`publicar --yes`. Do NOT run generate, init-perms, chmod, or read the "
+                         "generator source.\n")
         return 1
-    sys.stdout.write(f"deploy OK. Live at {PUBLIC_URL or 'the production origin'}. Verify by "
-                     "opening the piece's public link (NOT by deploying again); plain `status` "
+    sys.stdout.write(f"publicar OK. Live at {PUBLIC_URL or 'the production origin'}. Verify by "
+                     "opening the piece's public link (NOT by publishing again); plain `status` "
                      "confirms the public origin is serving.\n")
     return 0
 
@@ -1732,9 +1731,9 @@ def build_parser():
     se.add_argument("--topics", action="store_true", help="print only the topic distribution")
     se.set_defaults(fn=cmd_sections)
 
-    pub = sub.add_parser("preview", aliases=["publish"],
-                         help="stage an article to your LOCAL preview site (localhost:8080, NOT public); "
-                              "going live to production is a separate `make deploy`")
+    pub = sub.add_parser("preview", aliases=["previsualizar"],
+                         help="stage an article to your LOCAL preview site (localhost:8080, debug-only, "
+                              "NOT public); going live is the separate `publicar --yes` verb")
     pub.add_argument("--author", required=True, help="persona slug; byline+section auto-filled from it")
     pub.add_argument("--title", required=True)
     pub.add_argument("--section", default="")
@@ -1900,11 +1899,11 @@ def build_parser():
     st.add_argument("--json", action="store_true", help="print the machine-readable verdict")
     st.set_defaults(fn=cmd_status)
 
-    dp = sub.add_parser("deploy",
-                        help="publish the whole local snapshot to the PUBLIC production site "
-                             "(needs --yes); the one infra verb, wraps deploy/deploy-cdn.sh")
+    dp = sub.add_parser("publicar", aliases=["publish", "deploy"],
+                        help="PUBLISH the whole local snapshot to the PUBLIC production site / go live "
+                             "(needs --yes). This is what publicar / publish mean; `preview` is local-only")
     dp.add_argument("--yes", action="store_true",
-                    help="confirm the public, irreversible deploy (required)")
+                    help="confirm the public, irreversible publish (required)")
     dp.set_defaults(fn=cmd_deploy)
 
     dr = sub.add_parser("doctor",
@@ -1917,7 +1916,7 @@ def build_parser():
                      help="node key, e.g. 30-research; omit for the mode picker (or the first node with --mode)")
     stp.add_argument("--mode", default="",
                      help="workflow mode (run `step --list` to see all): single-article, single-author, "
-                          "authors, daily, weekly, last-hour, deploy, normalize-topics, portal-review, "
+                          "authors, daily, weekly, last-hour, publicar, normalize-topics, portal-review, "
                           "topic-cleanse")
     stp.add_argument("--list", action="store_true",
                      help="print the node sequence for the mode (or all modes), without serving a body")

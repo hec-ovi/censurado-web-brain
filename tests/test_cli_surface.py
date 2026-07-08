@@ -63,13 +63,23 @@ def _parameters():
     return set(json.loads(PARAMS.read_text(encoding="utf-8")))
 
 
-def test_publish_is_an_alias_of_preview():
-    # The two names must dispatch to the same handler, so a skill may say either (SKILL.md docs it).
+# Which alias rides on which primary (the reachability test lets an alias inherit its primary's
+# mention instead of demanding a skill name every alias). `preview`/`previsualizar` = LOCAL debug
+# staging; `publicar`/`publish`/`deploy` = PUBLIC production (go live).
+ALIASES_RIDE = {"previsualizar": "preview", "publish": "publicar", "deploy": "publicar"}
+
+
+def test_preview_is_local_and_publish_is_production():
+    # The demo-day bug was `publish` aliased onto the LOCAL preview, so "publicá" staged to
+    # localhost and never went live. Assert the corrected mapping: preview family -> local
+    # (cmd_publish); publicar family (incl. publish) -> production (cmd_deploy).
     parser = cz.build_parser()
-    fn = {}
-    for name in ("preview", "publish"):
-        fn[name] = parser.parse_args([name, "--author", "x", "--title", "y"]).fn
-    assert fn["preview"] is fn["publish"] is cz.cmd_publish
+    for name in ("preview", "previsualizar"):
+        assert parser.parse_args([name, "--author", "x", "--title", "y"]).fn is cz.cmd_publish
+    for name in ("publicar", "publish", "deploy"):
+        assert parser.parse_args([name, "--yes"]).fn is cz.cmd_deploy
+    # regression guard: `publish` must NOT reach the local-preview handler anymore.
+    assert parser.parse_args(["publish", "--yes"]).fn is not cz.cmd_publish
 
 
 def _referenced_verbs(text):
@@ -109,7 +119,10 @@ def test_every_verb_is_reachable_from_the_documented_surface():
     named = set()
     for path in [RESOLVER] + sorted(SKILLS_DIR.glob("*/SKILL.md")):
         named |= _mentioned_tokens(path.read_text(encoding="utf-8"))
-    reachable = named | {"publish"} if "preview" in named else named
+    reachable = set(named)
+    for alias, primary in ALIASES_RIDE.items():  # an alias inherits its primary's mention
+        if primary in named:
+            reachable.add(alias)
     unreachable = live - reachable - PLACEHOLDERS
     assert not unreachable, (
         "verbs exist but no resolver row or sub-skill mentions them (unreachable to a driver): "

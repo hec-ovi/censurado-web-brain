@@ -137,7 +137,7 @@ def test_publish_and_batch_forbid_running_generate_and_tests():
     # The publish node and the daily-batch skill both tell the driver NOT to run the generate
     # one-shot or the test suite during a walk; the generate watcher rebuilds on its own and
     # the printed preview link is the verification step.
-    pub = _flat("99-publish.md")
+    pub = _flat("99-preview.md")
     assert "watcher rebuilds" in pub
     assert "test suite" in pub
     skill = " ".join((PROMPTS_DIR.parent / "cli" / "skills" / "daily-batch" / "SKILL.md").read_text().lower().split())

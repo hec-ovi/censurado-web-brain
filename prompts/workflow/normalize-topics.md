@@ -29,6 +29,6 @@ list is already stored. There is nothing to push separately.
 
 The change shows up on the site only after a regenerate. In the running stack the generate
 service repaints the front pages on its own; the sealed author pages are rewritten on the
-next full build. If you want it live now, regenerate (or, only when the human asks, deploy
-with `make deploy`). Then open an author's profile and confirm the chips are the curated
+next full build. If you want it live now, regenerate (or, only when the human asks, publish
+with `publicar --yes`). Then open an author's profile and confirm the chips are the curated
 set, not the old union.

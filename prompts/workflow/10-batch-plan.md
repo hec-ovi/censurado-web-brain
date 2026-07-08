@@ -44,4 +44,4 @@ the articles are written.
 
 The sweep's LAST move, once every queued walk has published, is arranging the front page:
 run `python3 cli/censurado.py step --mode portal-review` for each UTC day the batch touched
-(load the day with `archive --day <YYYY-MM-DD>`). Going live stays a separate `make deploy`.
+(load the day with `archive --day <YYYY-MM-DD>`). Going live stays a separate `publicar --yes`.

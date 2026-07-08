@@ -138,15 +138,15 @@ def test_runs_selected_agent_with_preamble(tmp_path):
     assert br.tg.typing
 
 
-def test_default_preamble_is_spanish_and_maps_publicar_to_deploy():
+def test_default_preamble_is_spanish_and_maps_publicar_to_production():
     # The bot must default to Spanish, act without asking, and treat the operator's
-    # "publicá/publicalo" as the deploy verb (push live), not local preview.
+    # "publicá/publicalo" as going live via `publicar` (push to the public site), never local preview.
     p = router.DEFAULT_PREAMBLE.lower()
-    assert "español" in p                      # Spanish by default
-    assert "publicá" in p and "deploy" in p    # publicar -> the deploy verb
-    assert "cli/censurado.py deploy" in p       # names the exact live-push command
-    assert "sin pedir confirmación" in p        # act directly, no questioning
-    assert "never deploy" not in p              # the old "preview only" ban is gone
+    assert "español" in p                            # Spanish by default
+    assert "publicá" in p                            # maps the operator's "publicá" to going live
+    assert "cli/censurado.py publicar" in p          # names the exact live-push (production) command
+    assert "cli/censurado.py deploy" not in p        # the old confusing "deploy" verb is gone from the surface
+    assert "sin pedir confirmación" in p             # act directly, no questioning
 
 
 def test_from_env_includes_claude_opus_agent(tmp_path):

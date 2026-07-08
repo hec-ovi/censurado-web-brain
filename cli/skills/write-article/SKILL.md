@@ -130,5 +130,5 @@ body, section, topics, and any widgets), then `preview` it so they can see it li
 The command prints a `PREVIEW: <url>  [live now]` line on success: that URL is your result,
 report it back (do not construct a link yourself). A successful `preview` IS the confirmation;
 you do NOT need to separately verify the piece is serving, and you must not re-check it in a
-loop, the site repaints on its own within a few seconds. Going public is a SEPARATE `make
-deploy`, never deploy without an explicit yes.
+loop, the site repaints on its own within a few seconds. Going public is a SEPARATE `publicar
+--yes`, never publish without an explicit yes.

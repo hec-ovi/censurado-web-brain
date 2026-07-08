@@ -7,7 +7,8 @@
 > entire surface is `python3 cli/censurado.py <verb>`, driven by the skill in
 > [`cli/SKILL.md`](cli/SKILL.md). You do not build or run the stack, you do not edit files, and
 > you do not run shell commands: no `make`, no `./run.sh`, no `docker`, no `generate`, no
-> `deploy/*.sh`, no `chmod` / `grep` / `sqlite3`. Going live is the `deploy --yes` verb; checking
+> `deploy/*.sh`, no `chmod` / `grep` / `sqlite3`. Going live is the `publicar --yes` verb (that is
+> what "publicar" / "publish" mean; `preview` is local-only, debug); checking
 > the site is up is the `status` verb. If something seems to need a non-verb action, STOP and ask
 > the human. Go read `cli/SKILL.md` and ignore the developer map below.
 >

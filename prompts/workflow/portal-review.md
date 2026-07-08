@@ -81,6 +81,6 @@ Do it one day at a time. For each day under review:
 
 The change shows up on the site only after a regenerate. In the running stack the generate
 service repaints the front pages on its own; the sealed pages are rewritten on the next full
-build. If you want it live now, regenerate (or, only when the human asks, deploy with `make
-deploy`). Then open the day's front page and confirm the lead, the order, and the
+build. If you want it live now, regenerate (or, only when the human asks, publish with `publicar
+--yes`). Then open the day's front page and confirm the lead, the order, and the
 recommended list are what you set.

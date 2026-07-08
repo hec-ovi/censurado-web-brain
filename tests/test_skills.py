@@ -11,6 +11,23 @@ ROOT = Path(__file__).resolve().parents[1]
 CLI = ROOT / "cli"
 RESOLVER = CLI / "SKILL.md"
 SKILLS_DIR = CLI / "skills"
+WORKFLOW_DIR = ROOT / "prompts" / "workflow"
+
+
+def test_no_skill_or_prompt_names_the_deploy_verb():
+    # Regression guard for the demo-day bug: the go-live verb is `publicar`, and the word
+    # "deploy" must never name a command/mode on any agent-facing surface (it made the agent
+    # confuse going-public with the localhost preview). Infra file paths (deploy/deploy-cdn.sh,
+    # deploy/CACHING.md, ./deploy/) and the external `wrangler pages deploy` command are allowed.
+    surfaces = [RESOLVER] + sorted(SKILLS_DIR.glob("*/SKILL.md")) + sorted(WORKFLOW_DIR.glob("*.md"))
+    banned = ("censurado.py deploy", "make deploy", "--mode deploy", "skills/deploy/", "step deploy")
+    offenders = {}
+    for path in surfaces:
+        text = path.read_text(encoding="utf-8")
+        hits = [b for b in banned if b in text]
+        if hits:
+            offenders[path.relative_to(ROOT).as_posix()] = hits
+    assert not offenders, f"agent-facing surfaces still name the old deploy verb/mode: {offenders}"
 
 
 def _frontmatter(md_path):
@@ -54,7 +71,7 @@ def test_the_operations_surface_is_present_and_routed():
     # The acceptance surface: a fresh agent given only cli/SKILL.md can reach each of these.
     # deploy + prompts complete the plan's target layout (go-live and prompt-editing).
     expected = {"write-article", "daily-batch", "authors", "sources", "portada", "media",
-                "websearch", "deploy", "prompts"}
+                "websearch", "publicar", "prompts"}
     on_disk = {p.parent.name for p in SKILLS_DIR.glob("*/SKILL.md")}
     assert expected <= on_disk, f"missing sub-skills: {expected - on_disk}"
     routed = set(re.findall(r"skills/([\w-]+)/SKILL\.md", RESOLVER.read_text(encoding="utf-8")))
@@ -69,28 +86,28 @@ def _body(md_path):
     return re.sub(r"^---\n.*?\n---\n", "", text, count=1, flags=re.S)
 
 
-def test_deploy_skill_carries_its_safety_rails():
-    # Deploy is the one public, irreversible action. Assert the rails in the BODY, not the whole
-    # file: the frontmatter description alone must not satisfy these, or a gutted body would pass.
-    body = _body(SKILLS_DIR / "deploy" / "SKILL.md").lower()
-    assert "localhost:8080" in body, "deploy body must contrast the local preview"
-    # Deploy is a verb now, not a make target: the body must name the real command as the verb.
-    assert "censurado.py deploy --yes" in body, "deploy body must name the real command (the verb)"
-    assert "elcensuradoweb.com" in body, "deploy body must name the public target"
-    assert "explicit yes" in body, "deploy body must require an explicit yes"
-    assert any(p in body for p in ("unattended", "never deploy on your own")), \
-        "deploy body must keep the do-not-self-deploy rail"
+def test_publicar_skill_carries_its_safety_rails():
+    # publicar (go live) is the one public, irreversible action. Assert the rails in the BODY, not
+    # the whole file: the frontmatter description alone must not satisfy these, or a gutted body
+    # would pass. The verb is `publicar`; the word "deploy" no longer names it on any skill surface.
+    body = _body(SKILLS_DIR / "publicar" / "SKILL.md").lower()
+    assert "localhost:8080" in body, "publicar body must contrast the local preview"
+    assert "censurado.py publicar --yes" in body, "publicar body must name the real command (the verb)"
+    assert "elcensuradoweb.com" in body, "publicar body must name the public target"
+    assert "explicit yes" in body, "publicar body must require an explicit yes"
+    assert any(p in body for p in ("unattended", "never publish on your own")), \
+        "publicar body must keep the do-not-self-publish rail"
     assert any(p in body for p in ("front page", "what will go live")), \
-        "deploy body must keep the show-what-goes-live step"
+        "publicar body must keep the show-what-goes-live step"
 
 
-def test_resolver_carries_the_public_deploy_rail():
-    # cli/SKILL.md is always loaded; an agent can run `make deploy` from the resolver row alone,
-    # so the preview-is-local + get-a-yes-before-deploy rail must live on the always-loaded surface.
+def test_resolver_carries_the_public_publish_rail():
+    # cli/SKILL.md is always loaded; an agent can go live from the resolver row alone, so the
+    # preview-is-local + get-a-yes-before-going-public rail must live on the always-loaded surface.
     low = RESOLVER.read_text(encoding="utf-8").lower()
     assert "localhost:8080" in low, "resolver must say preview is local"
-    assert "deploy" in low and any(p in low for p in ("get a yes", "confirm", "explicit yes")), \
-        "resolver must carry the confirm-before-public-deploy rail"
+    assert "publicar" in low and any(p in low for p in ("get a yes", "confirm", "explicit yes")), \
+        "resolver must carry the confirm-before-public-publish rail"
 
 
 def test_prompts_skill_treats_every_prompt_as_a_file_not_a_db():
@@ -117,7 +134,7 @@ def test_daily_batch_skill_tail_wires_the_portada_arrange_walk():
     assert "step --mode portal-review" in body, "batch tail must run the arrange walk"
     assert "archive --day" in body, "batch tail must name the day loader"
     assert "one day at a time" in body, "arrange is per UTC day"
-    assert "deploy --yes" in body, "going live stays a separate human-gated deploy verb"
+    assert "publicar --yes" in body, "going live stays a separate human-gated publicar verb"
 
 
 def test_daily_batch_routes_bulk_topic_merges_to_the_cleanse_walk():

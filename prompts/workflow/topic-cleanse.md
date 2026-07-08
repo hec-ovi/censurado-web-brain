@@ -56,6 +56,6 @@ Do it one entity or theme at a time:
    it by hand from the panel's Temas tab.
 
 8. **Regenerate.** The change reaches the site after a regenerate: the generate service
-   repaints on its own, or regenerate now. Going live is a separate, human-gated `make deploy`.
+   repaints on its own, or regenerate now. Going live is a separate, human-gated `publicar --yes`.
    Then open a `/topic/<slug>/` page and confirm the variants collapsed into the one canonical
    tag.

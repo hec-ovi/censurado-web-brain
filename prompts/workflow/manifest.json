@@ -1,20 +1,20 @@
 {
   "modes": {
-    "single-article": ["15-pick-author", "30-research", "40-outline", "50-draft", "60-evaluate", "70-respin", "75-factcheck", "80-enrich", "85-accents-entities", "90-finalize", "95-image", "99-publish", "deploy"],
-    "single-author": ["15-pick-author", "20-fresh-titulars", "30-research", "40-outline", "50-draft", "60-evaluate", "70-respin", "75-factcheck", "80-enrich", "85-accents-entities", "90-finalize", "95-image", "99-publish", "deploy"],
-    "authors": ["15-pick-author", "20-fresh-titulars", "30-research", "40-outline", "50-draft", "60-evaluate", "70-respin", "75-factcheck", "80-enrich", "85-accents-entities", "90-finalize", "95-image", "99-publish", "deploy"],
+    "single-article": ["15-pick-author", "30-research", "40-outline", "50-draft", "60-evaluate", "70-respin", "75-factcheck", "80-enrich", "85-accents-entities", "90-finalize", "95-image", "99-preview", "publicar"],
+    "single-author": ["15-pick-author", "20-fresh-titulars", "30-research", "40-outline", "50-draft", "60-evaluate", "70-respin", "75-factcheck", "80-enrich", "85-accents-entities", "90-finalize", "95-image", "99-preview", "publicar"],
+    "authors": ["15-pick-author", "20-fresh-titulars", "30-research", "40-outline", "50-draft", "60-evaluate", "70-respin", "75-factcheck", "80-enrich", "85-accents-entities", "90-finalize", "95-image", "99-preview", "publicar"],
     "daily": ["10-batch-plan"],
     "weekly": ["10-batch-plan"],
     "last-hour": ["10-batch-plan"],
-    "deploy": ["deploy"],
+    "publicar": ["publicar"],
     "normalize-topics": ["normalize-topics"],
     "portal-review": ["portal-review"],
     "topic-cleanse": ["topic-cleanse"]
   },
   "disabled": {
-    "single-article": ["deploy"],
-    "single-author": ["deploy"],
-    "authors": ["deploy"]
+    "single-article": ["publicar"],
+    "single-author": ["publicar"],
+    "authors": ["publicar"]
   },
   "produces": {
     "30-research": "ledger.md",

@@ -190,7 +190,7 @@ def test_cli_publish_dry_run_no_network(tmp_path):
     # Truly hermetic: passing the byline (--author-name) and --section means
     # build_publish_payload has no missing field to fill, so it does NOT reach the
     # brain to resolve the persona. The dry run just assembles and prints the payload.
-    out = subprocess.run([sys.executable, str(CLI), "publish", "--author", "author-a",
+    out = subprocess.run([sys.executable, str(CLI), "preview", "--author", "author-a",
                           "--author-name", "Autor A",
                           "--title", "Un título", "--section", "politics",
                           "--subtitle", "Una bajada", "--body-file", str(body),
@@ -1469,8 +1469,8 @@ def test_deploy_runs_script_and_reports_success(monkeypatch, capsys):
     out = capsys.readouterr().out
     assert rc == 0
     assert captured["cmd"][0] == "bash" and captured["cmd"][1].endswith("deploy/deploy-cdn.sh")
-    # steers verification to opening the piece's link (+ plain status), not to re-deploying
-    assert "deploy OK" in out and "public link" in out and "status" in out
+    # steers verification to opening the piece's link (+ plain status), not to re-publishing
+    assert "publicar OK" in out and "public link" in out and "status" in out
 
 
 def test_deploy_relays_failure_without_workaround(monkeypatch, capsys):

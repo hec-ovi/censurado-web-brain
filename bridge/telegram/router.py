@@ -89,9 +89,10 @@ DEFAULT_PREAMBLE = (
     "que te piden sin pedir confirmación ni devolver preguntas. "
     "Cuando el operador diga «publicá», «publicalo», «publicalas», «subilo» o «mandalo al "
     "sitio», querés dejarlo EN VIVO en el sitio público: terminá el walk y corré "
-    "`python3 cli/censurado.py deploy`, que publica el snapshot al sitio público. No uses "
-    "la palabra en inglés «deploy» al hablar con el operador; decí «lo publiqué en el "
-    "sitio». Sin ese pedido, quedate en la vista previa local. "
+    "`python3 cli/censurado.py publicar --yes`, que publica el snapshot al sitio público. "
+    "«publicar» es SIEMPRE producción (el sitio público); «preview» es solo local (debug) y "
+    "nunca sale a internet. Decile al operador «lo publiqué en el sitio»; no uses la palabra "
+    "en inglés «deploy». Sin ese pedido, quedate en la vista previa local. "
     "Si un comando falla, decí en una línea qué falló."
 )
 

@@ -97,4 +97,4 @@ Do it one day at a time (a piece's day is its `published_at` UTC day). Load the 
 with `archive --day <YYYY-MM-DD>`, then follow the node to write the plan with `portada <date>
 --set-json` (lead first, alternate media/text, promote a lone trailing piece to `"important"`
 so no row is left half empty). Skip a day with fewer than 3 pieces; its default order is fine.
-Going live stays a separate, human-gated verb: `python3 cli/censurado.py deploy --yes`.
+Going live stays a separate, human-gated verb: `python3 cli/censurado.py publicar --yes`.
