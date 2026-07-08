@@ -3,6 +3,7 @@
     "single-article": ["15-pick-author", "30-research", "40-outline", "50-draft", "60-evaluate", "70-respin", "75-factcheck", "80-enrich", "85-accents-entities", "90-finalize", "95-image", "99-preview", "publicar"],
     "single-author": ["15-pick-author", "20-fresh-titulars", "30-research", "40-outline", "50-draft", "60-evaluate", "70-respin", "75-factcheck", "80-enrich", "85-accents-entities", "90-finalize", "95-image", "99-preview", "publicar"],
     "authors": ["15-pick-author", "20-fresh-titulars", "30-research", "40-outline", "50-draft", "60-evaluate", "70-respin", "75-factcheck", "80-enrich", "85-accents-entities", "90-finalize", "95-image", "99-preview", "publicar"],
+    "institucional": ["10-institucional", "30-research", "50-draft-institucional", "62-semantica-calidad", "90-finalize", "99-preview", "publicar"],
     "daily": ["10-batch-plan"],
     "weekly": ["10-batch-plan"],
     "last-hour": ["10-batch-plan"],
@@ -14,10 +15,12 @@
   "disabled": {
     "single-article": ["publicar"],
     "single-author": ["publicar"],
-    "authors": ["publicar"]
+    "authors": ["publicar"],
+    "institucional": ["publicar"]
   },
   "produces": {
     "30-research": "ledger.md",
-    "50-draft": "draft.md"
+    "50-draft": "draft.md",
+    "50-draft-institucional": "draft.md"
   }
 }

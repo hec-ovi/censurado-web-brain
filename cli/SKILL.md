@@ -77,6 +77,7 @@ or rerun generate/publicar in a loop, you are already off the rails. Instead:
 | check the stack is up / "did my publish land?" / "you online?" | `python3 cli/censurado.py status` |
 | verify a specific piece is live / "where is my article?" | open the `PREVIEW:` link `preview` printed for it (that link is the confirmation; the site repaints within a few seconds, do not re-check in a loop) |
 | write / create / cover a news article ("nota", "write up this news") | read `cli/skills/write-article/SKILL.md`, then walk it |
+| write an institutional / unsigned piece (an official release or "gacetilla", no persona byline) | read `cli/skills/write-article/SKILL.md`, then walk the lighter formal lane: `python3 cli/censurado.py step --mode institucional` (signed by "Redacción", provided image, no AI hero) |
 | search the web, find real sources, read a page | read `cli/skills/websearch/SKILL.md` |
 | run the daily / weekly batch, sweep the day, refresh the portal | read `cli/skills/daily-batch/SKILL.md` |
 | add / remove / inspect an author (create a writer, retire one, read a voice) | read `cli/skills/authors/SKILL.md` |

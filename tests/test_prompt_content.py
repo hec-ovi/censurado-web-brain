@@ -189,6 +189,70 @@ def test_topic_cleanse_walk_covers_both_halves_and_agent_detection():
     assert "hash" in low
 
 
+def test_institucional_mode_is_a_lighter_unsigned_lane():
+    # The institutional lane is a NEW mode: a lighter walk than the full persona single-article,
+    # for unsigned/official pieces. It drops the persona-voice load, the outline, the respin loop,
+    # the accents-entities pass, and the AI image step, and reuses research/finalize/preview/publicar.
+    manifest = json.loads((PROMPTS_DIR / "workflow" / "manifest.json").read_text())
+    modes = manifest["modes"]
+    assert "institucional" in modes, "the institucional mode is missing from the manifest"
+    inst = modes["institucional"]
+    single = modes["single-article"]
+    # Fewer nodes than the full persona walk (the whole point: less pass).
+    assert len(inst) < len(single)
+    # No AI image generation and no respin loop (plus no outline / accents-entities pass).
+    for dropped in ("95-image", "70-respin", "40-outline", "85-accents-entities", "60-evaluate"):
+        assert dropped not in inst, f"institucional must not include {dropped}"
+    # The lighter lane's own front nodes, then the reused tail.
+    assert inst[:4] == ["10-institucional", "30-research", "50-draft-institucional", "62-semantica-calidad"]
+    for reused in ("30-research", "90-finalize", "99-preview", "publicar"):
+        assert reused in inst
+    # publicar is gated inside the mode, mirroring the other article modes.
+    assert "publicar" in (manifest.get("disabled") or {}).get("institucional", [])
+
+
+def test_institucional_first_node_picks_the_house_byline_and_provided_image():
+    # The lane's first node signs with the reserved institutional byline (redaccion / "Redacción"),
+    # creates it once if missing, and confirms the PROVIDED image instead of an AI hero.
+    low = _flat("10-institucional.md")
+    assert "redaccion" in low and "redacción" in low   # the reserved handle + its display name
+    assert "create-author" in low                        # created once if absent
+    assert "provided" in low                             # a supplied /media image, not generated
+    assert "never runs" in low and "comfyui" in low      # this lane skips the ComfyUI image verb
+    assert "--image-caption" in low and "--image-credit" in low  # optional site-rendered caption/credit
+
+
+def test_institucional_draft_enforces_the_formal_register():
+    # The institutional draft node is the fallback to the MOST FORMAL voice: third person,
+    # objective, minimal gerunds, provided image, and no persona-voice load.
+    low = _flat("50-draft-institucional.md")
+    assert "third person" in low
+    assert "objective" in low
+    assert "formal" in low
+    assert "institutional" in low
+    assert "gerund" in low
+    assert "provided" in low                             # provided image, never generated
+    assert "say each idea once" in low                   # the anti-slop discipline survives
+    # It strips the persona-voice load: it is NOT the signed draft node.
+    assert "persona's language and voice" not in low
+
+
+def test_semantica_calidad_is_the_single_combined_pass():
+    # The 62 node is the ONE combined revision pass that replaces evaluate + respin + enrich for
+    # the lighter lane: fix the semantics, improve the quality.
+    low = _flat("62-semantica-calidad.md")
+    assert "single combined pass" in low
+    assert "fix the semantics" in low
+    assert "improve the quality" in low
+    assert "clarity" in low
+    assert "accuracy against the sources" in low
+    assert "no redundancy" in low
+    assert "gate" in low                                 # still the publish gate
+    # It explicitly stands in for the three heavier passes.
+    for replaced in ("evaluate", "respin", "enrich"):
+        assert replaced in low
+
+
 def test_every_manifest_workflow_node_and_persona_synthesize_exist_on_disk():
     # The step gate serves nodes straight off disk, so every node the manifest references
     # (plus persona/synthesize, the author-synthesis prompt) must actually be present or a

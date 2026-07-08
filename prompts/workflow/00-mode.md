@@ -21,6 +21,9 @@ Offer these to the human if it is not already obvious, and pick one:
 - **single-article**: one article from a specific link, topic, or angle you were given.
 - **single-author**: sweep one author's fresh beat and write the pieces that matter.
 - **authors**: the same, across several named authors.
+- **institucional**: an institutional / unsigned piece from an official source (a release or
+  "gacetilla"). A lighter walk in the most formal register, signed by the house byline
+  "Redacción" (no persona), with a provided image and no AI-generated hero.
 - **daily**, **weekly**, **last-hour**: a scheduled batch. Sweep the trending news, assign
   each story to the author whose beat fits, and emit an assignment queue. Each queued
   article is then written as its OWN separate `single-article` walk, so you never draft a whole
