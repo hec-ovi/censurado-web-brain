@@ -33,15 +33,25 @@ class FakeTG:
     def __init__(self):
         self.sent = []
         self.typing = []
+        self.edits = []
+        self._mid = 0
 
     def send_message(self, chat_id, text):
         self.sent.append((chat_id, text))
+        self._mid += 1
+        return self._mid  # message_id, so callers can edit it in place
+
+    def edit_message_text(self, chat_id, message_id, text):
+        self.edits.append((chat_id, message_id, text))
 
     def send_typing(self, chat_id):
         self.typing.append(chat_id)
 
     def get_me(self):
         return {"ok": True, "result": {"username": "ElCensuradoWeb_bot"}}
+
+    def texts(self):
+        return [t for _c, t in self.sent]
 
 
 def _agent(tmp_path, name, body):
@@ -51,7 +61,7 @@ def _agent(tmp_path, name, body):
 
 
 def _cfg(tmp_path, *, codex="echo {msg}", agy="echo {msg}", allowed=(1,), preamble="",
-         admin_token="atok", port=0, timeout=60):
+         admin_token="atok", port=0, timeout=60, progress_after=45.0, progress_interval=30.0):
     return router.Config(
         token="btok",
         admin_token=admin_token,
@@ -59,6 +69,8 @@ def _cfg(tmp_path, *, codex="echo {msg}", agy="echo {msg}", allowed=(1,), preamb
         data_dir=tmp_path / "data",
         timeout=timeout,
         typing_interval=0.02,
+        progress_after=progress_after,
+        progress_interval=progress_interval,
         admin_host="127.0.0.1",
         admin_port=port,
         preamble=preamble,
@@ -308,3 +320,91 @@ def test_qr_svg_degrades_or_renders():
     assert router.qr_svg("") == ""
     out = router.qr_svg("https://t.me/ElCensuradoWeb_bot")
     assert out == "" or out.lstrip().startswith("<svg")
+
+
+# ------------------------------------------------- structured shortcuts (guided commands)
+def _echo(tmp_path):
+    """A codex cmd that echoes the exact prompt it was handed (preamble+task), so a test can
+    assert what the guided command sends to the agent."""
+    return _cfg(tmp_path, allowed=(1,), codex="echo {msg}")
+
+
+def test_slash_command_starts_a_wizard_without_running_the_agent(tmp_path):
+    br = _bridge(_echo(tmp_path))
+    assert br.process(chat_id=7, user_id=1, text="/crear_autor") is True
+    # Only the first question was asked; the agent did not run (no echoed task yet).
+    assert len(br.tg.sent) == 1
+    q = br.tg.texts()[0]
+    assert "crear autor" in q and "como firma" in q.lower()
+
+
+def test_wizard_collects_fields_then_hands_a_structured_task_to_the_agent(tmp_path):
+    br = _bridge(_echo(tmp_path))
+    steps = ["/crear_autor", "Juana Prensa", "politica local", "mirada acida y precisa", "ninguno"]
+    for m in steps:
+        assert br.process(chat_id=7, user_id=1, text=m) is True
+    task = br.tg.texts()[-1]  # the echoed prompt = the built task
+    # The collected fields are threaded into the task, and it names the exact create verb.
+    assert "Juana Prensa" in task and "politica local" in task and "mirada acida" in task
+    assert "create-author --file -" in task
+    # a guided task must not silently publish an author
+    assert "no publiques" in task.lower()
+
+
+def test_nota_command_publishes_to_production_not_local_preview(tmp_path):
+    br = _bridge(_echo(tmp_path))
+    for m in ["/nota", "juana", "el municipio abrio el parque acuatico"]:
+        br.process(chat_id=7, user_id=1, text=m)
+    task = br.tg.texts()[-1]
+    assert "single-article" in task
+    assert "publicar --yes" in task           # goes live to production
+    assert "el municipio abrio el parque acuatico" in task
+
+
+def test_editar_nota_command_edits_then_publishes(tmp_path):
+    br = _bridge(_echo(tmp_path))
+    for m in ["/editar_nota", "rosario-parque-acuatico-c4bc3d41", "corregi el segundo parrafo"]:
+        br.process(chat_id=7, user_id=1, text=m)
+    task = br.tg.texts()[-1]
+    assert "censurado.py edit" in task and "publicar --yes" in task
+    assert "rosario-parque-acuatico-c4bc3d41" in task
+
+
+def test_cancel_aborts_an_active_wizard(tmp_path):
+    br = _bridge(_echo(tmp_path))
+    br.process(chat_id=7, user_id=1, text="/modificar_autor")   # start
+    br.process(chat_id=7, user_id=1, text="/cancelar")          # abort
+    assert "Cancelado." in br.tg.texts()
+    # after cancel, a plain message is freeform again (echoed straight through, no wizard prompt)
+    br.process(chat_id=7, user_id=1, text="hola")
+    assert br.tg.texts()[-1] == "hola"
+
+
+def test_help_lists_the_guided_commands(tmp_path):
+    br = _bridge(_echo(tmp_path))
+    br.process(chat_id=7, user_id=1, text="/comandos")
+    help_text = br.tg.texts()[-1]
+    for alias in ("/crear_autor", "/modificar_autor", "/nota", "/editar_nota"):
+        assert alias in help_text
+
+
+def test_freeform_message_is_unchanged_by_the_command_layer(tmp_path):
+    # A non-command message still goes straight to the agent (echoed as-is), so the freeform
+    # bridge behaviour the operator relies on is intact.
+    br = _bridge(_echo(tmp_path))
+    assert br.process(chat_id=7, user_id=1, text="contame algo") is True
+    assert br.tg.texts() == ["contame algo"]
+
+
+def test_long_run_posts_and_refreshes_a_progress_note(tmp_path):
+    # A slow agent trips the heartbeat: after progress_after the bridge posts a "still working"
+    # note and edits it in place, so a multi-minute turn never leaves the user staring at a dot.
+    slow = _agent(tmp_path, "slow.py", "import time; time.sleep(0.4); sys.stdout.write('done')")
+    cfg = _cfg(tmp_path, codex=f"{sys.executable} {slow}", allowed=(1,),
+               progress_after=0.05, progress_interval=0.05)
+    br = _bridge(cfg)
+    assert br.process(chat_id=7, user_id=1, text="algo lento") is True
+    joined = " ".join(br.tg.texts())
+    assert "Sigo trabajando" in joined      # the progress note was posted
+    assert br.tg.edits                       # and refreshed / closed out in place
+    assert "done" in br.tg.texts()           # the real reply still arrives

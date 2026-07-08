@@ -111,6 +111,11 @@ class Config:
     timeout: int = 1800
     api_base: str = "https://api.telegram.org"
     typing_interval: float = 4.0
+    # A long agent turn (writing + publishing an article can take minutes) shows a typing dot,
+    # which is not reassuring on its own. After progress_after seconds with no reply we post a
+    # "still working" note and refresh it every progress_interval seconds (edited in place).
+    progress_after: float = 45.0
+    progress_interval: float = 30.0
     max_queue: int = 20
     admin_host: str = "127.0.0.1"
     admin_port: int = 8090
@@ -311,7 +316,8 @@ class Telegram:
             return []
         return res.get("result", []) if res.get("ok") else []
 
-    def send_message(self, chat_id: int, text: str) -> None:
+    def send_message(self, chat_id: int, text: str) -> int | None:
+        """Send text; return the new message_id (so a caller can edit it in place) or None."""
         try:
             res = self.call("sendMessage",
                             {"chat_id": chat_id, "text": text, "disable_web_page_preview": True})
@@ -320,15 +326,27 @@ class Telegram:
                 retry = _retry_after(ex)
                 log.warning("429 sendMessage, sleeping %ss", retry)
                 time.sleep(retry)
-                self.send_message(chat_id, text)
-                return
+                return self.send_message(chat_id, text)
             log.error("sendMessage HTTP %s", ex.code)
-            return
+            return None
         except (urllib.error.URLError, OSError) as ex:
             log.error("sendMessage failed: %s", ex)
-            return
+            return None
         if not res.get("ok"):
             log.error("sendMessage rejected: %s", res.get("description"))
+            return None
+        return (res.get("result") or {}).get("message_id")
+
+    def edit_message_text(self, chat_id: int, message_id: int, text: str) -> None:
+        """Rewrite an existing message in place (used for the long-run progress note)."""
+        if not message_id:
+            return
+        try:
+            self.call("editMessageText",
+                      {"chat_id": chat_id, "message_id": message_id, "text": text,
+                       "disable_web_page_preview": True})
+        except Exception as ex:
+            log.debug("editMessageText failed: %s", ex)
 
     def send_typing(self, chat_id: int) -> None:
         try:
@@ -419,6 +437,134 @@ def run_agent(cfg: Config, agent_key: str, rec: dict, text: str,
     return (out or "(the agent produced no output)", True)
 
 
+# ---------------------------------------------------------------- structured shortcuts
+# Guided, turn-by-turn commands layered ON TOP OF the freeform agent (any non-command message
+# still goes straight to the agent). Each command collects a few fields one question at a time,
+# then hands the agent a FULLY-SPECIFIED task that names the exact censurado.py verbs to run, so
+# the operator fills slots instead of freeforming and the injection surface stays small. The copy
+# is Spanish/voseo, the portal's register. Article commands go straight to production (publicar),
+# per the rule that a piece created from Telegram is published live, not left on the local preview.
+
+def _step(slot: str, prompt: str) -> dict:
+    return {"slot": slot, "prompt": prompt}
+
+
+def _task_crear_autor(f: dict) -> str:
+    return (
+        "TAREA (funcion guiada, no converses): crea UN autor nuevo en el backend.\n"
+        f"- Nombre / como firma: {f['nombre']}\n"
+        f"- Beat / tema principal: {f['tema']}\n"
+        f"- Quien es (voz, mirada): {f['quien']}\n"
+        f"- Rasgos de estilo: {f['estilo']}\n"
+        "Sintetiza la persona siguiendo `prompt persona/synthesize.md` y creala con "
+        "`python3 cli/censurado.py create-author --file -` (pasa el JSON por stdin). Al terminar "
+        "confirma en una linea el handle creado. No publiques ni escribas notas."
+    )
+
+
+def _task_modificar_autor(f: dict) -> str:
+    return (
+        "TAREA (funcion guiada, no converses): modifica UN campo de un autor existente.\n"
+        f"- Autor (handle): {f['handle']}\n"
+        f"- Campo a cambiar: {f['campo']}\n"
+        f"- Nuevo valor: {f['valor']}\n"
+        "Lee el autor con `persona <handle>`, cambia SOLO ese campo y guarda el registro completo "
+        "con `create-author --file -` (es un upsert por handle). Para fuentes usa `sources --set`, "
+        "para temas de perfil usa `profile-topics --set`. Confirma el cambio en una linea, nada mas."
+    )
+
+
+def _task_nota(f: dict) -> str:
+    return (
+        "TAREA (funcion guiada): escribi UNA sola nota y publicala.\n"
+        f"- Autor que firma (handle): {f['autor']}\n"
+        f"- Tema / angulo / link: {f['tema']}\n"
+        "Recorre el walk `step --mode single-article` paso a paso (respeta los gates de fuentes, "
+        "titular honesto y evaluacion), previsualiza con `preview`, y cuando quede lista PUBLICALA a "
+        "produccion con `python3 cli/censurado.py publicar --yes` (desde Telegram las notas van "
+        "directo al sitio publico). Devolve el link final."
+    )
+
+
+def _task_editar_nota(f: dict) -> str:
+    return (
+        "TAREA (funcion guiada): edita el CONTENIDO de una nota existente y republica.\n"
+        f"- Nota (slug o link): {f['slug']}\n"
+        f"- Cambio pedido: {f['cambio']}\n"
+        "Aplica el cambio con `python3 cli/censurado.py edit <slug>` (--body-file para el cuerpo, "
+        "--meta / --set para metadatos), verifica con `get <slug>`, y publica a produccion con "
+        "`publicar --yes`. Confirma el link."
+    )
+
+
+COMMANDS = {
+    "crear_autor": {
+        "aliases": ("/crear_autor", "/crearautor", "/nuevo_autor", "/nuevoautor"),
+        "title": "crear autor",
+        "steps": [
+            _step("nombre", "¿Como se llama / como firma el autor?"),
+            _step("tema", "¿Cual es su beat o tema principal?"),
+            _step("quien", "Describi quien es: voz, tono, mirada. Una o dos frases."),
+            _step("estilo", "¿Algun rasgo de estilo o lexico particular? (o escribi «ninguno»)"),
+        ],
+        "build": _task_crear_autor,
+    },
+    "modificar_autor": {
+        "aliases": ("/modificar_autor", "/modificarautor", "/editar_autor", "/editarautor"),
+        "title": "modificar autor",
+        "steps": [
+            _step("handle", "¿Que autor queres modificar? Escribi su handle (o /autores para ver la lista)."),
+            _step("campo", "¿Que campo? Opciones: nombre, bio, about, estilo, tema, avatar, fuentes, temas-perfil."),
+            _step("valor", "¿Cual es el nuevo valor?"),
+        ],
+        "build": _task_modificar_autor,
+    },
+    "nota": {
+        "aliases": ("/nota", "/nueva_nota", "/nuevanota", "/articulo"),
+        "title": "nueva nota",
+        "steps": [
+            _step("autor", "¿Que autor firma la nota? (handle)"),
+            _step("tema", "¿Sobre que? Pega el link, el tema o el angulo."),
+        ],
+        "build": _task_nota,
+    },
+    "editar_nota": {
+        "aliases": ("/editar_nota", "/editarnota", "/corregir_nota", "/corregir"),
+        "title": "editar nota",
+        "steps": [
+            _step("slug", "¿Que nota queres editar? Pega su slug o su link."),
+            _step("cambio", "¿Que cambio de contenido? Describilo o pega el texto nuevo."),
+        ],
+        "build": _task_editar_nota,
+    },
+}
+
+# messages handled inline (no wizard, no agent)
+HELP_ALIASES = ("/comandos", "/ayuda", "/help", "/start")
+CANCEL_ALIASES = ("/cancelar", "/cancel")
+AUTHORS_ALIASES = ("/autores", "/authors")
+
+
+def command_for(text: str) -> str | None:
+    """The command key if the message opens a structured shortcut, else None."""
+    parts = text.strip().split()
+    head = parts[0].lower() if parts else ""
+    for key, spec in COMMANDS.items():
+        if head in spec["aliases"]:
+            return key
+    return None
+
+
+def commands_help() -> str:
+    lines = ["Comandos guiados (te pregunto los datos uno por uno):"]
+    for spec in COMMANDS.values():
+        lines.append(f"  {spec['aliases'][0]} — {spec['title']}")
+    lines.append("  /autores — listar autores")
+    lines.append("  /cancelar — cancelar el comando en curso")
+    lines.append("Cualquier otro mensaje se lo paso directo al agente.")
+    return "\n".join(lines)
+
+
 # ------------------------------------------------------------------------- the bridge
 class Bridge:
     def __init__(self, cfg: Config, store: ConfigStore, status: Status | None = None,
@@ -430,29 +576,90 @@ class Bridge:
         self.sessions = sessions or SessionStore(cfg.data_dir)
         self._queues: dict[int, queue.Queue] = {}
         self._qlock = threading.Lock()
+        self._wizards: dict[int, dict] = {}  # chat_id -> {"cmd", "step", "fields"} for a guided command
+        self._wlock = threading.Lock()
         self.bot = {"username": "", "link": ""}
 
     def process(self, chat_id: int, user_id: int, text: str) -> bool:
         if user_id not in self.store.allowed():
             log.warning("DENY message from %s (chat %s): not allow-listed", user_id, chat_id)
             return False
-        agent_key = self.store.agent()
-        log.info("run %s for user %s (chat %s): %.60r", agent_key, user_id, chat_id, text)
         rec, _is_new = self.sessions.get_or_create(chat_id)
+        # Structured shortcuts run first: a guided command or an active wizard is handled inline
+        # (returns None). Everything else falls through as a task the agent runs (a fully-specified
+        # structured task, or the raw freeform message).
+        task = self._route_command(chat_id, text, rec)
+        if task is None:
+            return True
+        agent_key = self.store.agent()
+        log.info("run %s for user %s (chat %s): %.60r", agent_key, user_id, chat_id, task)
         stop = threading.Event()
+        progress = {"mid": None, "t0": _now()}
         threading.Thread(target=self._keep_typing, args=(chat_id, stop), daemon=True).start()
+        threading.Thread(target=self._heartbeat, args=(chat_id, stop, progress), daemon=True).start()
         try:
-            reply, _ok = run_agent(self.cfg, agent_key, rec, text, self.status)
+            reply, _ok = run_agent(self.cfg, agent_key, rec, task, self.status)
         finally:
             stop.set()
+        if progress["mid"]:  # close out the long-run progress note
+            self.tg.edit_message_text(chat_id, progress["mid"], "Listo.")
         for piece in chunk_text(reply):
             self.tg.send_message(chat_id, piece)
         return True
+
+    def _route_command(self, chat_id: int, text: str, rec: dict) -> str | None:
+        """Handle guided commands + active wizards. Returns None when handled inline (a question
+        asked, help shown, cancelled), or the task string for the agent to run otherwise."""
+        low = text.strip().lower()
+        if low in CANCEL_ALIASES:
+            with self._wlock:
+                had = self._wizards.pop(chat_id, None)
+            self.tg.send_message(chat_id, "Cancelado." if had else "No hay ningun comando en curso.")
+            return None
+        if low in HELP_ALIASES:
+            self.tg.send_message(chat_id, commands_help())
+            return None
+        if low in AUTHORS_ALIASES:
+            return ("Ejecuta `python3 cli/censurado.py personas` y devolve la lista de autores tal "
+                    "cual, sin agregar nada.")
+        key = command_for(text)
+        if key:  # start (or restart) a guided command
+            spec = COMMANDS[key]
+            with self._wlock:
+                self._wizards[chat_id] = {"cmd": key, "step": 0, "fields": {}}
+            self.tg.send_message(chat_id, f"[{spec['title']}] {spec['steps'][0]['prompt']}")
+            return None
+        with self._wlock:
+            wiz = self._wizards.get(chat_id)
+        if wiz:  # fill the current slot of the in-progress command (one worker per chat = no race)
+            spec = COMMANDS[wiz["cmd"]]
+            wiz["fields"][spec["steps"][wiz["step"]]["slot"]] = text.strip()
+            wiz["step"] += 1
+            if wiz["step"] < len(spec["steps"]):
+                self.tg.send_message(chat_id, f"[{spec['title']}] {spec['steps'][wiz['step']]['prompt']}")
+                return None
+            with self._wlock:
+                self._wizards.pop(chat_id, None)
+            self.tg.send_message(chat_id, f"Dale, arranco con «{spec['title']}». Puede tardar; te aviso al terminar.")
+            return spec["build"](wiz["fields"])
+        return text  # no command, no wizard -> freeform, exactly as before
 
     def _keep_typing(self, chat_id: int, stop: threading.Event):
         while not stop.is_set():
             self.tg.send_typing(chat_id)
             stop.wait(self.cfg.typing_interval)
+
+    def _heartbeat(self, chat_id: int, stop: threading.Event, progress: dict):
+        """For a long turn: after progress_after seconds still running, post a 'still working' note
+        and refresh it in place every progress_interval seconds so the user is never left guessing."""
+        if stop.wait(self.cfg.progress_after):
+            return  # finished before the threshold: no note
+        progress["mid"] = self.tg.send_message(
+            chat_id, "🕒 Sigo trabajando en esto, puede tardar unos minutos...")
+        while not stop.wait(self.cfg.progress_interval):
+            elapsed = int(_now() - progress["t0"])
+            self.tg.edit_message_text(
+                chat_id, progress["mid"], f"🕒 Sigo trabajando... ({elapsed // 60}m {elapsed % 60}s)")
 
     def _worker(self, chat_id: int, q: queue.Queue):
         while True:
