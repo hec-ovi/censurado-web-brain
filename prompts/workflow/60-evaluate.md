@@ -8,7 +8,9 @@ dimensions PASS or REVISE, with a short, specific note on what to fix when it is
    INDEPENDENT sources (two outlets in one group, or two copies of one wire, count as ONE),
    with at least {{MIN_PER_TYPE}} of EACH political lean (right, neutral, left) so no single
    lean carries the story. If the real independent count is below the floor, or a lean is
-   under-represented, REVISE and name the under-sourced facts.
+   under-represented, REVISE and name the under-sourced facts. Every NAMED media outlet is one of
+   the author's ASSIGNED sources; a web-found outlet named in the prose (rather than reported
+   through the primary actor) is a REVISE.
 2. **Accents and Spanish orthography.** Full accents (á, é, í, ó, ú, ü), the ñ, and the
    opening marks ¿ and ¡ are all present and correct. Any stripped accent, missing ñ,
    missing opening mark, or ASCII-only Spanish is a REVISE, listing the offending words.

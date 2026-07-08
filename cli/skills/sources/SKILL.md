@@ -27,7 +27,9 @@ and ownership_group is the independence test (two outlets in one group count as 
 
 Every id is validated against the registry, so an unknown portal is rejected rather than
 stored as a dangling link. An empty `--set ""` clears the author's pool (it then falls back to
-the global registry).
+the global registry). That fallback governs only what may INFORM research, never what may be
+NAMED: naming a media outlet in an article always requires it to be on the author's assigned list,
+so an author with no assigned sources names no media outlet, only primary actors.
 
 ## The corroboration floor (MIN_SOURCES / MIN_PER_TYPE)
 The research node enforces this on every article: cross-validate each central fact across at

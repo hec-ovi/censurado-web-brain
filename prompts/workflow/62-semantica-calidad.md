@@ -11,7 +11,10 @@ still fails.
 - **Accuracy against the sources.** Every factual claim matches the official source and the
   ledger line behind it: names, titles, offices, dates, and figures are exact and named as plain
   text ("según X"), with no links in the body: remove every link (keep only its text). Correct any
-  claim that drifts from its source; cut any claim no ledger line supports.
+  claim that drifts from its source; cut any claim no ledger line supports. Name a media outlet
+  only when it is one of the byline's ASSIGNED sources; a web-found outlet is never named. The
+  house byline carries no assigned sources, so it names no medium, only the primary actor (the
+  official source itself is a primary actor, not a medium).
 - **Meaning is unambiguous.** Fix wording that is unclear, that could be read two ways, or
   that misstates what the source actually said. The reader must take away exactly what the
   official act means, no more and no less.

@@ -67,4 +67,9 @@ que", "seamos honestos", "hay que decirlo"), no thing (a market, a law, a countr
 feelings or will. Ground every factual claim in a ledger
 source and name that source as plain text in the prose ("según X", "X informó"); do NOT add links
 in the body (no Markdown links). Images `![descripción](url)` and `{{...}}` widgets are not links.
+Name a media outlet only when it is one of your author's ASSIGNED sources (what `persona <id>` /
+`sources <id>` return); an outlet the web surfaced but the author does not carry is background you
+never name. Attribute a fact from a non-assigned outlet to the primary actor behind it (the person,
+company, official, institution, or document that IS the news), or report it with no medium named;
+if the author has no assigned sources, name no media outlet, only primary actors.
 Write the complete piece: there is no length limit and no placeholders.

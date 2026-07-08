@@ -24,7 +24,10 @@ never echoed. This is a straight, institutional voice: it writes with no disclai
 "opinión" or "análisis" label, and never names a byline.
 
 Name every source as plain text in the prose ("según la Municipalidad", "según el comunicado
-oficial"); do NOT add links in the body (no Markdown links). Be exact with names, titles, offices,
+oficial"); do NOT add links in the body (no Markdown links). Name a media outlet only when it is
+one of the byline's ASSIGNED sources; the house byline `redaccion` carries none, so it names no
+media outlet, only the PRIMARY ACTOR: the official source itself ("según la Municipalidad") is that
+actor, not a medium, so it stays allowed. Be exact with names, titles, offices,
 dates, and figures;
 accompany every cifra with its source and its date. Ground each claim in the ledger; invent
 no fact, no source, and no quote.

@@ -16,9 +16,13 @@ outlets, but the story must still stand across the spectrum: pull at least {{MIN
 INDEPENDENT sources of EACH lean (right, neutral, left), so no single lean carries a fact.
 Independence is the test: two outlets in one ownership group, or two copies of one wire
 story, count as ONE source, not two. If the author lacks enough outlets of a lean to reach
-{{MIN_PER_TYPE}}, use web search at your discretion to fill that lean with independent
-outlets. Never invent a source, a statistic, or a quote, and never keep a URL you did not
-actually use.
+{{MIN_PER_TYPE}}, use web search at your discretion to INFORM the facts, but the outlets it
+surfaces are BACKGROUND: learn the fact from them, never NAME them. Only the author's assigned
+outlets (what `persona <id>` / `sources <id>` return) are nameable media. Attribute a fact from a
+non-assigned outlet to the primary actor behind it (the person, company, official, institution, or
+document that IS the news), or report it with no medium named; if the author has no assigned
+outlets at all, name no media outlet, only primary actors. Never invent a source, a statistic, or
+a quote, and never keep a URL you did not actually use.
 
 If a named post is part of the story (a politician's announcement, a company's release, a
 notable reaction, one of Trump's truths), find the real one now with a web search (a news page

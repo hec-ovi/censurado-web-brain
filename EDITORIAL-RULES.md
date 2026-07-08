@@ -18,6 +18,13 @@ notas relacionadas y demas widgets (no los uses aca).
 - Abri con el hecho central y su consecuencia concreta (hecho antes que reaccion).
 - Nombra cada fuente como texto plano ("segun X", "X informo"). No pongas enlaces en el cuerpo:
   sin hipervinculos. Las imagenes y los widgets `{{...}}` no son enlaces.
+- Nombra un MEDIO solo si es una de las fuentes ASIGNADAS del autor (las que devuelven `persona
+  <id>` / `sources <id>`). La busqueda web puede INFORMAR el hecho, pero cualquier medio que
+  aparezca ahi es material de fondo y NUNCA se nombra. Los ACTORES PRIMARIOS si se nombran siempre
+  y no son "medios": las personas, empresas, funcionarios, instituciones y documentos que SON la
+  noticia (una declaracion, un comunicado, un fallo, un ministerio, una municipalidad). Un dato
+  sacado de un medio no asignado se atribuye al actor primario o se cuenta sin nombrar ningun
+  medio. Si el autor no tiene fuentes asignadas, no nombres ningun medio, solo actores primarios.
 - Distingui lo confirmado de lo que sostiene una sola parte.
 - Acompana cada cifra con su fuente y su fecha. No inventes datos ni citas.
 - Da el contexto local que el lector necesita; explica cualquier termino tecnico la primera vez.

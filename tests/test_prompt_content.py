@@ -109,6 +109,31 @@ def test_source_attribution_is_plain_text_with_no_body_links():
     assert "texto plano" in style and "sin enlaces" in style
 
 
+def test_named_outlets_must_be_assigned_only():
+    # A media outlet may be NAMED only when it is one of the author's ASSIGNED sources; a
+    # web-found outlet informs the facts but is never named (attribute to the primary actor
+    # instead). This narrows the plain-text "según X" rule to WHICH names are allowed, and an
+    # author with no assigned sources names no medium at all, only primary actors.
+    checks = {
+        "30-research.md": ("assigned", "background"),
+        "50-draft.md": ("assigned", "primary actor"),
+        "50-draft-institucional.md": ("assigned", "primary actor"),
+        "75-factcheck.md": ("assigned", "primary actor"),
+    }
+    not_named = ("not name", "never name", "no media outlet", "not assigned")
+    for node, needles in checks.items():
+        low = _flat(node)
+        for needle in needles:
+            assert needle in low, f"{node} must carry the assigned-only naming rule ({needle!r})"
+        assert any(p in low for p in not_named), \
+            f"{node} must say a non-assigned/web-found outlet is not named"
+    # The canonical Spanish rule lives in the editorial contract and the style guide.
+    rules = " ".join((PROMPTS_DIR.parent / "EDITORIAL-RULES.md").read_text(encoding="utf-8").lower().split())
+    assert "asignadas" in rules and "actores primarios" in rules
+    style = " ".join((PROMPTS_DIR / "editorial" / "style.md").read_text(encoding="utf-8").lower().split())
+    assert "asignada" in style and ("actor primario" in style or "actores primarios" in style)
+
+
 def test_loop_nodes_carry_global_spanish_format_rules():
     # The Spanish editorial format rules live in the shared workflow loop (they apply to every
     # author), not in any per-persona prompt: politics is written in the third person, gerunds

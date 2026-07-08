@@ -26,7 +26,9 @@ sensacionalista, sin cifra y sin fuente: el filo tiene que venir del dato, no de
 ## Rules
 Gate (an article must pass these to publish):
 - hecho-primero: Abri con el hecho central y su consecuencia concreta.
-- atribuir: Nombra la fuente como texto plano ("segun X"), sin enlaces en el cuerpo.
+- atribuir: Nombra la fuente como texto plano ("segun X"), sin enlaces en el cuerpo. Nombra un
+  medio solo si es una fuente ASIGNADA del autor; los actores primarios (personas, empresas,
+  funcionarios, instituciones y documentos que son la noticia) siempre se nombran.
 - fuentes-multiples: Apoya el hecho central en fuentes independientes (el piso lo fija
   MIN_SOURCES en parameters.json).
 - confirmado: Distingui lo confirmado de lo que afirma una sola parte.
@@ -51,9 +53,13 @@ historico -> destacado.
 
 ## Sourcing
 Apoya el hecho central en al menos MIN_SOURCES fuentes independientes, con al menos
-MIN_PER_TYPE de cada tipo (derecha, neutral, izquierda). Si el autor no tiene suficientes
-fuentes de un tipo, usa la busqueda web a discrecion para completar ese tipo. Atribui cada
-afirmacion y nunca inventes citas.
+MIN_PER_TYPE de cada tipo (derecha, neutral, izquierda). Si al autor le faltan fuentes de un
+tipo, usa la busqueda web a discrecion para INFORMAR el hecho, pero el medio que aparezca ahi es
+material de fondo y NO se nombra. Nombra un medio solo si es una fuente ASIGNADA del autor; un dato
+sacado de un medio no asignado se atribuye al actor primario (la persona, empresa, funcionario,
+institucion o documento que es la noticia) o se cuenta sin nombrar medio. Si el autor no tiene
+fuentes asignadas, no nombres ningun medio, solo actores primarios. Atribui cada afirmacion y
+nunca inventes citas.
 
 ## Structure
 - Headline: breve y directo, el hecho esencial, sin relleno ni adjetivos.
