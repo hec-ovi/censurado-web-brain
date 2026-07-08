@@ -1319,6 +1319,136 @@ def cmd_editorial_rules(a):
     return 0
 
 
+# The text catalogs a one-time language localization walks, and the base language each is
+# authored in. frontend_text / panel_text are authored in English and TRANSLATED faithfully.
+# The editorial anchors have NO English base (a language's slop/ban lexicon is language-native,
+# not a translation of English words), so they are GENERATED from the seeded Spanish rows.
+TRANSLATE_SCOPES = (
+    ("frontend", "en", "translate"),
+    ("panel", "en", "translate"),
+    ("editorial", "es", "generate"),
+)
+
+
+def _text_rows(scope, lang):
+    """The {key: value} map for one text scope and language, read over the HTTP API
+    (GET /<scope>-text?lang=<lang>). An empty map means that language is unseeded for the
+    scope. `translate` uses it to read a base language and to diff it against a target."""
+    st, body = api("GET", f"/{scope}-text?lang=" + urllib.parse.quote(lang))
+    if st != 200:
+        fail(f"cannot read the {scope} text catalog (GET /{scope}-text HTTP {st}). Is the "
+             f"backend up at {PUBLISH} and the operator token valid?")
+    entries = _json(body, f"the {scope}-text response", want=dict).get("entries", [])
+    return {e.get("key"): e.get("value", "") for e in entries
+            if isinstance(e, dict) and e.get("key")}
+
+
+def _translate_job(target):
+    """Build the localization JOB for a target language: for each text scope, the base rows
+    that have NO row yet in `target` (idempotent, an already-translated key is never re-listed).
+    Each scope carries its base language and its `op` (`translate` = faithful UI string;
+    `generate` = author the language's OWN editorial anchors, preserving JSON structure but
+    never a literal word-for-word translation). A scope whose base language IS the target is
+    skipped (there is nothing to localize a base language into itself)."""
+    scopes = []
+    for scope, base, op in TRANSLATE_SCOPES:
+        if base == target:
+            continue
+        base_rows = _text_rows(scope, base)
+        have = _text_rows(scope, target)
+        missing = [{"key": k, "source": base_rows[k], "value": ""}
+                   for k in base_rows if k not in have]
+        if missing:
+            scopes.append({"scope": scope, "op": op, "source_lang": base,
+                           "target_lang": target, "entries": missing})
+    return {"target_lang": target, "scopes": scopes}
+
+
+def _translate_apply(a, target):
+    """APPLY mode: read the completed job JSON (each entry's `value` filled in) and upsert only
+    the rows MISSING in the target. It re-reads the target catalog per scope, so an existing
+    translation (even one a human hand-edited) is NEVER overwritten: that is the idempotent,
+    never-clobber guarantee. Blank values and already-present keys are skipped and counted."""
+    raw = sys.stdin.read() if a.file == "-" else _read_file(a.file, "the completed translation JSON")
+    job = _json(raw, "the completed translation JSON", want=dict)
+    # The job carries the language it was pulled for; apply writes rows for the command's <lang>
+    # and ignores the file's own target_lang, so a mismatched file would silently land one
+    # language's translations under another. Refuse it loudly instead (guard only when the job
+    # names a target_lang, so a minimal hand-built job still applies).
+    job_lang = job.get("target_lang")
+    if isinstance(job_lang, str) and job_lang.strip() and job_lang.strip() != target:
+        fail(f"this job was pulled for language {job_lang.strip()!r} but you passed {target!r} to "
+             f"--apply. Apply the job with its own language (`translate {job_lang.strip()} --apply "
+             f"--file ...`), or pull a fresh job for {target!r}.")
+    scopes = job.get("scopes")
+    if not isinstance(scopes, list):
+        fail('the completed translation JSON needs a "scopes" list (the exact shape '
+             '`translate <lang>` printed, with each entry\'s "value" filled in).')
+    valid = {s for s, _, _ in TRANSLATE_SCOPES}
+    wrote = skipped = blank = 0
+    for sc in scopes:
+        if not isinstance(sc, dict):
+            continue
+        scope = sc.get("scope")
+        if scope not in valid:
+            fail(f"unknown scope {scope!r} in the job; expected one of {sorted(valid)}.")
+        # Re-read the target rows so apply never overwrites an existing translation, even for a
+        # hand-built or re-submitted job. `have` also grows as we write, so a key repeated later
+        # in the same job is skipped rather than posted twice.
+        have = _text_rows(scope, target)
+        for e in sc.get("entries", []) or []:
+            if not isinstance(e, dict):
+                continue
+            key = (e.get("key") or "").strip()
+            value = e.get("value", "")
+            if not key:
+                continue
+            if not isinstance(value, str) or not value.strip():
+                blank += 1
+                continue
+            if key in have:
+                skipped += 1
+                continue
+            st, body = api("POST", f"/{scope}-text",
+                           {"key": key, "lang": target, "value": value})
+            if st != 200:
+                fail(f"upsert failed for {scope}/{key} (POST /{scope}-text HTTP {st}): "
+                     f"{body.decode('utf-8', 'replace')[:200]}")
+            have[key] = value
+            wrote += 1
+    sys.stderr.write(
+        f"translate {target}: wrote {wrote} new row(s), skipped {skipped} already-present, "
+        f"{blank} left blank. Re-run `translate {target}` to see what remains.\n")
+    return 0
+
+
+def cmd_translate(a):
+    """Localize the whole site into a new language, once per language. WITHOUT --apply it prints
+    a JSON JOB: for every UI/editorial text scope, the base rows that have no `<lang>` row yet,
+    each with its `source` value and an empty `value` for you to fill. The `frontend`/`panel`
+    scopes are `translate` (render the English UI string faithfully in the target language); the
+    `editorial` scope is `generate` (author that language's OWN banned lexicon, slop phrases and
+    orthography, preserving each value's JSON structure, since a language's slop is not a
+    translation of Spanish slop). Fill every `value`, then pipe the completed JSON back with
+    `translate <lang> --apply --file -` (or a scratch file path). Apply upserts ONLY the missing
+    rows and never overwrites an existing translation, so it is safe to re-run: a second pass
+    just fills whatever is still blank. Needs the operator token (automatic)."""
+    target = (a.lang or "").strip()
+    if not target:
+        fail("give a target language code, e.g. `translate pt` (or `de`, `zh`).")
+    if getattr(a, "apply", False):
+        if not a.file:
+            fail("--apply needs the completed job JSON: pass --file <path> (or --file - for stdin).")
+        return _translate_apply(a, target)
+    job = _translate_job(target)
+    if not job["scopes"]:
+        sys.stderr.write(
+            f"nothing to localize into {target!r}: every catalog already has a {target} row for "
+            f"every key. Nothing to do.\n")
+    sys.stdout.write(json.dumps(job, ensure_ascii=False, indent=2) + "\n")
+    return 0
+
+
 def cmd_remove_author(a):
     """Tombstone an author in the backend (DELETE /authors/<handle>). It is a SOFT delete:
     the author drops off the public roster, but its record and article bylines are kept, and
@@ -2005,6 +2135,17 @@ def build_parser():
     er.add_argument("--bot-directive", dest="bot_directive", action="store_true",
                     help="print ONLY the Telegram bot response directive (the bridge reads this)")
     er.set_defaults(fn=cmd_editorial_rules)
+
+    tl = sub.add_parser("translate",
+                        help="localize the site into a new language: print the untranslated UI + "
+                             "editorial rows for <lang>, then --apply the filled-in JSON (idempotent)")
+    tl.add_argument("lang", help="target language code to localize into, e.g. pt, de, zh")
+    tl.add_argument("--apply", action="store_true",
+                    help="APPLY mode: read the completed job JSON (--file) and upsert only the "
+                         "missing rows (never overwrites an existing translation)")
+    tl.add_argument("--file", default="",
+                    help="in --apply mode, the completed job JSON path (or - to read stdin)")
+    tl.set_defaults(fn=cmd_translate)
 
     sfl = sub.add_parser("set-floor",
                          help="set the sourcing floor the walk enforces (MIN_SOURCES / MIN_PER_TYPE) in parameters.json")

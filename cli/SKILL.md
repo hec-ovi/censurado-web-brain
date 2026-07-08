@@ -97,6 +97,7 @@ or rerun generate/publicar in a loop, you are already off the rails. Instead:
 | read the editorial voice/rules or a prompt | `python3 cli/censurado.py style` (voice/house rules) ; `python3 cli/censurado.py editorial-rules <lang>` (a language's banned lexicon, orthography, slop phrases, and attribution/disclaimer anchors, from the DB) ; `python3 cli/censurado.py prompt <key>` |
 | read or change the enforced numeric bar (how many sources, tag cap) | read `cli/skills/sources/SKILL.md`; the floor/cap live in `cli/workflow/parameters.json` (`set-floor`, `step`), NOT in `style` |
 | change how the newsroom writes: a workflow WALK node or a library prompt (dev) | read `cli/skills/prompts/SKILL.md` |
+| localize / translate the whole site into a new language (one-time, per language) | read `cli/skills/translate/SKILL.md`, then `python3 cli/censurado.py translate <lang>` |
 | go live / publish to production (public internet) | read `cli/skills/publicar/SKILL.md`, then `python3 cli/censurado.py publicar --yes` |
 
 ## The one rule for writing
