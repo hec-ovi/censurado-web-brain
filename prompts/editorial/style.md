@@ -26,9 +26,7 @@ sensacionalista, sin cifra y sin fuente: el filo tiene que venir del dato, no de
 ## Rules
 Gate (an article must pass these to publish):
 - hecho-primero: Abri con el hecho central y su consecuencia concreta.
-- atribuir: Atribui cada afirmacion factica NOMBRANDO la fuente en el texto ("segun X"), SIN
-  hipervinculo. El nombre de la fuente no va como enlace `[medio](url)`. Un enlace solo si es
-  extremadamente relevante (documento primario) y con una URL real, nunca inventada.
+- atribuir: Nombra la fuente como texto plano ("segun X"), sin enlaces en el cuerpo.
 - fuentes-multiples: Apoya el hecho central en fuentes independientes (el piso lo fija
   MIN_SOURCES en parameters.json).
 - confirmado: Distingui lo confirmado de lo que afirma una sola parte.

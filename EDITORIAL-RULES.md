@@ -16,11 +16,8 @@ notas relacionadas y demas widgets (no los uses aca).
 
 ## 2. Hechos y atribucion (innegociable)
 - Abri con el hecho central y su consecuencia concreta (hecho antes que reaccion).
-- Atribui cada afirmacion factica NOMBRANDO la fuente en el texto ("segun X", "X informo",
-  "de acuerdo con X"). NO uses hipervinculos: el nombre de la fuente NO va como enlace
-  `[medio](url)`. Poné un enlace SOLO si es extremadamente relevante (un documento primario que
-  el lector querria abrir de verdad: un comunicado, un fallo, un dataset) y unicamente con una URL
-  real de tu ledger, nunca inventada. Por defecto: nombre, sin enlace.
+- Nombra cada fuente como texto plano ("segun X", "X informo"). No pongas enlaces en el cuerpo:
+  sin hipervinculos. Las imagenes y los widgets `{{...}}` no son enlaces.
 - Distingui lo confirmado de lo que sostiene una sola parte.
 - Acompana cada cifra con su fuente y su fecha. No inventes datos ni citas.
 - Da el contexto local que el lector necesita; explica cualquier termino tecnico la primera vez.
