@@ -90,6 +90,25 @@ def test_draft_node_enforces_the_anti_slop_discipline():
     assert "over-hedging" in low
 
 
+def test_source_attribution_is_by_name_not_broken_links():
+    # Root-cause fix for broken/invented citation links: the workflow must NOT tell the model to
+    # wrap every source in a markdown link (which it fills with dead/hallucinated URLs). Attribution
+    # is by NAMING the source in the prose ("según X"); a link only when extremely relevant + real.
+    for node in ("50-draft.md", "50-draft-institucional.md", "62-semantica-calidad.md", "75-factcheck.md"):
+        low = _flat(node)
+        assert "titled link" not in low, f"{node} still mandates the [medio](url) link format"
+        assert ("naming" in low or "by name" in low), f"{node} must attribute by naming the source"
+        assert ("extremely relevant" in low or "genuinely relevant" in low), \
+            f"{node} must reserve links for the extremely-relevant primary-document case"
+    # the persona draft node is explicit that a source name is never a hyperlink by default
+    assert "no hyperlink" in _flat("50-draft.md")
+    # the editorial rules + style guide carry the same default (name, not link)
+    rules = " ".join((PROMPTS_DIR.parent / "EDITORIAL-RULES.md").read_text(encoding="utf-8").lower().split())
+    assert "no uses hipervinculos" in rules and "por defecto: nombre, sin enlace" in rules
+    style = " ".join((PROMPTS_DIR / "editorial" / "style.md").read_text(encoding="utf-8").lower().split())
+    assert "sin hipervinculo" in style
+
+
 def test_loop_nodes_carry_global_spanish_format_rules():
     # The Spanish editorial format rules live in the shared workflow loop (they apply to every
     # author), not in any per-persona prompt: politics is written in the third person, gerunds

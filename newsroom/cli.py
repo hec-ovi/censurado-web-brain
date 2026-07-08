@@ -238,21 +238,88 @@ def _embeds_main(
 NormalizeFetch = Callable[[], list]
 
 
+def _normalize_links_main(
+    argv: list[str],
+    *,
+    fetch_articles_fn: NormalizeFetch | None = None,
+    apply: Callable[[list], tuple] | None = None,
+) -> int:
+    """``censurado-brain normalize links [--apply]``: strip broken/invented inline source-citation
+    links from EVERY article body, converting ``[text](url)`` to the plain source name (the
+    retroactive form of the name-only attribution rule). Image embeds ``![alt](url)`` and widget
+    markers are left untouched. Default is a DRY-RUN that reports how many articles carry links and
+    how many links would be stripped, writing nothing; ``--apply`` writes each stripped body back
+    over the operator edit lane (``PUT /articles``, admin:write), which preserves each permalink.
+    The fetch + apply seams are injectable so a test drives it without a network."""
+    parser = argparse.ArgumentParser(prog="censurado-brain normalize links")
+    parser.add_argument(
+        "--apply", action="store_true",
+        help="write the stripped bodies (default: dry-run, report the plan and write nothing)",
+    )
+    args = parser.parse_args(argv)
+
+    from newsroom.normalize import apply_link_strip, fetch_articles_full, plan_link_strip
+
+    settings = load_settings()
+    base = str(settings.publish_base_url).rstrip("/")
+    read_token = settings.operator_token
+    edit_token = settings.admin_token or settings.operator_token
+
+    fetch_articles_fn = fetch_articles_fn or (lambda: fetch_articles_full(base, read_token))
+    apply = apply or (lambda plan: apply_link_strip(plan, base_url=base, read_token=read_token, edit_token=edit_token))
+
+    try:
+        articles = fetch_articles_fn()
+    except Exception as exc:
+        _emit({"error": f"failed to read the corpus: {exc}"})
+        return _EXIT["failed"]
+
+    plan = plan_link_strip(articles)
+    summary = {
+        "scanned": len(articles),
+        "articles_with_links": len(plan),
+        "links_total": sum(p["stripped"] for p in plan),
+        "dry_run": not args.apply,
+        "sample": [{"slug": p["slug"], "stripped": p["stripped"]} for p in plan[:10]],
+    }
+    if args.apply and plan:
+        try:
+            applied, failed = apply(plan)
+        except Exception as exc:
+            _emit({"error": f"apply failed: {exc}"})
+            return _EXIT["failed"]
+        summary["applied"] = applied
+        summary["failed"] = failed
+    _emit(summary)
+    return _EXIT["done_with_errors"] if (args.apply and summary.get("failed")) else _EXIT["done"]
+
+
 def _normalize_main(
     argv: list[str],
     *,
     fetch_authors_fn: NormalizeFetch | None = None,
     fetch_articles_fn: NormalizeFetch | None = None,
+    apply_links: Callable[[list], tuple] | None = None,
 ) -> int:
-    """``censurado-brain normalize``: one contract-validated pass over the WHOLE corpus. Reads every
-    author and every article and checks each against its isolated write contract
-    (``contracts.author.AuthorInput`` / ``contracts.article.PublishArticleInput``), then prints a
-    JSON verdict listing any record that would not conform (a legacy section value, a missing required
-    field, ...). It is READ-ONLY, so it is always safe to run; a rewrite is a separate, deliberate
-    step. The fetch seams are injectable so a test drives the verb without a network. Returns 0 when
-    the whole corpus conforms, 2 when some records violate their contract, 1 on a read error."""
+    """``censurado-brain normalize [check|links]``: whole-corpus maintenance in ONE place.
+
+    - ``normalize`` / ``normalize check`` (default): a READ-ONLY pass that validates every author and
+      every article against its isolated write contract (``contracts.author.AuthorInput`` /
+      ``contracts.article.PublishArticleInput``) and prints a JSON verdict listing any record that
+      would not conform. Always safe to run.
+    - ``normalize links [--apply]``: strip broken/invented source-citation links from every body
+      (see ``_normalize_links_main``); dry-run by default.
+
+    The seams are injectable so a test drives the verb without a network. Returns 0 when the corpus
+    conforms / the pass succeeds, 2 when some records violate their contract or an apply partially
+    failed, 1 on a read error."""
+    if argv and argv[0] == "links":
+        return _normalize_links_main(argv[1:], fetch_articles_fn=fetch_articles_fn, apply=apply_links)
+    if argv and argv[0] == "check":
+        argv = argv[1:]
+
     parser = argparse.ArgumentParser(prog="censurado-brain normalize")
-    parser.parse_args(argv)  # no flags yet; surfaces -h and rejects stray args
+    parser.parse_args(argv)  # the check pass takes no flags; surfaces -h and rejects stray args
 
     from newsroom.normalize import fetch_articles_full, fetch_authors, normalize_corpus
 

@@ -65,5 +65,8 @@ dashes anywhere (commas, periods, parentheses, or a mid-sentence colon do that w
 "no es X, es Y" inversion or aphorism built on a negation, no candor tics ("la verdad es
 que", "seamos honestos", "hay que decirlo"), no thing (a market, a law, a country) given
 feelings or will. Ground every factual claim in a ledger
-source and attribute it as a titled link, `[nombre del medio](url)`, using only URLs from your ledger. Write the
-complete piece: there is no length limit and no placeholders.
+source and attribute it by NAMING that source in the prose ("según X", "X informó", "de acuerdo
+con X"), with NO hyperlink: the source name is NEVER wrapped in a `[medio](url)` link. Add a link
+ONLY when it is extremely relevant (a primary document the reader would genuinely open) and only a
+real URL from your ledger, never invented; that should be rare, most attributions are name-only.
+Write the complete piece: there is no length limit and no placeholders.

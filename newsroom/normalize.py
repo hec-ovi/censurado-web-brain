@@ -16,6 +16,7 @@ deliberate, separate step, so the read-only pass is always safe to run.
 
 from __future__ import annotations
 
+import re
 from collections.abc import Callable
 
 import httpx
@@ -31,7 +32,80 @@ __all__ = [
     "validate_author",
     "validate_article",
     "normalize_corpus",
+    "strip_source_links",
+    "plan_link_strip",
+    "apply_link_strip",
 ]
+
+# An inline Markdown link [text](url) that is NOT an image embed ![alt](url). The negative
+# lookbehind on the "!" leaves images alone; {{widget}} markers are not [ ]( ) so they never match.
+_MD_LINK = re.compile(r"(?<!\!)\[([^\]]+)\]\(([^)]+)\)")
+
+
+def strip_source_links(body: str) -> tuple[str, int]:
+    """Convert inline source-citation links ``[text](url)`` to their plain text (the source name),
+    the retroactive form of the name-only attribution rule. Image embeds ``![alt](url)`` and widget
+    markers ``{{...}}`` are left untouched. Returns ``(new_body, n_stripped)``. This exists because
+    the old workflow told the model to attribute every claim as a titled link, and it filled those
+    with broken/invented URLs; naming the source in prose is the correct, verifiable form."""
+    count = 0
+
+    def repl(m: re.Match) -> str:
+        nonlocal count
+        count += 1
+        return m.group(1)  # keep the link text (the source name), drop the URL
+
+    return _MD_LINK.sub(repl, body), count
+
+
+def plan_link_strip(articles: list[dict]) -> list[dict]:
+    """The per-article change plan: for every article whose body carries at least one inline source
+    link, the stripped body and how many links it drops. Articles with none are skipped."""
+    plan: list[dict] = []
+    for a in articles:
+        new_body, n = strip_source_links(a.get("body", ""))
+        if n:
+            plan.append({"slug": a["slug"], "stripped": n, "new_body": new_body})
+    return plan
+
+
+def apply_link_strip(plan: list[dict], *, base_url: str, read_token: str, edit_token: str) -> tuple[int, list[str]]:
+    """Write each stripped body back over the operator edit lane: ``GET /articles/{slug}`` for the
+    full record, then ``PUT`` it with the body replaced and every other field unchanged. The PUT
+    recomputes the content hash and preserves slug + created_at, so the permalink is stable.
+    Returns ``(applied_count, failures)``."""
+    base = base_url.rstrip("/")
+    applied = 0
+    failed: list[str] = []
+    for item in plan:
+        try:
+            got = httpx.get(
+                f"{base}/articles/{item['slug']}",
+                headers={"Authorization": f"Bearer {read_token}"},
+                timeout=30.0,
+            )
+            got.raise_for_status()
+            art = got.json()
+            payload = {
+                "title": art["title"],
+                "body": item["new_body"],
+                "author": art["author"],
+                "section": art["section"],
+                "topics": art.get("topics") or [],
+                "published_at": art.get("published_at"),
+                "metadata": art.get("metadata") or {},
+            }
+            put = httpx.put(
+                f"{base}/articles/{item['slug']}",
+                json=payload,
+                headers={"Authorization": f"Bearer {edit_token}"},
+                timeout=60.0,
+            )
+            put.raise_for_status()
+            applied += 1
+        except (httpx.HTTPError, KeyError) as exc:
+            failed.append(f"{item['slug']}: {exc}")
+    return applied, failed
 
 # The article write-shape keys (mirrors PublishArticleInput). A read record also carries
 # server-owned fields (id, content_hash, created_at, slug, card_type, ...) that the strict write

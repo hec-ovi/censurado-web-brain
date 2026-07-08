@@ -95,3 +95,67 @@ def test_normalize_verb_emits_verdict_and_branchable_exit_code():
         rc2 = cli._normalize_main([], fetch_authors_fn=lambda: [_author(handle="")],
                                   fetch_articles_fn=lambda: [])
     assert rc2 == 2  # done_with_errors: some records violate their contract
+
+
+# ---------------------------------------------------------------- retroactive link strip
+from newsroom.normalize import plan_link_strip, strip_source_links  # noqa: E402
+
+
+def test_strip_source_links_names_the_source_and_keeps_images_and_widgets():
+    body = (
+        "El municipio [subió la tasa](https://broken.example/x) al 40 por ciento.\n\n"
+        "Según [Clarín](http://fake.link) y [La Nación](https://dead.example/y), hubo consenso.\n\n"
+        "![foto oficial](/media/abc.jpg)\n\n"
+        "{{tweet:123}} {{video:https://youtu.be/abc}} {{relacionado:otra-nota}}"
+    )
+    new, n = strip_source_links(body)
+    assert n == 3                                   # three inline source links stripped
+    assert "subió la tasa" in new and "Clarín" in new and "La Nación" in new
+    assert "https://broken.example" not in new and "fake.link" not in new and "dead.example" not in new
+    assert "![foto oficial](/media/abc.jpg)" in new     # image embed untouched
+    assert "{{tweet:123}}" in new and "{{video:https://youtu.be/abc}}" in new  # widgets untouched
+
+
+def test_strip_source_links_noop_when_no_links():
+    body = "Un cuerpo sin enlaces, solo texto y {{tweet:9}}."
+    new, n = strip_source_links(body)
+    assert n == 0 and new == body
+
+
+def test_plan_link_strip_lists_only_articles_with_links():
+    arts = [
+        {"slug": "a", "body": "sin enlaces"},
+        {"slug": "b", "body": "con [uno](http://x) y [dos](http://y)"},
+    ]
+    plan = plan_link_strip(arts)
+    assert [p["slug"] for p in plan] == ["b"]
+    assert plan[0]["stripped"] == 2 and "http://" not in plan[0]["new_body"]
+
+
+def test_normalize_links_verb_dry_run_reports_without_applying():
+    arts = [{"slug": "b", "body": "con [uno](http://x)"}]
+    calls = []
+    buf = io.StringIO()
+    with redirect_stdout(buf):
+        rc = cli._normalize_main(["links"], fetch_articles_fn=lambda: arts,
+                                 apply_links=lambda plan: calls.append(plan) or (len(plan), []))
+    out = json.loads(buf.getvalue())
+    assert rc == 0
+    assert out["dry_run"] is True and out["articles_with_links"] == 1 and out["links_total"] == 1
+    assert calls == []  # dry-run never calls apply
+
+
+def test_normalize_links_verb_apply_writes_over_the_edit_lane():
+    arts = [{"slug": "b", "body": "con [uno](http://x) y [dos](http://y)"}]
+    applied_plans = []
+    def fake_apply(plan):
+        applied_plans.append(plan)
+        return len(plan), []
+    buf = io.StringIO()
+    with redirect_stdout(buf):
+        rc = cli._normalize_main(["links", "--apply"], fetch_articles_fn=lambda: arts, apply_links=fake_apply)
+    out = json.loads(buf.getvalue())
+    assert rc == 0
+    assert out["dry_run"] is False and out["applied"] == 1
+    # the plan handed to apply carries the STRIPPED body (no URLs)
+    assert "http://" not in applied_plans[0][0]["new_body"]
