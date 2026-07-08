@@ -331,6 +331,75 @@ def test_semantica_calidad_is_the_single_combined_pass():
         assert replaced in low
 
 
+def test_shared_surface_defaults_to_objective_reporting():
+    # De-opinionation: objective, third-person reporting is the GLOBAL default across the shared
+    # (non-persona) prompt surface. First-person opinion is a per-persona exception (a persona
+    # whose profile is explicitly an opinion, satire, or fiction voice); the author's lean shows
+    # ONLY in which sources and facts they foreground, never in editorializing prose.
+    def objective(x):
+        return "objective" in x and ("third person" in x or "third-person" in x)
+    for node in ("15-pick-author.md", "50-draft.md", "60-evaluate.md"):
+        assert objective(_flat(node)), f"{node} must carry the objective third-person default"
+    # The outline plans the summary layer objectively, not "from your point of view".
+    assert "objectively" in _flat("40-outline.md")
+    # The draft node frames first person / opinion as a RESERVED per-persona exception, tells the
+    # writer not to editorialize, and puts the lean in source selection.
+    draft = _flat("50-draft.md")
+    assert "reserved for a persona" in draft
+    assert "opinion, satire, or fiction" in draft
+    assert "do not editorialize" in draft
+    assert "which sources and facts" in draft
+    # The reference docs (voice guide + one-article contract) were inverted the same way.
+    style = " ".join((PROMPTS_DIR / "editorial" / "style.md").read_text(encoding="utf-8").lower().split())
+    assert "objectively and in the third person" in style
+    rules = " ".join((PROMPTS_DIR.parent / "EDITORIAL-RULES.md").read_text(encoding="utf-8").lower().split())
+    assert "voice and objectivity" in rules
+
+
+def test_global_opinion_mandates_are_gone_from_the_shared_surface():
+    # The old newsroom-wide opinion mandates ("opinionated and magnetic", "out loud and convinced",
+    # "take a clear position", "argues the side", "with stance") must NOT survive on the shared
+    # surface; opinion now lives per-persona, not as a global default.
+    gone = {
+        "40-outline.md": ("opinionated and magnetic", "where you stand", "from your point"),
+        "50-draft.md": ("out loud and convinced", "defending their politics", "take a clear position"),
+    }
+    for node, phrases in gone.items():
+        low = _flat(node)
+        for p in phrases:
+            assert p not in low, f"{node} still carries the removed global-opinion phrase {p!r}"
+    style = " ".join((PROMPTS_DIR / "editorial" / "style.md").read_text(encoding="utf-8").lower().split())
+    assert "argues the side their persona declares" not in style
+    assert "take a side in the framing and the argument" not in style
+    rules = " ".join((PROMPTS_DIR.parent / "EDITORIAL-RULES.md").read_text(encoding="utf-8").lower().split())
+    assert "voice and stance" not in rules
+    assert "with stance" not in rules
+
+
+def test_redactor_mode_is_registered_as_a_single_planning_node():
+    # The redactor assignment walk is a NEW mode: one planning node that sweeps and assigns, like
+    # the daily/last-hour batch modes, and its node exists on disk.
+    manifest = json.loads((PROMPTS_DIR / "workflow" / "manifest.json").read_text())
+    modes = manifest["modes"]
+    assert modes.get("redactor") == ["redactor"], "the redactor mode must be a single 'redactor' node"
+    node = PROMPTS_DIR / "workflow" / "redactor.md"
+    assert node.is_file() and node.read_text().strip(), "missing/empty redactor node"
+
+
+def test_redactor_node_is_a_plain_websearch_sweep_that_assigns():
+    # The redactor jefe reads every author, sweeps the FRESHEST news (last ~60 minutes) with PLAIN
+    # web search and NO assigned feeds, ranks, assigns each story to the best-fit author, emits the
+    # queue, and hands each item to its own single-article walk. It writes no article itself.
+    low = _flat("redactor.md")
+    assert "writes no article" in low
+    assert "plain web search" in low
+    assert "no assigned sources" in low          # the deliberate contrast with the daily feed sweep
+    assert "60 minutes" in low                     # the critical freshness window
+    assert "personas" in low                       # reads every author first
+    assert "assign" in low and "queue" in low      # ranks and assigns into an assignment queue
+    assert "step --mode single-article" in low     # each assignment becomes its own walk
+
+
 def test_every_manifest_workflow_node_and_persona_synthesize_exist_on_disk():
     # The step gate serves nodes straight off disk, so every node the manifest references
     # (plus persona/synthesize, the author-synthesis prompt) must actually be present or a

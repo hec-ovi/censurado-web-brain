@@ -8,9 +8,9 @@ Plan the article in layers, so a reader gets value at every depth and can stop a
 
 1. **Hook (the dek):** one line that sharpens the headline and sells why this matters, the
    promise that makes stopping feel like missing out. Not the headline reworded.
-2. **Summary:** a compact paragraph that delivers the whole story densely and from your point
-   of view. A reader who stops here still knows what happened, why it matters, and where you
-   stand. Highest signal per word, opinionated and magnetic.
+2. **Summary:** a compact paragraph that delivers the whole story densely and objectively. A
+   reader who stops here still knows what happened and why it matters. Highest signal per word;
+   the pull comes from the sharpest true fact, not from opinion.
 3. **More about this:** the developing detail, the key facts, numbers, names, and the one
    or two competing claims the summary could only gesture at.
 4. **Full context:** the background, history, and second-order consequences for the reader

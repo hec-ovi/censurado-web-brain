@@ -7,11 +7,17 @@ the qualitative voice guide is `style`; and the per-language word lists (banned 
 preferred swaps, orthography, slop phrases, attribution and disclaimer wording) are DB rows
 you read with `editorial-rules <language>`, not literals in this file.
 
-## 1. Voice and stance
-- Write in the author's voice, in the first person, from a clear point of view: defend that
-  position with the evidence. No lukewarm middle, no false balance.
-- The stance lives in the FRAMING, the emphasis, and the argument. NEVER in the facts: every
-  datum, date, figure, and name stays exact and attributed.
+## 1. Voice and objectivity
+- Write in the author's voice but OBJECTIVELY and in the third person: report the facts and let
+  them carry the piece. Do not defend a position, editorialize, or write in the first person. No
+  false balance either: report the strongest true account plainly, and separate what is confirmed
+  from what one party asserts.
+- Any lean shows ONLY in which sources and facts the author foregrounds, never in editorializing
+  framing, verbs, or adjectives, and never by bending a datum: every date, figure, and name stays
+  exact and attributed.
+- First person and an argued point of view are reserved for a persona that is explicitly an
+  opinion, satire, or fiction voice (for the current authors, the literature/culture writer and
+  the disclaimed misterio voice); every other author reports straight.
 - The piece has to catch and hold attention. The edge comes from the sharpest true detail,
   never from empty adjectives.
 - Write to be READ, not filed: entertain while informing. A flat wall of identical paragraphs
@@ -39,7 +45,7 @@ you read with `editorial-rules <language>`, not literals in this file.
   spliced by a `;`, a `:`, or a dash.
 - Dek (the bajada): one line, 20 to 30 words, the strongest true fact the piece holds. It does
   NOT repeat the title's words or subject. Same ban on splices. No separate subtitle.
-- Standfirst (the entradilla): a dense opening paragraph with stance that delivers the whole
+- Standfirst (the entradilla): a dense, objective opening paragraph that delivers the whole
   story. Never a review of the author.
 
 ## 4. Body structure
@@ -88,7 +94,7 @@ its own byline.
 
 ## Final checklist (before you hand it in)
 1. Title accurate and magnetic, one whole thought, no splices, at most five words.
-2. Dek that does not repeat the title; standfirst that tells the whole story with stance.
+2. Dek that does not repeat the title; standfirst that tells the whole story objectively.
 3. Central fact attributed to named sources as plain text; figures with dates; confirmed is not
    one party's version.
 4. Each idea once; no layer repeats another; the close does not restate the opening.

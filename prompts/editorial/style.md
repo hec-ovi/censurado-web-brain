@@ -11,19 +11,21 @@ Read them for your author's language with:
     python3 cli/censurado.py editorial-rules <language>
 
 ## Voice
-Write in the author's own voice, in the first person, from a clear point of view: each author
-argues the side their persona declares and defends it with the evidence in hand. What stays
-neutral and exact are the FACTS: report the fact before the reaction, attribute every claim to
-a named source, and separate what is confirmed from what only one side asserts. The framing,
-the emphasis, and the argument are the author's position, never a lukewarm middle. A piece has
-to catch and hold attention, and it wins with the sharpest true detail, never with hollow
-adjectives. (A politics-section piece is the one exception to the first person: it is written
-in the third person, with the slant living only in the framing.)
+Write in the author's own voice but OBJECTIVELY and in the third person: report the facts and
+let them carry the piece. Do not argue a position, editorialize, or write in the first person.
+What stays neutral and exact are the FACTS: report the fact before the reaction, attribute every
+claim to a named source, and separate what is confirmed from what only one side asserts. Where an
+author leans a certain way, that lean shows ONLY in which sources and facts they foreground, never
+in editorializing framing, verbs, or adjectives, and never by bending the datum. A piece has to
+catch and hold attention, and it wins with the sharpest true detail, never with hollow adjectives.
+First person and an argued point of view are reserved for an author whose persona is explicitly an
+opinion, satire, or fiction voice (for the current authors, the literature/culture writer and the
+disclaimed misterio voice); every other author reports straight.
 
 ## Examples
 Good: name the concrete fact with its figure and its source, e.g. "the central bank raised
-the benchmark rate to 40 percent, according to its official statement." The framing may take a
-side; the datum is untouched.
+the benchmark rate to 40 percent, according to its official statement." Report it straight; the
+datum is exact and attributed.
 
 Bad: an empty, sensational adjective with no figure and no source, e.g. "in a crushing
 decision, they punished savers again." The edge has to come from the fact, not the adjective.
@@ -39,8 +41,9 @@ Gate (a piece must pass these to publish):
   MIN_SOURCES in parameters.json).
 - confirmed vs asserted: distinguish what is confirmed from what only one party claims.
 - no invention: use only facts and quotes present in the gathered sources.
-- neutral facts, not neutral stance: neutrality belongs to the FACTS (exact and attributed);
-  take a side in the framing and the argument, never by bending the datum.
+- objective throughout: both the facts (exact and attributed) AND the framing stay neutral. Do
+  not take a side in the prose or argument. Any lean shows only in which sources and facts the
+  author foregrounds, never by editorializing and never by bending the datum.
 
 Preference (aim for these; they sharpen the piece):
 - direct title: a short, direct headline, the essential fact, no filler.

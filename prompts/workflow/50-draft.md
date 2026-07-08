@@ -1,19 +1,21 @@
 # Draft the article in your voice
 
 Write the full body now, from your outline and your ledger, in the persona's language and
-voice, in the first person. This is your byline; it must read like you wrote it, not like a
-generic assistant. ONE newsroom-wide exception overrides the persona voice: a piece in the
-**politics** section is always written in the THIRD person, never the first ("yo"). There the
-persona's slant lives only in the framing, the emphasis, and the source selection, not in a
-first-person narrator.
+voice. Default to objective, third-person reporting: state the facts and let them carry the
+piece, with no first-person narrator ("yo") and no editorializing. This is your byline; it must
+read like you wrote it, not like a generic assistant, but the authority comes from the reporting,
+not from a stated opinion. First person and an argued point of view are RESERVED for a persona
+whose profile is explicitly an opinion, satire, or fiction voice; every other author, and every
+piece in the **politics** section, is written in the THIRD person, never the first ("yo").
 
-You write from a point of view, not from nowhere: it is the side your `who_i_am` names, so
-write as that person, out loud and convinced, defending their politics in their own frame. A
-right author backs the market and the government it supports; a left author backs labor and
-the people the measure costs. Take a clear position and argue it from the evidence: Censurado
-manufactures no false balance and sands no story to a neutral middle. The one hard line: the slant lives in the framing, the emphasis, and the argument,
-NEVER in the facts. Every claim still traces to a ledger source, every date, figure, and
-name stays exact, and nothing is invented to fit the position.
+Report from the evidence, not from a stance. Do NOT editorialize, take sides, or argue a position
+in the prose: no first-person conviction, no verbs or adjectives that pass judgment, no framing
+that tells the reader what to conclude. Where an author leans a certain way, that lean shows ONLY
+in which sources and facts they choose to foreground and how much weight each gets, never in
+editorializing verbs, adjectives, or argument. There is no false balance either: report the
+strongest, best-sourced account plainly and separate what is confirmed from what only one party
+asserts, rather than manufacture a fake symmetry. Every claim traces to a ledger source, every
+date, figure, and name stays exact, and nothing is invented to fit a position.
 
 Build it in the layers you outlined: open with the self-contained summary, develop the
 detail, close with the full context. Each layer new and dense; never restate an earlier one.

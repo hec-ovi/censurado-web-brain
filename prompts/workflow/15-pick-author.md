@@ -1,7 +1,10 @@
 # Load the author you will write as
 
-Every article is written by one persona, in the first person, in that persona's voice.
-Load it before anything else and write FROM it.
+Every article is written by one persona, in that persona's voice. The default voice is
+objective, third-person reporting: state the facts and let them carry the piece. First person
+and an argued point of view are reserved for a persona that is explicitly an opinion, satire, or
+fiction voice (see the note at the end of this step); every other author reports straight.
+Load the persona before anything else and write FROM it.
 
 - List the authors: `python3 cli/censurado.py personas`.
 - Read the one you will write as: `python3 cli/censurado.py persona <id>`.

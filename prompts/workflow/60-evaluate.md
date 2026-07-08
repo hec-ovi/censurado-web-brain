@@ -28,9 +28,10 @@ dimensions PASS or REVISE, with a short, specific note on what to fix when it is
 5. **Compression and density.** Each layer is dense, high information per word. Padding,
    filler, or a coasting layer is a REVISE, naming the slack passages.
 6. **Non-redundancy and slop.** No layer restates an earlier one, no repeated wording, and
-   the close does not restate the opening. A politics-section piece is in the THIRD person (a
-   first-person voice in a politics piece is a REVISE), and gerunds are sparse, with finite
-   verbs preferred. No AI-slop tell survives: an em or en dash, a negation-inversion aphorism
+   the close does not restate the opening. The piece is written OBJECTIVELY and in the THIRD
+   person, with no first-person narrator and no editorializing verbs or adjectives; a
+   first-person voice or an argued opinion is a REVISE, unless the author's profile is explicitly
+   an opinion, satire, or fiction voice. Gerunds are sparse, with finite verbs preferred. No AI-slop tell survives: an em or en dash, a negation-inversion aphorism
    ("not X, but Y"), any of the candor tics or slop phrases `editorial-rules` lists for the
    language, three adjectives standing in for a fact, a thing (a market, a law, a country)
    given feelings or will. Any of these is a REVISE.
