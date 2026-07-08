@@ -1,10 +1,10 @@
 <!doctype html>
-<html lang="es">
+<html lang="en">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Censurado · Newsroom Docs</title>
-<meta name="description" content="Documentacion interactiva de la redaccion agentica Censurado: el workflow con compuertas, los modos, la arquitectura, los contratos y los verbos de la CLI.">
+<meta name="description" content="Interactive documentation for the Censurado agentic newsroom: the gated workflow, the modes, the architecture, the contracts and the CLI verbs.">
 <style>
 :root{
   --bg:#0d0a0b; --surface:#161213; --surface-2:#1e1819; --surface-3:#251d1f;
@@ -250,28 +250,51 @@ a.ocard{transition:transform .15s ease, border-color .15s ease, background .15s 
 }
 .callout b{color:var(--text)}
 
-/* ---------- slide panel ---------- */
-#panel{
-  position:fixed; top:0; right:0; height:100%; width:48%; max-width:640px; min-width:340px; z-index:40;
-  background:linear-gradient(180deg,var(--surface),#120e0f);
-  border-left:1px solid var(--line); box-shadow:-24px 0 60px var(--shadow);
-  transform:translateX(101%); transition:transform .28s cubic-bezier(.22,.61,.36,1);
-  display:flex; flex-direction:column;
+/* ---------- node detail (full-screen) ---------- */
+.stepWrap{position:absolute; inset:0; overflow-y:auto; overflow-x:hidden; padding:26px 24px 90px}
+.stepWrap::-webkit-scrollbar{width:11px}
+.stepWrap::-webkit-scrollbar-thumb{background:var(--surface-3); border-radius:11px}
+.stepDetail{max-width:1080px; margin:0 auto}
+.stepDetail code{font-family:var(--mono); font-size:11.5px; background:var(--surface-3); border:1px solid var(--line); border-radius:5px; padding:1px 5px; color:var(--text)}
+.stepHead{display:flex; align-items:center; gap:14px; flex-wrap:wrap; margin-bottom:14px}
+.stepBack{
+  background:var(--surface); border:1px solid var(--line); color:var(--text);
+  padding:8px 14px; border-radius:9px; cursor:pointer; font-size:12px; font-weight:600;
+  box-shadow:0 4px 12px var(--shadow); flex:0 0 auto;
 }
-#panel.open{transform:translateX(0)}
-.pclose{
-  align-self:flex-end; margin:12px 14px 0; background:var(--surface-3); border:1px solid var(--line);
-  color:var(--muted); cursor:pointer; padding:5px 11px; border-radius:8px; font-size:11.5px; font-family:var(--mono);
+.stepBack:hover{border-color:var(--red); color:var(--red)}
+.stepHeadText{display:flex; flex-direction:column; gap:3px; min-width:0; flex:1 1 240px}
+.stepEyebrow{font-family:var(--mono); font-size:11px; letter-spacing:.14em; text-transform:uppercase; color:var(--faint)}
+.stepTitle{font-size:20px; line-height:1.2}
+.stepPill{
+  font-family:var(--mono); font-size:10px; letter-spacing:.08em; text-transform:uppercase;
+  border:1px solid; border-radius:20px; padding:3px 11px; flex:0 0 auto; white-space:nowrap;
+  background:rgba(255,255,255,.03);
 }
-.pclose:hover{color:var(--red); border-color:var(--red)}
-.pbody{padding:8px 22px 30px; overflow-y:auto}
-.pbody .pkind{font-family:var(--mono); font-size:10.5px; letter-spacing:.12em; text-transform:uppercase; font-weight:700}
-.pbody .ptitle{font-size:19px; font-family:var(--mono); margin:6px 0 10px}
-.pbody .psum{color:var(--text); font-size:13.5px; line-height:1.6}
-.pbody .pdetails{margin:14px 0 0; padding-left:18px; color:var(--muted); font-size:12.5px; line-height:1.62}
-.pbody .pdetails li{margin-bottom:8px}
-.pbody .pdetails code, .pbody .psum code{font-family:var(--mono); font-size:11.5px; background:var(--surface-3); border:1px solid var(--line); border-radius:5px; padding:1px 5px; color:var(--text)}
-.pbody .chips{margin-top:12px}
+.stepNav{display:flex; gap:9px; flex-wrap:wrap; margin-bottom:18px}
+.stepChip{
+  display:inline-flex; align-items:center; gap:8px; max-width:100%; min-width:0;
+  background:var(--surface-2); border:1px solid var(--line); border-radius:10px;
+  color:var(--text); padding:8px 12px; cursor:pointer; font-size:12px;
+}
+.stepChip:hover{border-color:var(--red)}
+.stepChip .scDir{font-family:var(--mono); font-size:9.5px; letter-spacing:.1em; text-transform:uppercase; color:var(--faint)}
+.stepChip .scId{font-family:var(--mono); font-weight:600; overflow:hidden; text-overflow:ellipsis; white-space:nowrap}
+.stepChip.disabled{cursor:default; color:var(--faint); opacity:.75}
+.stepChip.disabled:hover{border-color:var(--line)}
+.stepProse{color:var(--muted); font-size:13px; line-height:1.68; max-width:78ch; margin:0}
+.stepProse b, .stepList b{color:var(--text); font-weight:600}
+.stepList{margin:6px 0 0; padding-left:20px; color:var(--muted); font-size:12.5px; line-height:1.62}
+.stepList li{margin-bottom:8px}
+.gateSection{border-left:3px solid var(--gold)}
+.stepWalk{display:flex; align-items:center; gap:8px; flex-wrap:wrap; font-size:12px; color:var(--muted)}
+.chip.cur{background:var(--red); color:#1a0308; border-color:var(--red); font-weight:650}
+.openStepBtn{
+  background:var(--surface-3); border:1px solid var(--line); color:var(--red);
+  padding:5px 12px; border-radius:8px; cursor:pointer; font-size:11px; font-weight:650;
+  font-family:var(--mono);
+}
+.openStepBtn:hover{border-color:var(--red); background:var(--surface-2)}
 
 /* ---------- responsive ---------- */
 @media (max-width:820px){
@@ -280,9 +303,11 @@ a.ocard{transition:transform .15s ease, border-color .15s ease, background .15s 
   #nav{border-right:0; border-bottom:1px solid var(--line); max-height:44vh}
   .brand{padding:14px 16px 10px}
   .navlist{max-height:none}
-  #panel{width:100%; max-width:none; min-width:0}
   .topbar{padding:11px 14px}
   .textWrap{padding:18px 14px 80px}
+  .stepWrap{padding:18px 14px 80px}
+  .stepHead{gap:10px}
+  .stepTitle{font-size:17px}
 }
 @media (prefers-reduced-motion:reduce){
   *,*::before,*::after{transition:none!important; animation:none!important; scroll-behavior:auto!important}
@@ -292,13 +317,13 @@ a.ocard{transition:transform .15s ease, border-color .15s ease, background .15s 
 </head>
 <body>
 <div id="app">
-  <aside id="nav" aria-label="Secciones">
+  <aside id="nav" aria-label="Sections">
     <div class="brand">
       <div class="eyebrow">CENSURADO</div>
       <h1>Newsroom Docs</h1>
-      <div class="subtitle">La receta agentica de una redaccion de IA autohospedada.</div>
+      <div class="subtitle">The agentic recipe of a self-hosted AI newsroom.</div>
     </div>
-    <nav class="navlist" id="navlist" aria-label="Navegacion de secciones"></nav>
+    <nav class="navlist" id="navlist" aria-label="Section navigation"></nav>
     <div class="navfoot">Built from the live recipe.</div>
   </aside>
 
@@ -308,18 +333,13 @@ a.ocard{transition:transform .15s ease, border-color .15s ease, background .15s 
         <h2 id="crumbTitle">Overview</h2>
         <div class="crumbSub" id="crumbSub"></div>
       </div>
-      <div class="modeToggle" role="tablist" aria-label="Modo de vista">
-        <button class="segbtn" id="mMap" role="tab" aria-selected="false">Mapa</button>
-        <button class="segbtn active" id="mText" role="tab" aria-selected="true">Texto</button>
+      <div class="modeToggle" role="tablist" aria-label="View mode">
+        <button class="segbtn" id="mMap" role="tab" aria-selected="false">Map</button>
+        <button class="segbtn active" id="mText" role="tab" aria-selected="true">Text</button>
       </div>
     </header>
     <section id="stage" aria-live="polite"></section>
   </main>
-
-  <aside id="panel" aria-hidden="true" aria-label="Detalle del nodo">
-    <button class="pclose" id="pclose" aria-label="Cerrar panel">Cerrar &#10005;</button>
-    <div class="pbody" id="pbody"></div>
-  </aside>
 </div>
 
 <script>
@@ -367,93 +387,245 @@ a.ocard{transition:transform .15s ease, border-color .15s ease, background .15s 
   var COL=function(c){return 48+c*236;};
   var WF=[
     {id:'15-pick-author',c:0,y:220,kind:'setup',lane:'steel',
-      summary:'Carga el autor (voz, sesgo, fuentes asignadas) desde el backend.',
-      details:['El nodo pide la persona al store: su registro de voz, su sesgo declarado y la lista de medios que tiene permiso de nombrar.','Todo lo que sigue queda anclado a ese autor: el tema, las fuentes legibles y los medios citables.']},
+      summary:'Loads the author (voice, bias, assigned sources) from the backend.',
+      details:['The node requests the persona from the store: its voice register, its declared bias and the list of outlets it is allowed to name.','Everything downstream is anchored to that author: the topic, the readable sources and the citable outlets.','Source: <a href="https://github.com/hec-ovi/censurado-web-brain/blob/main/prompts/workflow/15-pick-author.md" target="_blank" rel="noopener">prompts/workflow/15-pick-author.md</a>']},
     {id:'20-fresh-titulars',c:1,y:220,kind:'setup',lane:'steel',
-      summary:'Solo modos single-author / authors: elige un tema fresco y no cubierto para ese autor.',
-      details:['Presente unicamente cuando el autor elige su propio tema (single-article recibe el tema desde afuera).','Descarta lo ya publicado para no repetir historias.']},
+      summary:'single-author / authors modes only: picks a fresh, uncovered topic for that author.',
+      details:['Present only when the author picks its own topic (single-article receives the topic from outside).','Discards anything already published so stories are not repeated.','Source: <a href="https://github.com/hec-ovi/censurado-web-brain/blob/main/prompts/workflow/20-fresh-titulars.md" target="_blank" rel="noopener">prompts/workflow/20-fresh-titulars.md</a>']},
     {id:'30-research',c:2,y:220,kind:'research',lane:'steel',emits:'ledger.md',
-      summary:'Lee las fuentes <b>asignadas</b> del autor (feeds + sitemaps frescos) y usa busqueda web para INFORMAR hechos.',
-      details:['Cada hecho central se valida en al menos <code>MIN_SOURCES</code> fuentes independientes de cada tendencia politica: derecha, neutral e izquierda.','Los medios hallados por busqueda web son contexto y <b>nunca se nombran</b>: solo los medios asignados del autor y los actores primarios son nombrables.','Emite <code>ledger.md</code>, el registro de hechos que la compuerta comprueba.']},
+      summary:'Reads the <b>assigned</b> sources of the author (fresh feeds + sitemaps) and uses web search to INFORM facts.',
+      details:['Every central fact is validated across at least <code>MIN_SOURCES</code> independent sources from each political leaning: right, neutral and left.','Outlets found through web search are context and are <b>never named</b>: only the assigned outlets of the author and the primary actors are nameable.','Emits <code>ledger.md</code>, the fact record that the gate checks.','Source: <a href="https://github.com/hec-ovi/censurado-web-brain/blob/main/prompts/workflow/30-research.md" target="_blank" rel="noopener">prompts/workflow/30-research.md</a>']},
     {id:'40-outline',c:3,y:220,kind:'structure',lane:'steel',
-      summary:'Fija el angulo y la estructura antes de escribir.',
-      details:['Decide que lidera, que sostiene la nota y en que orden, para que el borrador no divague.']},
+      summary:'Fixes the angle and the structure before writing.',
+      details:['Decides what leads, what carries the piece and in what order, so the draft does not ramble.','Source: <a href="https://github.com/hec-ovi/censurado-web-brain/blob/main/prompts/workflow/40-outline.md" target="_blank" rel="noopener">prompts/workflow/40-outline.md</a>']},
     {id:'50-draft',c:4,y:220,kind:'write',lane:'red',emits:'draft.md',
-      summary:'Escribe la pieza en la voz del autor, anclada en el ledger.',
-      details:['Fuentes nombradas como texto plano ("segun X"), <b>sin enlaces</b> en el cuerpo.','Solo los medios <b>asignados</b> del autor pueden nombrarse.','Emite <code>draft.md</code>.']},
+      summary:'Writes the piece in the voice of the author, anchored to the ledger.',
+      details:['Sources named as plain text ("according to X"), <b>with no links</b> in the body.','Only the <b>assigned</b> outlets of the author may be named.','Emits <code>draft.md</code>.','Source: <a href="https://github.com/hec-ovi/censurado-web-brain/blob/main/prompts/workflow/50-draft.md" target="_blank" rel="noopener">prompts/workflow/50-draft.md</a>']},
     {id:'60-evaluate',c:5,y:220,kind:'gate',lane:'gold',flag:'compuerta',
-      summary:'Juzga 6 dimensiones, cada una PASS / REVISE.',
-      details:['1. Cross-sourcing entre tendencias (y todo medio nombrado esta asignado).','2. Acentos, n con virgulilla y signos de apertura (&iquest; &iexcl;).','3. Entidades correctas.','4. Titulo honesto (max 5 palabras).','5. Densidad informativa.','6. Cero relleno / clichés de IA.','Si algo falla, la pieza baja al respin; solo con las seis en PASS sigue el flujo.']},
+      summary:'Judges 6 dimensions, each PASS / REVISE.',
+      details:['1. Cross-sourcing across leanings (and every named outlet is assigned).','2. Accents, &ntilde; with tilde and opening marks (&iquest; &iexcl;).','3. Correct entities.','4. Honest title (max 5 words).','5. Information density.','6. Zero filler / AI clichés.','If anything fails, the piece drops to the respin; only with all six at PASS does the flow continue.','Source: <a href="https://github.com/hec-ovi/censurado-web-brain/blob/main/prompts/workflow/60-evaluate.md" target="_blank" rel="noopener">prompts/workflow/60-evaluate.md</a>']},
     {id:'70-respin',c:6,y:70,kind:'loop',lane:'violet',flag:'bucle',
-      summary:'Reescribe lo que fallo y re-evalua.',
-      details:['Repite hasta que las seis dimensiones pasen o se agoten los intentos de respin.','Junto con 60-evaluate forma el bucle de calidad de la caminata.']},
+      summary:'Rewrites what failed and re-evaluates.',
+      details:['Repeats until all six dimensions pass or the respin attempts run out.','Together with 60-evaluate it forms the quality loop of the walk.','Source: <a href="https://github.com/hec-ovi/censurado-web-brain/blob/main/prompts/workflow/70-respin.md" target="_blank" rel="noopener">prompts/workflow/70-respin.md</a>']},
     {id:'75-factcheck',c:7,y:220,kind:'verify',lane:'steel',
-      summary:'Verifica los hechos centrales contra el ledger.',
-      details:['Elimina toda cita que no este en el ledger o fuera de la lista asignada del autor, conservando el hecho.']},
-    {id:'80-enrich',c:8,y:220,kind:'media',lane:'gold',
-      summary:'Anade un video de portada, capturas de tweets citados y widgets de notas relacionadas; etiqueta personas y organizaciones.',
-      details:['La linea de medios enriquece la nota sin tocar los hechos.','El etiquetado de personas y organizaciones alimenta las paginas de entidad del portal.']},
+      summary:'Verifies the central facts against the ledger.',
+      details:['Removes any citation that is not in the ledger or outside the assigned list of the author, while keeping the fact.','Source: <a href="https://github.com/hec-ovi/censurado-web-brain/blob/main/prompts/workflow/75-factcheck.md" target="_blank" rel="noopener">prompts/workflow/75-factcheck.md</a>']},
+    {id:'80-enrich',c:8,y:220,kind:'polish',lane:'gold',
+      summary:'A single plain copy-editing pass: tighten, add structure where it helps, break up monotony and proofread end to end.',
+      details:['It changes wording and structure only, never the facts or the claims.','It adds a pull-quote, a short list or a striking number where a flat wall of paragraphs needs breaking, and trims gerunds to finite verbs.','Source: <a href="https://github.com/hec-ovi/censurado-web-brain/blob/main/prompts/workflow/80-enrich.md" target="_blank" rel="noopener">prompts/workflow/80-enrich.md</a>']},
     {id:'85-accents-entities',c:9,y:220,kind:'polish',lane:'steel',
-      summary:'Un pase enfocado en acentos del espanol y nombres de entidades correctos.',
-      details:['Ultima limpieza ortografica antes de ensamblar los metadatos.']},
+      summary:'A pass focused on Spanish accents and correct entity names.',
+      details:['Final spelling cleanup before assembling the metadata.','Source: <a href="https://github.com/hec-ovi/censurado-web-brain/blob/main/prompts/workflow/85-accents-entities.md" target="_blank" rel="noopener">prompts/workflow/85-accents-entities.md</a>']},
     {id:'90-finalize',c:10,y:220,kind:'assemble',lane:'red',
-      summary:'Ensambla los metadatos finales: titulo, la "bajada" / <code>description</code> (~20-30 palabras) y topics.',
-      details:['Sin subtitulo: los subtitulos fueron retirados del formato editorial.']},
+      summary:'Assembles the final metadata: title, the "bajada" / <code>description</code> (~20-30 words) and topics.',
+      details:['No subtitle: subtitles were dropped from the editorial format.','Source: <a href="https://github.com/hec-ovi/censurado-web-brain/blob/main/prompts/workflow/90-finalize.md" target="_blank" rel="noopener">prompts/workflow/90-finalize.md</a>']},
     {id:'95-image',c:11,y:220,kind:'image',lane:'gold',
-      summary:'Renderiza la imagen de portada en ComfyUI (FLUX.2) y la sube.',
-      details:['La linea de imagen es opt-in y necesita GPU; en institucional la imagen es provista y no se genera.']},
+      summary:'Renders the hero image in ComfyUI (FLUX.2) and uploads it.',
+      details:['The image line is opt-in and needs a GPU; in institucional the image is provided and not generated.','Source: <a href="https://github.com/hec-ovi/censurado-web-brain/blob/main/prompts/workflow/95-image.md" target="_blank" rel="noopener">prompts/workflow/95-image.md</a>']},
     {id:'99-preview',c:12,y:220,kind:'preview',lane:'steel',
-      summary:'Publica la pieza en el sitio de preview <b>local</b> (localhost, solo debug, NO publico).',
-      details:['El humano aprueba aqui.','Nada de esto llega a produccion todavia.']},
+      summary:'Publishes the piece to the <b>local</b> preview site (localhost, debug only, NOT public).',
+      details:['The human approves here.','None of this reaches production yet.','Source: <a href="https://github.com/hec-ovi/censurado-web-brain/blob/main/prompts/workflow/99-preview.md" target="_blank" rel="noopener">prompts/workflow/99-preview.md</a>']},
     {id:'publicar',c:13,y:220,kind:'gated',lane:'faint',flag:'gated',
-      summary:'DESHABILITADO dentro de los modos de articulo.',
-      details:['Empujar el snapshot a produccion (Cloudflare Pages, elcensuradoweb.com) es una decision humana explicita y separada.','Nunca es un paso automatico de la caminata.']}
+      summary:'DISABLED within the article modes.',
+      details:['Pushing the built snapshot to production (Cloudflare Pages, elcensuradoweb.com) is an explicit, separate human decision.','It is never an automatic step of the walk.','Source: <a href="https://github.com/hec-ovi/censurado-web-brain/blob/main/prompts/workflow/publicar.md" target="_blank" rel="noopener">prompts/workflow/publicar.md</a>']}
   ];
   WF.forEach(function(n){n.x=COL(n.c); n.label=n.id;});
+
+  // Which modes include each node (from prompts/workflow/manifest.json).
+  var MANIFEST_MODES={
+    'single-article':['15-pick-author','30-research','40-outline','50-draft','60-evaluate','70-respin','75-factcheck','80-enrich','85-accents-entities','90-finalize','95-image','99-preview','publicar'],
+    'single-author':['15-pick-author','20-fresh-titulars','30-research','40-outline','50-draft','60-evaluate','70-respin','75-factcheck','80-enrich','85-accents-entities','90-finalize','95-image','99-preview','publicar'],
+    'authors':['15-pick-author','20-fresh-titulars','30-research','40-outline','50-draft','60-evaluate','70-respin','75-factcheck','80-enrich','85-accents-entities','90-finalize','95-image','99-preview','publicar'],
+    'institucional':['10-institucional','30-research','50-draft-institucional','62-semantica-calidad','90-finalize','99-preview','publicar'],
+    'publicar':['publicar']
+  };
+
+  // Richer per-step content, authored from the real prompt files.
+  var WF_DETAIL={
+    '15-pick-author':{
+      name:'Load the author you write as',
+      what:'Before anything else, this node loads the one persona the article is written as. It lists the registry with <code>personas</code> and reads the chosen record with <code>persona &lt;id&gt;</code>, then holds the voice fields (<code>who_i_am</code>, <code>style</code>, <code>few_shots_pos</code> and <code>few_shots_neg</code>), the <code>language</code> of the body (Spanish for the current authors), the <code>beat</code> that becomes the default section, and the list of assigned <code>sources</code>, the only outlets nameable downstream. A batch assignment fixes the author; otherwise it picks the author whose beat fits the story and confirms with the human when the fit is ambiguous. It also notes whether the voice is straight news (no disclaimer later) or satire, opinion or fiction (a single disclaimer line later). If the author database is empty, it synthesizes one first and returns.',
+      inputs:['a batch or human assignment (author id or beat)','the author registry (personas)'],
+      outputs:['the loaded persona: voice, language, beat','the assigned source list (nameable outlets)']
+    },
+    '20-fresh-titulars':{
+      name:'Pull the fresh headlines from the outlets',
+      what:'This node runs only when the author picks its own topic (single-author and authors); in single-article the topic arrives from outside. It pulls minute-fresh titulars from the OWN outlets of the author, not a generic search: <code>sources &lt;id&gt;</code> lists the linked portals and <code>portals</code> lists every available one. It fetches each machine-readable feed or news sitemap directly (newest first, self-windowed to about 48 hours) and treats newest by timestamp as latest, not automatically as the editorial lead. Some listed outlets are X accounts with no feed, so it web searches what the handle posted on the beat and can pin a quotable post with <code>tweet</code>. From the fresh items it picks the few stories that matter for the beat, dedups against the front page, and carries the lead into research.',
+      inputs:['the loaded persona','the outlet list (sources, portals)'],
+      outputs:['the chosen fresh, uncovered topic']
+    },
+    '30-research':{
+      name:'Research: build the source ledger',
+      what:'This node grounds the story before a word is written. It produces 3 to 6 specific, searchable sub-questions (who and what, when and where, the numbers, the one or two competing claims) and answers them from real sources. It then builds the LEDGER, every central fact paired with the source URL that carries it, kept for the rest of the walk so every later claim traces to a line. Each fact is cross-validated across at least <code>MIN_SOURCES</code> INDEPENDENT sources balanced by lean, with at least <code>MIN_PER_TYPE</code> of each of right, neutral and left; two outlets in one ownership group, or two copies of one wire, count as ONE. The own outlets of the author are read first, while any outlet surfaced by web search only INFORMS the fact and is never named. If a protagonist post is part of the story, it finds the real <code>x.com/.../status/&lt;id&gt;</code> and notes it for a later card. Finally it sweeps the own archive of the author by date to kill repeats, and stops the walk if the story is already covered.',
+      inputs:['the loaded persona and its assigned outlets','the chosen topic','web search'],
+      outputs:['ledger.md (fact paired with source URL)','noted post status URLs','an archive repeat verdict'],
+      gate:'<p class="stepProse">The research floor the gate later checks:</p><ul class="stepList">'
+        +'<li>Every central fact holds across at least <code>MIN_SOURCES</code> INDEPENDENT sources, with at least <code>MIN_PER_TYPE</code> of each lean (right, neutral, left), so no single lean carries a fact.</li>'
+        +'<li>Only the assigned outlets are nameable media; a web-found outlet stays background (learn the fact, never name it), attributed instead to the primary actor.</li>'
+        +'<li>Never invent a source, a statistic or a quote, and never keep a URL you did not use.</li>'
+        +'<li>If a prior piece already tells this story and nothing is genuinely new, STOP the walk: the story is covered.</li></ul>'
+    },
+    '40-outline':{
+      name:'Outline in attention-staged layers',
+      what:'This node plans the shape before the prose. First it answers, for the writer, the only question that matters: why would someone read this? If nothing here is genuinely consequential, it sends the walk back to research. It then plans the piece in attention-staged layers so a reader gets value at any depth and can stop anywhere: a hook (the dek), a self-contained summary that delivers the whole story densely, a "more about this" layer of developing detail, and a full-context close. Each layer carries NEW, dense information and none restates an earlier one, and the staging is felt in the writing rather than labeled. The output is a section-by-section outline mapped onto those layers, each section with a short heading, one line on what it covers, and which ledger source it draws on. Outline only, no prose, with no limit on the number of sections.',
+      inputs:['the ledger','the chosen angle'],
+      outputs:['a layered, section-by-section outline mapped to ledger sources']
+    },
+    '50-draft':{
+      name:'Draft the article in your voice',
+      what:'This node writes the full body from the outline and the ledger, in the language and voice of the persona, in the first person, so it reads like that byline and not a generic assistant. One newsroom-wide exception overrides the voice: a piece in the politics section is always written in the THIRD person, with the slant living only in framing, emphasis and source selection. The writer takes a clear position and argues it from the evidence (Censurado manufactures no false balance), but the one hard line holds: the slant lives in the framing, never in the facts, so every claim still traces to a ledger source and every date, figure and name stays exact. It builds the outlined layers, says each idea once (no stacked hedges), and reaches for the rhythm-breaking devices the renderer styles: a <code>&gt; blockquote</code> pull-quote, a short list, a GFM table, a mid-body image, and inline <code>{{tweet}}</code>, <code>{{video}}</code> and <code>{{relacionado}}</code> widgets placed next to the sentence they support. It also strips the AI-slop tells (no em or en dashes, no negation-aphorism, no candor tics, gerunds kept to a minimum).',
+      inputs:['the layered outline','the ledger','the persona voice'],
+      outputs:['draft.md (the complete first-person body)'],
+      gate:'<p class="stepProse">The assigned-sources-only naming rule, with no links in the body:</p><ul class="stepList">'
+        +'<li>Name sources in plain text (for example "according to X") with NO links anywhere in the body; images and <code>{{...}}</code> widgets are not links.</li>'
+        +'<li>Name a media outlet only when it is one of the ASSIGNED sources of the author; a web-surfaced outlet is background you never name.</li>'
+        +'<li>Attribute a fact from a non-assigned outlet to the primary actor behind the news (the person, company, official, institution or document), or report it with no medium named.</li>'
+        +'<li>Write the complete piece: no length limit and no placeholders.</li></ul>'
+    },
+    '60-evaluate':{
+      name:'Evaluate the draft (the publish gate)',
+      what:'This node is the publish GATE. The writer steps back and judges its own draft strictly, as a senior editor who did not write it, scoring each of six dimensions PASS or REVISE with a short, specific note on what to fix. The article may not publish while any dimension fails; only a clean sweep of all six carries it forward. A REVISE drops the piece into the respin loop (70-respin), which fixes the flagged items and re-runs this same evaluation. It does not carry a failing draft toward publish.',
+      inputs:['draft.md','the ledger','the floors MIN_SOURCES and MIN_PER_TYPE'],
+      outputs:['a per-dimension PASS or REVISE verdict','the overall verdict'],
+      gate:'<p class="stepProse">Six dimensions, each PASS or REVISE; PASS overall only when all six pass:</p><ol class="stepList">'
+        +'<li><b>Cross-sourcing.</b> Central facts corroborated across at least <code>MIN_SOURCES</code> independent sources, at least <code>MIN_PER_TYPE</code> per lean, and every named outlet is assigned.</li>'
+        +'<li><b>Accents and orthography.</b> Full accents (á, é, í, ó, ú, ü), the ñ, and the opening marks ¿ and ¡ are present and correct.</li>'
+        +'<li><b>Entities.</b> People, organizations and places are named correctly and are taggable.</li>'
+        +'<li><b>Title and bajada.</b> An honest title of no more than 5 words (passing the honesty gates), and a 20 to 30 word bajada that complements the title without repeating it, neither spliced by a ;, a : or a dash.</li>'
+        +'<li><b>Compression and density.</b> Each layer is dense, high information per word, with no coasting.</li>'
+        +'<li><b>Non-redundancy and slop.</b> No layer restates another, politics pieces are third person, gerunds are sparse, and no AI-slop tell survives (em or en dash, negation-aphorism, candor tic, a thing given feelings or will).</li></ol>'
+    },
+    '70-respin':{
+      name:'Re-spin: self-revise against the evaluation',
+      what:'This node is the self-revision half of the quality loop. The writer revises its own piece, in its own voice, addressing every REVISE note from the evaluation. It gets up to <code>RESPIN_PASSES</code> passes, and each pass keeps every grounded fact and every citation, changing only form, wording and structure. It cuts repetition across sections, drops noise and duplicate sources (two outlets in one group are ONE confirmation), tightens loose wording, and removes every slop tell. After each pass it re-runs <code>60-evaluate</code> and stops the moment the evaluation returns PASS, or when the passes are exhausted, then continues to the next step.',
+      inputs:['the failing draft','the per-dimension REVISE notes'],
+      outputs:['the revised draft, re-submitted to 60-evaluate'],
+      gate:'<ul class="stepList">'
+        +'<li>Loop until pass or exhausted: up to <code>RESPIN_PASSES</code> self-revision passes.</li>'
+        +'<li>Facts and citations are frozen; only form, wording and structure change.</li>'
+        +'<li>Stop on the first PASS from <code>60-evaluate</code>, or when the passes run out, whichever comes first.</li>'
+        +'<li>Together with 60-evaluate this is the quality loop of the walk.</li></ul>'
+    },
+    '75-factcheck':{
+      name:'Fact-check: fix the grounding',
+      what:'This node runs plainly, not in a persona voice, because it is grounding and not style; it changes nothing but the grounding. It removes or replaces any citation that is not in the ledger, since the ledger sources are the only ones the article may cite. It converts every body link back to plain-text attribution, resolves every unresolved marker (TODO, FIXME, TK, "citation needed") by grounding the claim or cutting it, keeps every date exactly as the sources have it, and restores any altered proper name to its source spelling. The result is the same article, correctly grounded.',
+      inputs:['the passed draft','the ledger','the assigned-source list'],
+      outputs:['the same article, correctly grounded'],
+      gate:'<ul class="stepList">'
+        +'<li>Strip any citation that is not in the ledger, or any named outlet not on the ASSIGNED list of the author, but KEEP its fact.</li>'
+        +'<li>Reattribute the kept fact to the primary actor behind the news, or state it plainly with no medium named.</li>'
+        +'<li>No links in the body (keep only the text); dates and proper names stay exactly as the sources have them.</li></ul>'
+    },
+    '80-enrich':{
+      name:'Enrich: one plain tightening and proofread pass',
+      what:'This node is a single plain (non-persona) copy-editing pass over the near-final article that tightens it without changing its meaning or its claims. It improves clarity, flow and structure, adding a subheading or a short list only where it genuinely helps, and cuts the last repetition, filler and any slop tell the earlier passes missed. It also checks for MONOTONY: if the piece is a flat wall of even paragraphs, it adds the rhythm-breaking devices the material already supports (a pull-quote lifted from the sharpest existing line, a short list, a striking number on its own line, a <code>{{relacionado:}}</code> to a real earlier piece), inventing no new fact. Then it proofreads end to end (spelling, grammar and punctuation, no em or en dash, clean Markdown, each widget marker on its own line) and trims gerunds to a minimum. It adds no citation to a source outside the ledger and shortens only by removing noise, never substance.',
+      inputs:['the grounded draft'],
+      outputs:['the tightened, proofread near-final article']
+    },
+    '85-accents-entities':{
+      name:'Accents and entities: the orthography check',
+      what:'This node is one focused pass over the whole piece for correct Spanish and correct names; this is where the accents rule lives. It reads the title, the description, the body AND the topic tags, and restores every accent (á, é, í, ó, ú, ü), every ñ, and every opening ¿ or ¡: "economia" becomes "economía", "numero" becomes "número". Keeping an English technical term in English is never a licence to drop a Spanish accent elsewhere. It then confirms every proper-noun entity (people, organizations, places) is spelled as the sources have it, and that each central one is tagged as a lowercase, accented topic (for example <code>javier milei</code>, <code>openai</code>). Those entity tags build each entity topic page over time, so it names the protagonists, not only abstract themes.',
+      inputs:['the proofread draft and its topic tags'],
+      outputs:['the clean piece with correct, taggable entities']
+    },
+    '90-finalize':{
+      name:'Finalize: lift into the publish payload',
+      what:'This node lifts the finished article into its publish fields; it is a formatting and titling step, so it does not rewrite the body, add facts or change the angle. It crafts the sharpest honest headline the facts support: a <code>title</code> of NO MORE than 5 words, objective and informative, naming a person only when they are very well known or hold an executive office, and never spliced by a ;, a : or a dash. It writes the <code>description</code> (the bajada), one 20 to 30 word line that does not repeat the words or subject of the title but complements it and sets up the opening line. It carries the complete Markdown <code>body</code> through unchanged, and sets <code>topics</code> (at most <code>TOPIC_CAP</code> sharp theme and entity tags), <code>keywords</code>, and an optional <code>slug</code>.',
+      inputs:['the clean article body and its entities'],
+      outputs:['the publish payload: title, description, body, topics, keywords, slug'],
+      gate:'<p class="stepProse">Three distinct authored layers, none restating another:</p><ul class="stepList">'
+        +'<li><b>title</b>: no more than 5 words, objective, one whole thought, never spliced by a ;, a : or a dash.</li>'
+        +'<li><b>description</b> (bajada): 20 to 30 words that complement the title and never echo its words or subject.</li>'
+        +'<li>No subtitle: subtitles were dropped from the editorial format.</li></ul>'
+    },
+    '95-image':{
+      name:'Hero image: art-direct it',
+      what:'This node is the art-direction step. A tech or AI piece carries a hero image (required there, optional on other beats, since a piece publishes fine text-only or can lean on a video or a quoted tweet). The art is matched to the section and the voice and briefed as an editorial ILLUSTRATION, never a photo, never a real face, never a staged news moment. It is a two-step tool flow, not hand-built: the <code>image</code> verb renders an art-directed FLUX.2 hero, uploads the bytes, and prints the <code>/media/&lt;sha&gt;.png</code> path; ComfyUI must be up on <code>:8188</code> (the GPU box), which only this step needs. Heroes render wide (about 16:9) to fill the hero band. The render saves the hero, and the next preview step attaches it.',
+      code:'python3 cli/censurado.py image --prompt "&lt;subject &rarr; action &rarr; style &rarr; context&gt;" --alt "&lt;one-line Spanish alt&gt;"',
+      inputs:['the finished article, its section and voice','ComfyUI on :8188'],
+      outputs:['an uploaded /media/<sha>.png hero (best-effort)','attached at the preview step'],
+      gate:'<ul class="stepList">'
+        +'<li>Best-effort: if ComfyUI is down or times out, publish the piece text-only rather than hold it for art.</li>'
+        +'<li>In institucional the image is PROVIDED, not generated; this verb is never run there.</li></ul>'
+    },
+    '99-preview':{
+      name:'Preview: stage it locally (still the last gate)',
+      what:'This node stages the finished piece to the LOCAL site (<code>localhost:8080</code>) so the human sees it exactly as it will render. It is LOCAL and DEBUG-only and never touches the public internet; going live is the separate <code>publicar --yes</code> step. It is still the last editorial gate: it never previews a piece while any evaluation dimension is still failing. By default it is interactive, showing the full draft (title, description, body, and the section, slug, topics and widgets) and asking "Good as-is, or change anything?", changing only what the human asks before previewing, unless it was told to run unattended. It previews with the toolkit (which reads the operator token and builds the strict JSON), expects a <code>201</code> and <code>{"id":...,"slug":...}</code>, and hands the printed <code>PREVIEW:</code> link back to the human. The generate watcher rebuilds within seconds, so it runs no manual generate or test suite.',
+      inputs:['the full publish payload (title, description, body-file, topics, image)'],
+      outputs:['the piece staged on localhost:8080','the printed PREVIEW: link'],
+      gate:'<ul class="stepList">'
+        +'<li>Still a gate: do not preview while any evaluation dimension is failing.</li>'
+        +'<li>The human approves here; nothing reaches production.</li>'
+        +'<li>Publishing to the public site is the separate <code>publicar --yes</code>, only on an explicit go-ahead.</li></ul>'
+    },
+    'publicar':{
+      name:'Publicar: go live to production',
+      what:'This node publishes the whole static portal to the live site (elcensuradoweb.com, Cloudflare Pages). It is outward-facing and visitors see the result at once, so it is treated as the last gate: it confirms with the human unless told to run unattended. It publishes ONCE, not per article, because it regenerates the entire site from the local DB and pushes it; a batch previews everything first and then runs this a single time in its own <code>publicar</code> mode. The preconditions are best-effort (<code>CLOUDFLARE_ACCOUNT_ID</code> in the repo <code>.env</code>, and wrangler authenticated once on the host); if either is missing it tells the human and STOPS rather than failing the already-previewed article. It runs <code>publicar --yes</code> (never a .sh script or a make target), then verifies the live origin with a plain <code>status</code>.',
+      inputs:['the locally previewed snapshot','CLOUDFLARE_ACCOUNT_ID (.env)','a wrangler OAuth session'],
+      outputs:['the live site pushed to Cloudflare Pages (branch main)'],
+      gate:'<ul class="stepList">'
+        +'<li>DISABLED inside the article and institucional modes (see the <code>disabled</code> block in <code>manifest.json</code>).</li>'
+        +'<li>Going live is an explicit, separate human decision, with its own <code>publicar</code> mode and a required <code>--yes</code>.</li>'
+        +'<li>It is never an automatic step of the walk.</li></ul>'
+    }
+  };
+  WF.forEach(function(n){
+    var d=WF_DETAIL[n.id]||{};
+    n.name=d.name||n.id;
+    n.what=d.what||n.summary;
+    n.inputs=d.inputs||[];
+    n.outputs=d.outputs||[];
+    if(d.gate) n.gate=d.gate;
+    if(d.code) n.code=d.code;
+    n.modes=[];
+    for(var mk in MANIFEST_MODES){ if(MANIFEST_MODES.hasOwnProperty(mk) && MANIFEST_MODES[mk].indexOf(n.id)>=0){ n.modes.push(mk); } }
+  });
 
   var wfEdges=[
     {from:'15-pick-author',to:'20-fresh-titulars'},{from:'20-fresh-titulars',to:'30-research'},
     {from:'30-research',to:'40-outline'},{from:'40-outline',to:'50-draft'},{from:'50-draft',to:'60-evaluate'},
     {from:'60-evaluate',to:'70-respin',type:'loop',label:'revise'},
-    {from:'70-respin',to:'60-evaluate',type:'loop',label:'re-evalua'},
+    {from:'70-respin',to:'60-evaluate',type:'loop',label:'re-evaluate'},
     {from:'60-evaluate',to:'75-factcheck',type:'pass',label:'pass'},
     {from:'75-factcheck',to:'80-enrich'},{from:'80-enrich',to:'85-accents-entities'},
     {from:'85-accents-entities',to:'90-finalize'},{from:'90-finalize',to:'95-image'},
     {from:'95-image',to:'99-preview'},
-    {from:'99-preview',to:'publicar',type:'gated',label:'humano'}
+    {from:'99-preview',to:'publicar',type:'gated',label:'human'}
   ];
 
   function wfText(){
     var cards=WF.map(function(n){
       var extra='';
       var rows=[];
-      if(n.emits) rows.push('<span class="flag emit">emite '+n.emits+'</span>');
-      if(n.flag==='compuerta') rows.push('<span class="flag gate">compuerta</span>');
-      if(n.flag==='bucle') rows.push('<span class="flag loop">bucle de calidad</span>');
+      if(n.emits) rows.push('<span class="flag emit">emits '+n.emits+'</span>');
+      if(n.flag==='compuerta') rows.push('<span class="flag gate">gate</span>');
+      if(n.flag==='bucle') rows.push('<span class="flag loop">quality loop</span>');
       if(n.flag==='gated') rows.push('<span class="flag gated">gated</span>');
-      if(rows.length) extra='<div class="row"><span class="lbl">artefacto</span>'+rows.join('')+'</div>';
+      if(rows.length) extra='<div class="row"><span class="lbl">artifact</span>'+rows.join('')+'</div>';
+      extra+='<div class="row"><button type="button" class="openStepBtn" data-step="'+esc(n.id)+'">Open step &rarr;</button></div>';
       return el.card({id:'c-workflow-'+n.id,label:n.id,tag:n.kind,color:LANE[n.lane],sum:n.summary,extra:extra});
     }).join('');
-    return '<p class="lede"><strong>La compuerta editorial.</strong> El workflow es una lista de nodos declarada en '
-      +'<code>prompts/workflow/manifest.json</code>. El agente los camina de a uno con '
-      +'<code>censurado.py step --mode &lt;mode&gt;</code>; nunca ve la receta entera, asi que no puede saltarse un paso ni reordenarlos. '
-      +'Cada nodo emite o consume un artefacto que la compuerta comprueba (<code>30-research &rarr; ledger.md</code>, <code>50-draft &rarr; draft.md</code>). '
-      +'El modo de un solo articulo son 13 nodos; <code>publicar</code> queda gated al final.</p>'
-      +'<div class="doc-section"><div class="ds-head"><span class="eyebrow-s">single-article &middot; 13 nodos</span>'
-      +'<h3>La caminata, paso a paso</h3><p class="ds-sub">El orden es fijo. 60-evaluate + 70-respin forman el bucle de calidad; publicar esta gated.</p></div>'
+    return '<p class="lede"><strong>The editorial gate.</strong> The workflow is a list of nodes declared in '
+      +'<code>prompts/workflow/manifest.json</code>. The agent walks them one at a time with '
+      +'<code>censurado.py step --mode &lt;mode&gt;</code>; it never sees the whole recipe, so it cannot skip a step or reorder them. '
+      +'Each node emits or consumes an artifact that the gate checks (<code>30-research &rarr; ledger.md</code>, <code>50-draft &rarr; draft.md</code>). '
+      +'The single-article mode is 13 nodes; <code>publicar</code> stays gated at the end. '
+      +'Source of truth: <a href="https://github.com/hec-ovi/censurado-web-brain/blob/main/prompts/workflow/manifest.json" target="_blank" rel="noopener">prompts/workflow/manifest.json</a>.</p>'
+      +'<div class="doc-section"><div class="ds-head"><span class="eyebrow-s">single-article &middot; 13 nodes</span>'
+      +'<h3>The walk, step by step</h3><p class="ds-sub">The order is fixed. 60-evaluate + 70-respin form the quality loop; publicar is gated.</p></div>'
       +'<div class="cardgrid">'+cards+'</div></div>';
   }
 
   // ------------------------------------------------------------- MODES
   var modesMap={
-    legend:[{c:'red',t:'modos de articulo'},{c:'steel',t:'institucional'},{c:'gold',t:'batch'},{c:'violet',t:'mantenimiento'}],
+    legend:[{c:'red',t:'article modes'},{c:'steel',t:'institucional'},{c:'gold',t:'batch'},{c:'violet',t:'maintenance'}],
     nodes:[
-      {id:'step engine',x:56,y:250,w:210,kind:'motor',lane:'red',label:'step engine',summary:'El mismo motor recorre distintas listas de nodos.',details:['<code>censurado.py step --mode &lt;mode&gt;</code> elige la lista declarada en <code>manifest.json</code> y la camina de a un nodo.']},
-      {id:'single-article',x:380,y:40,w:230,kind:'articulo',lane:'red',label:'single-article',summary:'La caminata completa de 13 nodos.',details:['El tema llega desde afuera; ejecuta 15 &rarr; 99 con la compuerta y el bucle de respin.']},
-      {id:'single-author / authors',x:380,y:130,w:230,kind:'articulo',lane:'red',label:'single-author / authors',summary:'Los 13 nodos; single-author anade 20-fresh-titulars.',details:['El autor elige su propio tema fresco y no cubierto en <code>20-fresh-titulars</code>.','<code>authors</code> corre la misma caminata para varios autores.']},
-      {id:'institucional',x:380,y:250,w:230,kind:'sin firma',lane:'steel',label:'institucional',summary:'Sin firma, byline de la casa "Redaccion", imagen provista (no IA), registro formal.',details:['Ruta corta: <code>10-institucional &rarr; 30-research &rarr; 50-draft-institucional &rarr; 62-semantica-calidad &rarr; 90-finalize &rarr; 99-preview &rarr; publicar</code>.','La imagen no se genera: se provee.']},
-      {id:'daily / weekly / last-hour',x:380,y:365,w:230,kind:'batch',lane:'gold',label:'daily / weekly / last-hour',summary:'Un solo nodo 10-batch-plan que barre el dia.',details:['<code>10-batch-plan</code> agrupa items de la misma historia y despacha un escritor por tema.','Cada escritor corre la caminata completa por su cuenta.']},
-      {id:'mantenimiento',x:380,y:475,w:230,kind:'single-node',lane:'violet',label:'mantenimiento',summary:'Modos de un solo nodo.',details:['<code>portal-review</code>: arma la portada del dia.','<code>normalize-topics</code>, <code>topic-cleanse</code>.','<code>publicar</code>: empuja a produccion (decision humana).']}
+      {id:'step engine',x:56,y:250,w:210,kind:'engine',lane:'red',label:'step engine',summary:'The same engine walks different node lists.',details:['<code>censurado.py step --mode &lt;mode&gt;</code> picks the list declared in <code>manifest.json</code> and walks it one node at a time.','Source: <a href="https://github.com/hec-ovi/censurado-web-brain/blob/main/prompts/workflow/manifest.json" target="_blank" rel="noopener">prompts/workflow/manifest.json</a>']},
+      {id:'single-article',x:380,y:40,w:230,kind:'article',lane:'red',label:'single-article',summary:'The full 13-node walk.',details:['The topic comes from outside; it runs 15 &rarr; 99 with the gate and the respin loop.']},
+      {id:'single-author / authors',x:380,y:130,w:230,kind:'article',lane:'red',label:'single-author / authors',summary:'The 13 nodes; single-author adds 20-fresh-titulars.',details:['The author picks its own fresh, uncovered topic in <code>20-fresh-titulars</code>.','<code>authors</code> runs the same walk for several authors.']},
+      {id:'institucional',x:380,y:250,w:230,kind:'unsigned',lane:'steel',label:'institucional',summary:'Unsigned, house byline "Redaccion", provided image (not AI), formal register.',details:['Short route: <code>10-institucional &rarr; 30-research &rarr; 50-draft-institucional &rarr; 62-semantica-calidad &rarr; 90-finalize &rarr; 99-preview &rarr; publicar</code>.','The image is not generated: it is provided.','Source: <a href="https://github.com/hec-ovi/censurado-web-brain/blob/main/prompts/workflow/10-institucional.md" target="_blank" rel="noopener">prompts/workflow/10-institucional.md</a>']},
+      {id:'daily / weekly / last-hour',x:380,y:365,w:230,kind:'batch',lane:'gold',label:'daily / weekly / last-hour',summary:'A single 10-batch-plan node that sweeps the day.',details:['<code>10-batch-plan</code> groups items from the same story and dispatches one writer per topic.','Each writer runs the full walk on its own.','Source: <a href="https://github.com/hec-ovi/censurado-web-brain/blob/main/prompts/workflow/10-batch-plan.md" target="_blank" rel="noopener">prompts/workflow/10-batch-plan.md</a>']},
+      {id:'mantenimiento',x:380,y:475,w:230,kind:'single-node',lane:'violet',label:'maintenance',summary:'Single-node modes.',details:['<code>portal-review</code>: assembles the front page of the day.','<code>normalize-topics</code>, <code>topic-cleanse</code>.','<code>publicar</code>: pushes to production (human decision).']}
     ],
     edges:[
       {from:'step engine',to:'single-article'},{from:'step engine',to:'single-author / authors'},
@@ -462,26 +634,27 @@ a.ocard{transition:transform .15s ease, border-color .15s ease, background .15s 
     ]
   };
   function modesText(){
-    return '<p class="lede"><strong>Mismo motor, distinta lista de nodos.</strong> El modo solo cambia que nodos se caminan; todos salen de <code>manifest.json</code>.</p>'
-      +'<div class="doc-section"><div class="ds-head"><h3>Los modos</h3></div><div class="cardgrid">'
-      +el.card({label:'single-article',tag:'articulo',color:LANE.red,sum:'La caminata completa de 13 nodos. El tema llega desde afuera.'})
-      +el.card({label:'single-author / authors',tag:'articulo',color:LANE.red,sum:'Los 13 nodos; single-author anade <code>20-fresh-titulars</code> para que el autor elija su propio tema fresco. <code>authors</code> repite para varios.'})
-      +el.card({wide:true,label:'institucional',tag:'sin firma',color:LANE.steel,sum:'Sin firma, byline de la casa "Redaccion", imagen provista (no generada por IA), registro formal.',extra:'<div class="row"><span class="lbl">ruta</span></div>'+el.chips(['10-institucional','30-research','50-draft-institucional','62-semantica-calidad','90-finalize','99-preview','publicar'],true)})
-      +el.card({label:'daily / weekly / last-hour',tag:'batch',color:LANE.gold,sum:'Un solo nodo <code>10-batch-plan</code> que barre el dia, agrupa items de la misma historia y despacha un escritor por tema.'})
-      +el.card({label:'mantenimiento',tag:'single-node',color:LANE.violet,sum:'Modos de un solo nodo.',extra:el.chips(['portal-review','normalize-topics','topic-cleanse','publicar'],true)})
+    return '<p class="lede"><strong>Same engine, different node list.</strong> The mode only changes which nodes are walked; they all come from <code>manifest.json</code>. '
+      +'Source: <a href="https://github.com/hec-ovi/censurado-web-brain/blob/main/prompts/workflow/manifest.json" target="_blank" rel="noopener">prompts/workflow/manifest.json</a>.</p>'
+      +'<div class="doc-section"><div class="ds-head"><h3>The modes</h3></div><div class="cardgrid">'
+      +el.card({label:'single-article',tag:'article',color:LANE.red,sum:'The full 13-node walk. The topic comes from outside.'})
+      +el.card({label:'single-author / authors',tag:'article',color:LANE.red,sum:'The 13 nodes; single-author adds <code>20-fresh-titulars</code> so the author picks its own fresh topic. <code>authors</code> repeats for several.'})
+      +el.card({wide:true,label:'institucional',tag:'unsigned',color:LANE.steel,sum:'Unsigned, house byline "Redaccion", provided image (not AI-generated), formal register.',extra:'<div class="row"><span class="lbl">route</span></div>'+el.chips(['10-institucional','30-research','50-draft-institucional','62-semantica-calidad','90-finalize','99-preview','publicar'],true)})
+      +el.card({label:'daily / weekly / last-hour',tag:'batch',color:LANE.gold,sum:'A single <code>10-batch-plan</code> node that sweeps the day, groups items from the same story and dispatches one writer per topic.'})
+      +el.card({label:'maintenance',tag:'single-node',color:LANE.violet,sum:'Single-node modes.',extra:el.chips(['portal-review','normalize-topics','topic-cleanse','publicar'],true)})
       +'</div></div>';
   }
 
   // ------------------------------------------------------------- MULTI-AGENT
   var maMap={
-    legend:[{c:'steel',t:'editor (barre y asigna)'},{c:'red',t:'writers en paralelo'},{c:'gold',t:'portada'}],
+    legend:[{c:'steel',t:'editor (sweeps & assigns)'},{c:'red',t:'writers in parallel'},{c:'gold',t:'portada'}],
     nodes:[
-      {id:'editor',x:56,y:240,w:200,kind:'coordina',lane:'steel',label:'editor',summary:'Barre las noticias, agrupa lo que es la misma historia y asigna cada tema al autor cuyo beat encaja.',details:['Lanza UN agente escritor por nota.','No escribe: reparte el trabajo.']},
-      {id:'writer A',x:420,y:60,w:190,kind:'autor',lane:'red',label:'writer · autor A',summary:'Encarna un autor y corre el workflow completo por su cuenta.',details:['Corre en paralelo con los demas escritores.','Se auto-revisa con la compuerta 60-evaluate y el bucle 70-respin.']},
-      {id:'writer B',x:420,y:150,w:190,kind:'autor',lane:'red',label:'writer · autor B',summary:'Otro autor, otra voz, misma caminata independiente.',details:['Cada escritor tiene sus fuentes asignadas y sus medios citables.']},
-      {id:'writer C',x:420,y:240,w:190,kind:'autor',lane:'red',label:'writer · autor C',summary:'Los escritores no se coordinan entre si durante la redaccion.',details:['El paralelismo es real: N notas se escriben a la vez.']},
-      {id:'writer N',x:420,y:330,w:190,kind:'autor',lane:'red',label:'writer · autor N',summary:'Un escritor por tema, tantos como temas haya en el barrido.',details:['El numero de writers depende del plan del editor.']},
-      {id:'portada',x:790,y:240,w:200,kind:'front page',lane:'gold',label:'portada',summary:'Cuando el batch termina, arma la portada del dia: que lidera, que es "importante" y el orden.',details:['Corre despues de que todos los escritores terminan.','Decide la jerarquia visual del portal, no el contenido de cada nota.']}
+      {id:'editor',x:56,y:240,w:200,kind:'coordinates',lane:'steel',label:'editor',summary:'Sweeps the news, groups what is the same story and assigns each topic to the author whose beat fits.',details:['Launches ONE writer agent per note.','It does not write: it hands out the work.','Source: <a href="https://github.com/hec-ovi/censurado-web-brain/blob/main/prompts/workflow/10-batch-plan.md" target="_blank" rel="noopener">prompts/workflow/10-batch-plan.md</a>']},
+      {id:'writer A',x:420,y:60,w:190,kind:'author',lane:'red',label:'writer · author A',summary:'Embodies an author and runs the full workflow on its own.',details:['Runs in parallel with the other writers.','It self-reviews with the 60-evaluate gate and the 70-respin loop.']},
+      {id:'writer B',x:420,y:150,w:190,kind:'author',lane:'red',label:'writer · author B',summary:'Another author, another voice, the same independent walk.',details:['Each writer has its assigned sources and its citable outlets.']},
+      {id:'writer C',x:420,y:240,w:190,kind:'author',lane:'red',label:'writer · author C',summary:'The writers do not coordinate with each other during the writing.',details:['The parallelism is real: N notes are written at once.']},
+      {id:'writer N',x:420,y:330,w:190,kind:'author',lane:'red',label:'writer · author N',summary:'One writer per topic, as many as there are topics in the sweep.',details:['The number of writers depends on the editor plan.']},
+      {id:'portada',x:790,y:240,w:200,kind:'front page',lane:'gold',label:'portada',summary:'When the batch finishes, it builds the front page of the day: what leads, what is "importante" and the order.',details:['It runs after all the writers finish.','It decides the visual hierarchy of the portal, not the content of each note.','Source: <a href="https://github.com/hec-ovi/censurado-web-brain/blob/main/prompts/workflow/portal-review.md" target="_blank" rel="noopener">prompts/workflow/portal-review.md</a>']}
     ],
     edges:[
       {from:'editor',to:'writer A'},{from:'editor',to:'writer B'},{from:'editor',to:'writer C'},{from:'editor',to:'writer N'},
@@ -489,32 +662,32 @@ a.ocard{transition:transform .15s ease, border-color .15s ease, background .15s 
     ]
   };
   function maText(){
-    return '<p class="lede"><strong>Es un equipo, no un agente.</strong> Un agente <code>editor</code> barre la jornada, agrupa lo que es la misma historia y asigna cada tema al autor cuyo beat encaja, lanzando un agente escritor por nota. Los escritores corren en paralelo; cuando el batch termina, un agente <code>portada</code> arma la primera plana.</p>'
-      +'<div class="doc-section"><div class="ds-head"><h3>Los tres roles</h3></div><div class="cardgrid">'
-      +el.card({label:'editor',tag:'coordina',color:LANE.steel,sum:'Barre las noticias, agrupa la misma historia, asigna cada tema por beat y lanza un escritor por nota.'})
-      +el.card({label:'writer (xN)',tag:'autor',color:LANE.red,sum:'Corren <b>en paralelo</b>, cada uno encarna un autor distinto y ejecuta el workflow completo de forma independiente, auto-revisandose.'})
-      +el.card({label:'portada',tag:'front page',color:LANE.gold,sum:'Al terminar el batch, arma la portada del dia: que lidera, que es "importante" y el orden.'})
+    return '<p class="lede"><strong>It is a team, not an agent.</strong> An <code>editor</code> agent sweeps the day, groups what is the same story and assigns each topic to the author whose beat fits, then launches one writer agent per note. The writers run in parallel; when the batch finishes, a <code>portada</code> agent builds the front page.</p>'
+      +'<div class="doc-section"><div class="ds-head"><h3>The three roles</h3></div><div class="cardgrid">'
+      +el.card({label:'editor',tag:'coordinates',color:LANE.steel,sum:'Sweeps the news, groups the same story, assigns each topic by beat and launches one writer per note.'})
+      +el.card({label:'writer (xN)',tag:'author',color:LANE.red,sum:'They run <b>in parallel</b>, each embodies a different author and executes the full workflow independently, with self-review.'})
+      +el.card({label:'portada',tag:'front page',color:LANE.gold,sum:'When the batch finishes, it builds the front page of the day: what leads, what is "importante" and the order.'})
       +'</div></div>';
   }
 
   // ------------------------------------------------------------- ARCHITECTURE
   var arMap={
-    legend:[{c:'steel',t:'operador / agente'},{c:'steel',t:'servicios docker'},{c:'gold',t:'linea de imagen'},{c:'green',t:'produccion'},{c:'faint',t:'opt-in aislado'}],
+    legend:[{c:'steel',t:'operator / agent'},{c:'steel',t:'docker services'},{c:'gold',t:'image line'},{c:'green',t:'production'},{c:'faint',t:'isolated opt-in'}],
     groups:[{x:596,y:24,w:300,h:392,label:'Docker (brain + backend, 24/7)'}],
     nodes:[
-      {id:'operator',x:44,y:230,w:190,kind:'humano',lane:'steel',label:'Operador',summary:'Da la orden (WhatsApp, Telegram, app CLI o remoto) y opcionalmente aprueba antes de publicar.',details:['El humano decide el que y aprueba en el preview; el publicar final es siempre suyo.']},
-      {id:'agent',x:316,y:230,w:190,kind:'cualquier modelo',lane:'red',label:'Agente / CLI',summary:'Cualquier modelo en cualquier CLI. Usa una sola herramienta: los verbos de censurado.',details:['<code>python3 cli/censurado.py &lt;verb&gt;</code> es toda su superficie.','No corre el modelo dentro del stack; el stack le da los verbos.']},
-      {id:'publish',x:616,y:64,w:200,kind:'127.0.0.1:8082',lane:'steel',label:'publish',summary:'El backend: sqlite store + el UNICO escritor + sirve el panel admin.',details:['Append-only publish API, JSON read API y media store.','Es el unico proceso que escribe en la base.']},
-      {id:'generate',x:616,y:154,w:200,kind:'watcher',lane:'steel',label:'generate',summary:'Vigila la DB y reconstruye el sitio estatico incrementalmente.',details:['Permalinks direccionados por contenido: <code>/a/&lt;slug&gt;-&lt;hash8&gt;/</code>.','Shards JSON y un manifiesto quirurgico de purga de CDN.']},
-      {id:'site',x:616,y:244,w:200,kind:'unico puerto',lane:'steel',label:'site',summary:'Sirve el portal local; el unico puerto expuesto del grupo.',details:['Lo que ve el humano en el preview local sale de aqui.']},
-      {id:'comfyui',x:616,y:334,w:200,kind:'GPU opt-in',lane:'gold',label:'comfyui',summary:'La linea de imagen de portada (FLUX.2); opt-in, necesita GPU.',details:['Alimenta el nodo 95-image de la caminata.']},
-      {id:'cdn',x:952,y:230,w:200,kind:'produccion',lane:'green',label:'CDN / publico',summary:'publicar empuja el snapshot construido a Cloudflare Pages (elcensuradoweb.com).',details:['Este salto es la unica decision humana explicita del ciclo.']},
-      {id:'telegram',x:316,y:430,w:190,kind:'opt-in',lane:'faint',label:'bridge/telegram',summary:'El puente de bot opt-in corre en su propio contenedor aislado.',details:['Deja dar ordenes desde Telegram sin acoplar el stack.']},
-      {id:'official-source',x:616,y:440,w:200,kind:'opt-in',lane:'faint',label:'official-source',summary:'La automatizacion de fuentes oficiales, opt-in y aislada (n8n, diferida).',details:['Diseno solamente por ahora.']}
+      {id:'operator',x:44,y:230,w:190,kind:'human',lane:'steel',label:'Operator',summary:'Gives the order (WhatsApp, Telegram, CLI app or remote) and optionally approves before publishing.',details:['The human decides the what and approves in the preview; the final publicar is always theirs.']},
+      {id:'agent',x:316,y:230,w:190,kind:'any model',lane:'red',label:'Agent / CLI',summary:'Any model in any CLI. It uses a single tool: the censurado verbs.',details:['<code>python3 cli/censurado.py &lt;verb&gt;</code> is its entire surface.','It does not run the model inside the stack; the stack gives it the verbs.']},
+      {id:'publish',x:616,y:64,w:200,kind:'127.0.0.1:8082',lane:'steel',label:'publish',summary:'The backend: sqlite store + the ONLY writer + serves the admin panel.',details:['Append-only publish API, JSON read API and media store.','It is the only process that writes to the database.','Source: <a href="https://github.com/hec-ovi/censurado-web-brain/blob/main/docker-compose.yml" target="_blank" rel="noopener">docker-compose.yml</a>']},
+      {id:'generate',x:616,y:154,w:200,kind:'watcher',lane:'steel',label:'generate',summary:'Watches the DB and rebuilds the static site incrementally.',details:['Content-addressed permalinks: <code>/a/&lt;slug&gt;-&lt;hash8&gt;/</code>.','JSON shards and a surgical CDN-purge manifest.']},
+      {id:'site',x:616,y:244,w:200,kind:'single port',lane:'steel',label:'site',summary:'Serves the local portal; the only exposed port of the group.',details:['What the human sees in the local preview comes from here.']},
+      {id:'comfyui',x:616,y:334,w:200,kind:'GPU opt-in',lane:'gold',label:'comfyui',summary:'The hero image line (FLUX.2); opt-in, needs a GPU.',details:['It feeds the 95-image node of the walk.']},
+      {id:'cdn',x:952,y:230,w:200,kind:'production',lane:'green',label:'CDN / public',summary:'publicar pushes the built snapshot to Cloudflare Pages (elcensuradoweb.com).',details:['This jump is the only explicit human decision of the cycle.','Source: <a href="https://github.com/hec-ovi/censurado-web-brain/blob/main/deploy/deploy-cdn.sh" target="_blank" rel="noopener">deploy/deploy-cdn.sh</a>']},
+      {id:'telegram',x:316,y:430,w:190,kind:'opt-in',lane:'faint',label:'bridge/telegram',summary:'The opt-in bot bridge runs in its own isolated container.',details:['It lets you give orders from Telegram without coupling the stack.']},
+      {id:'official-source',x:616,y:440,w:200,kind:'opt-in',lane:'faint',label:'official-source',summary:'The official-source automation, opt-in and isolated (n8n, deferred).',details:['Design only for now.']}
     ],
     edges:[
       {from:'operator',to:'agent'},
-      {from:'agent',to:'publish',label:'verbos'},
+      {from:'agent',to:'publish',label:'verbs'},
       {from:'publish',to:'generate',label:'watch DB'},
       {from:'generate',to:'site'},
       {from:'comfyui',to:'publish',type:'media',label:'hero'},
@@ -524,14 +697,14 @@ a.ocard{transition:transform .15s ease, border-color .15s ease, background .15s 
     ]
   };
   function arText(){
-    return '<p class="lede"><strong>De la orden al portal.</strong> El humano da la orden y opcionalmente aprueba; el agente usa un solo tool (los verbos de censurado); un grupo Docker corre el cerebro y el backend 24/7; <code>publicar</code> empuja el snapshot a Cloudflare Pages.</p>'
-      +'<div class="doc-section"><div class="ds-head"><h3>Las cuatro compose services</h3></div><div class="cardgrid">'
-      +el.card({label:'publish',tag:'backend',color:LANE.steel,sum:'El sqlite store + el <b>unico</b> escritor + sirve el panel admin. <code>127.0.0.1:8082</code>.'})
-      +el.card({label:'generate',tag:'watcher',color:LANE.steel,sum:'Vigila la DB y reconstruye el sitio incrementalmente: permalinks <code>/a/&lt;slug&gt;-&lt;hash8&gt;/</code>, shards JSON y un manifiesto de purga de CDN.'})
-      +el.card({label:'site',tag:'portal',color:LANE.steel,sum:'Sirve el portal local; el <b>unico</b> puerto expuesto.'})
-      +el.card({label:'comfyui',tag:'imagen',color:LANE.gold,sum:'La linea de imagen de portada; opt-in, necesita GPU.'})
+    return '<p class="lede"><strong>From the order to the portal.</strong> The human gives the order and optionally approves; the agent uses a single tool (the censurado verbs); a Docker group runs the brain and the backend 24/7; <code>publicar</code> pushes the snapshot to Cloudflare Pages.</p>'
+      +'<div class="doc-section"><div class="ds-head"><h3>The four compose services</h3></div><div class="cardgrid">'
+      +el.card({label:'publish',tag:'backend',color:LANE.steel,sum:'The sqlite store + the <b>only</b> writer + serves the admin panel. <code>127.0.0.1:8082</code>.'})
+      +el.card({label:'generate',tag:'watcher',color:LANE.steel,sum:'Watches the DB and rebuilds the site incrementally: permalinks <code>/a/&lt;slug&gt;-&lt;hash8&gt;/</code>, JSON shards and a CDN-purge manifest.'})
+      +el.card({label:'site',tag:'portal',color:LANE.steel,sum:'Serves the local portal; the <b>only</b> exposed port.'})
+      +el.card({label:'comfyui',tag:'image',color:LANE.gold,sum:'The hero image line; opt-in, needs a GPU.'})
       +'</div>'
-      +'<div class="callout"><b>Opt-in aislados.</b> El bridge de Telegram y la automatizacion de fuentes oficiales corren cada uno en su propio contenedor aislado. <b>publicar</b> a Cloudflare Pages (elcensuradoweb.com) es una decision humana separada.</div>'
+      +'<div class="callout"><b>Isolated opt-ins.</b> The Telegram bridge and the official-source automation each run in their own isolated container. <b>publicar</b> to Cloudflare Pages (elcensuradoweb.com) is a separate human decision. Source: <a href="https://github.com/hec-ovi/censurado-web-brain/blob/main/docker-compose.yml" target="_blank" rel="noopener">docker-compose.yml</a>, <a href="https://github.com/hec-ovi/censurado-web-brain/blob/main/deploy/deploy-cdn.sh" target="_blank" rel="noopener">deploy/deploy-cdn.sh</a>.</div>'
       +'</div>';
   }
 
@@ -539,11 +712,11 @@ a.ocard{transition:transform .15s ease, border-color .15s ease, background .15s 
   var coMap={
     legend:[{c:'red',t:'brain (recipe)'},{c:'steel',t:'backend (store)'},{c:'green',t:'web (generator)'},{c:'violet',t:'schemas'}],
     nodes:[
-      {id:'brain',x:56,y:70,w:230,kind:'recipe',lane:'red',label:'censurado-web-brain',summary:'La receta agentica: la CLI y los prompts. No guarda datos ni corre modelo.',details:['Habla con el backend por la API HTTP (Seam B).']},
-      {id:'backend',x:56,y:250,w:230,kind:'store',lane:'steel',label:'censurado-web-backend',summary:'El sqlite store, el unico escritor, la publish/read API y el media store.',details:['Expone Seam B hacia arriba y produce la forma de datos que consume el generador (Seam A).']},
-      {id:'web',x:56,y:430,w:230,kind:'generator',lane:'green',label:'censurado-web',summary:'El generador de sitio estatico y el frontend publico (elcensuradoweb.com).',details:['Importa la forma de datos Go: Seam A.']},
-      {id:'schemas',x:430,y:200,w:220,kind:'json-schema',lane:'violet',label:'schemas · drift tests',summary:'article / authors / batch-* / shard.schema.json espejan structs Go y modelos Pydantic; los drift tests los mantienen byte-equal.',details:['<code>article.schema.json</code>','<code>authors.schema.json</code> (forma de escritura del upsert de autor)','<code>batch-*.schema.json</code>','<code>shard.schema.json</code> (18 claves, incluye <code>section_label</code>)']},
-      {id:'content-hash',x:430,y:410,w:220,kind:'sha-256',lane:'gold',label:'content-addressing',summary:'content_hash = SHA-256 sobre title|body|author|section.',details:['Un re-publish recomputa el hash pero preserva <code>slug</code> + <code>created_at</code>, asi que los permalinks son estables.']}
+      {id:'brain',x:56,y:70,w:230,kind:'recipe',lane:'red',label:'censurado-web-brain',summary:'The agentic recipe: the CLI and the prompts. It stores no data and runs no model.',details:['It talks to the backend over the HTTP API (Seam B).','Source: <a href="https://github.com/hec-ovi/censurado-web-brain" target="_blank" rel="noopener">censurado-web-brain</a>']},
+      {id:'backend',x:56,y:250,w:230,kind:'store',lane:'steel',label:'censurado-web-backend',summary:'The sqlite store, the only writer, the publish/read API and the media store.',details:['It exposes Seam B upward and produces the data shape the generator consumes (Seam A).','Source: <a href="https://github.com/hec-ovi/censurado-web-backend" target="_blank" rel="noopener">censurado-web-backend</a>']},
+      {id:'web',x:56,y:430,w:230,kind:'generator',lane:'green',label:'censurado-web',summary:'The static-site generator and the public frontend (elcensuradoweb.com).',details:['It imports the Go data shape: Seam A.','Source: <a href="https://github.com/hec-ovi/censurado-web" target="_blank" rel="noopener">censurado-web</a>']},
+      {id:'schemas',x:430,y:200,w:220,kind:'json-schema',lane:'violet',label:'schemas · drift tests',summary:'article / authors / batch-* / shard.schema.json mirror Go structs and Pydantic models; the drift tests keep them byte-equal.',details:['<code>article.schema.json</code>','<code>authors.schema.json</code> (write shape of the author upsert)','<code>batch-*.schema.json</code>','<code>shard.schema.json</code> (18 keys, includes <code>section_label</code>)','Source: <a href="https://github.com/hec-ovi/censurado-web-backend/blob/main/contracts/article.schema.json" target="_blank" rel="noopener">contracts/article.schema.json</a>']},
+      {id:'content-hash',x:430,y:410,w:220,kind:'sha-256',lane:'gold',label:'content-addressing',summary:'content_hash = SHA-256 over title|body|author|section.',details:['A re-publish recomputes the hash but preserves <code>slug</code> + <code>created_at</code>, so the permalinks are stable.','Source: <a href="https://github.com/hec-ovi/censurado-web-brain/blob/main/newsroom/contracts/hashing.py" target="_blank" rel="noopener">newsroom/contracts/hashing.py</a>']}
     ],
     edges:[
       {from:'brain',to:'backend',type:'seam',label:'Seam B · HTTP'},
@@ -554,11 +727,12 @@ a.ocard{transition:transform .15s ease, border-color .15s ease, background .15s 
   };
   var articleShape='{\n  "title": "El Senado sanciona la reforma en particular",\n  "body": "...markdown, sin enlaces en el cuerpo...",\n  "author": "marta-rios",\n  "section": "politica",\n  "topics": ["senado", "reforma", "congreso"],\n  "published_at": "2026-07-08T14:20:00Z",\n  "metadata": {\n    "description": "La camara alta aprobo el texto tras doce horas de debate y giro la ley a promulgacion.",\n    "image": "media/hero/a1b2c3d4.webp",\n    "image_alt": "Recinto del Senado durante la votacion",\n    "image_caption": "La votacion en particular, articulo por articulo.",\n    "image_credit": "Censurado / FLUX.2",\n    "card": { "type": "standard", "importante": false }\n  }\n}';
   function coText(){
-    return '<p class="lede"><strong>Dos costuras congeladas</strong> mantienen los tres repos en sincronia. <b>Seam A</b> es la forma de datos Go que el generador importa. <b>Seam B</b> es la API HTTP de publish/read. Contratos JSON-Schema espejan los structs Go y los modelos Pydantic, y los drift tests los mantienen byte-equal.</p>'
-      +'<div class="doc-section"><div class="ds-head"><h3>Los schemas</h3></div>'
+    return '<p class="lede"><strong>Two frozen seams</strong> keep the three repos in sync. <b>Seam A</b> is the Go data shape the generator imports. <b>Seam B</b> is the publish/read HTTP API. JSON-Schema contracts mirror the Go structs and the Pydantic models, and the drift tests keep them byte-equal.</p>'
+      +'<div class="doc-section"><div class="ds-head"><h3>The schemas</h3></div>'
       +el.chips(['article.schema.json','authors.schema.json','batch-*.schema.json','shard.schema.json'])
-      +'<div class="callout"><b>shard.schema.json</b> tiene 18 claves, incluida <code>section_label</code>. <b>authors.schema.json</b> es la forma de escritura del upsert de autor.</div></div>'
-      +'<div class="doc-section"><div class="ds-head"><h3>Direccionamiento por contenido</h3><p class="ds-sub">content_hash = SHA-256 sobre <code>title|body|author|section</code>. Un re-publish recomputa el hash pero preserva slug + created_at, asi los permalinks son estables.</p></div>'
+      +'<div class="callout"><b>shard.schema.json</b> has 18 keys, including <code>section_label</code>. <b>authors.schema.json</b> is the write shape of the author upsert.</div>'
+      +'<p class="ds-sub">Source: <a href="https://github.com/hec-ovi/censurado-web-backend/blob/main/contracts/article.schema.json" target="_blank" rel="noopener">contracts/article.schema.json</a>, <a href="https://github.com/hec-ovi/censurado-web-backend/blob/main/contracts/authors.schema.json" target="_blank" rel="noopener">contracts/authors.schema.json</a>, <a href="https://github.com/hec-ovi/censurado-web/blob/main/contracts/shard.schema.json" target="_blank" rel="noopener">contracts/shard.schema.json</a>, <a href="https://github.com/hec-ovi/censurado-web-brain/blob/main/newsroom/contracts/author.py" target="_blank" rel="noopener">newsroom/contracts/author.py</a>. Editorial contracts: <a href="https://github.com/hec-ovi/censurado-web-brain/blob/main/EDITORIAL-RULES.md" target="_blank" rel="noopener">EDITORIAL-RULES.md</a>, <a href="https://github.com/hec-ovi/censurado-web-brain/blob/main/prompts/editorial/style.md" target="_blank" rel="noopener">prompts/editorial/style.md</a>.</p></div>'
+      +'<div class="doc-section"><div class="ds-head"><h3>Content addressing</h3><p class="ds-sub">content_hash = SHA-256 over <code>title|body|author|section</code>. A re-publish recomputes the hash but preserves slug + created_at, so the permalinks are stable.</p></div>'
       +'<span class="grouplbl">article write shape</span>'+el.json(articleShape)+'</div>';
   }
 
@@ -570,61 +744,61 @@ a.ocard{transition:transform .15s ease, border-color .15s ease, background .15s 
   var cliMap={
     legend:[{c:'red',t:'WRITE'},{c:'steel',t:'CURATE'},{c:'green',t:'OPERATE'},{c:'violet',t:'censurado-brain'}],
     nodes:[
-      {id:'cli',x:56,y:230,w:230,kind:'superficie',lane:'red',label:'censurado.py <verb>',summary:'Toda la superficie del agente. Los verbos construyen el JSON estricto, asi el agente nunca arma la request a mano.',details:['<code>python3 cli/censurado.py &lt;verb&gt;</code>']},
-      {id:'WRITE',x:420,y:60,w:200,kind:'grupo',lane:'red',label:'WRITE',summary:'Verbos que escriben o publican.',details:['<code>'+WRITE.join('</code> <code>')+'</code>']},
-      {id:'CURATE',x:420,y:200,w:200,kind:'grupo',lane:'steel',label:'CURATE',summary:'Verbos que curan el portal, autores, fuentes y prompts.',details:['<code>'+CURATE.join('</code> <code>')+'</code>']},
-      {id:'OPERATE',x:420,y:340,w:200,kind:'grupo',lane:'green',label:'OPERATE',summary:'Caminar un modo y revisar salud.',details:['<code>'+OPERATE.join('</code> <code>')+'</code>']},
-      {id:'brain',x:420,y:460,w:200,kind:'CLI aparte',lane:'violet',label:'censurado-brain',summary:'La CLI de mantenimiento, separada de la del agente.',details:['<code>status</code>','<code>normalize check | links | sections</code>','<code>topics cleanse</code>','<code>embeds recheck</code>']}
+      {id:'cli',x:56,y:230,w:230,kind:'surface',lane:'red',label:'censurado.py <verb>',summary:'The entire surface of the agent. The verbs build the strict JSON, so the agent never assembles the request by hand.',details:['<code>python3 cli/censurado.py &lt;verb&gt;</code>','Source: <a href="https://github.com/hec-ovi/censurado-web-brain/blob/main/cli/censurado.py" target="_blank" rel="noopener">cli/censurado.py</a>, <a href="https://github.com/hec-ovi/censurado-web-brain/blob/main/cli/SKILL.md" target="_blank" rel="noopener">cli/SKILL.md</a>']},
+      {id:'WRITE',x:420,y:60,w:200,kind:'group',lane:'red',label:'WRITE',summary:'Verbs that write or publish.',details:['<code>'+WRITE.join('</code> <code>')+'</code>']},
+      {id:'CURATE',x:420,y:200,w:200,kind:'group',lane:'steel',label:'CURATE',summary:'Verbs that curate the portal, authors, sources and prompts.',details:['<code>'+CURATE.join('</code> <code>')+'</code>']},
+      {id:'OPERATE',x:420,y:340,w:200,kind:'group',lane:'green',label:'OPERATE',summary:'Walk a mode and check health.',details:['<code>'+OPERATE.join('</code> <code>')+'</code>']},
+      {id:'brain',x:420,y:460,w:200,kind:'separate CLI',lane:'violet',label:'censurado-brain',summary:'The maintenance CLI, separate from the agent one.',details:['<code>status</code>','<code>normalize check | links | sections</code>','<code>topics cleanse</code>','<code>embeds recheck</code>','Source: <a href="https://github.com/hec-ovi/censurado-web-brain/blob/main/newsroom/cli.py" target="_blank" rel="noopener">newsroom/cli.py</a>, <a href="https://github.com/hec-ovi/censurado-web-brain/blob/main/newsroom/normalize.py" target="_blank" rel="noopener">newsroom/normalize.py</a>']}
     ],
     edges:[
       {from:'cli',to:'WRITE'},{from:'cli',to:'CURATE'},{from:'cli',to:'OPERATE'},
-      {from:'cli',to:'brain',type:'seam',label:'aparte'}
+      {from:'cli',to:'brain',type:'seam',label:'separate'}
     ]
   };
   function cliText(){
-    return '<p class="lede"><strong>Toda la superficie del agente es <code>python3 cli/censurado.py &lt;verb&gt;</code>.</strong> Los verbos construyen el JSON estricto, asi el agente nunca arma una request a mano.</p>'
-      +'<div class="doc-section"><div class="ds-head"><h3>Verbos por grupo</h3></div>'
+    return '<p class="lede"><strong>The entire surface of the agent is <code>python3 cli/censurado.py &lt;verb&gt;</code>.</strong> The verbs build the strict JSON, so the agent never assembles a request by hand.</p>'
+      +'<div class="doc-section"><div class="ds-head"><h3>Verbs by group</h3></div>'
       +'<span class="grouplbl write">WRITE</span>'+el.chips(WRITE)
       +'<span class="grouplbl curate">CURATE</span>'+el.chips(CURATE)
       +'<span class="grouplbl operate">OPERATE</span>'+el.chips(OPERATE)
-      +'<span class="grouplbl brain">censurado-brain (CLI de mantenimiento)</span>'+el.chips(BRAIN)
-      +'<div class="callout"><b>step</b> camina un modo; <b>status</b> y <b>doctor</b> reportan salud. La CLI de mantenimiento <b>censurado-brain</b> es un binario aparte.</div></div>';
+      +'<span class="grouplbl brain">censurado-brain (maintenance CLI)</span>'+el.chips(BRAIN)
+      +'<div class="callout"><b>step</b> walks a mode; <b>status</b> and <b>doctor</b> report health. The maintenance CLI <b>censurado-brain</b> is a separate binary. Source: <a href="https://github.com/hec-ovi/censurado-web-brain/blob/main/cli/censurado.py" target="_blank" rel="noopener">cli/censurado.py</a>, <a href="https://github.com/hec-ovi/censurado-web-brain/blob/main/cli/SKILL.md" target="_blank" rel="noopener">cli/SKILL.md</a>, <a href="https://github.com/hec-ovi/censurado-web-brain/blob/main/newsroom/cli.py" target="_blank" rel="noopener">newsroom/cli.py</a>, <a href="https://github.com/hec-ovi/censurado-web-brain/blob/main/newsroom/normalize.py" target="_blank" rel="noopener">newsroom/normalize.py</a>.</div></div>';
   }
 
   // ------------------------------------------------------------- REPO TREE
   var treeRows=[
-    {d:0,n:'censurado-web-brain/',t:'dir'},
-    {d:1,n:'cli/',t:'dir'},
-    {d:2,n:'censurado.py',t:'file',c:'la CLI del agente'},
-    {d:2,n:'SKILL.md',t:'file',c:'la skill resolvedora'},
-    {d:2,n:'skills/',t:'dir',c:'las sub-skills gruesas'},
-    {d:2,n:'workflow/',t:'dir'},
-    {d:3,n:'parameters.json',t:'file',c:'los pisos numericos'},
-    {d:2,n:'templates/',t:'dir',c:'el grafo de ComfyUI'},
-    {d:1,n:'prompts/',t:'dir'},
-    {d:2,n:'workflow/',t:'dir',c:'los nodos del step-gate + manifest.json'},
-    {d:2,n:'editorial/style.md',t:'file'},
-    {d:2,n:'persona/synthesize.md',t:'file'},
-    {d:1,n:'newsroom/',t:'dir',c:'la CLI de mantenimiento + los contratos aislados'},
-    {d:1,n:'bridge/telegram/',t:'dir',c:'el puente de bot opt-in'},
-    {d:1,n:'automation/official-source/',t:'dir',c:'solo diseno, diferido, n8n'},
-    {d:1,n:'docker-compose.yml',t:'file'},
-    {d:1,n:'EDITORIAL-RULES.md',t:'file'},
-    {d:1,n:'deploy/',t:'dir'},
-    {d:2,n:'deploy-cdn.sh',t:'file'}
+    {d:0,n:'censurado-web-brain/',t:'dir',href:'https://github.com/hec-ovi/censurado-web-brain'},
+    {d:1,n:'cli/',t:'dir',href:'https://github.com/hec-ovi/censurado-web-brain/tree/main/cli'},
+    {d:2,n:'censurado.py',t:'file',c:'the agent CLI',href:'https://github.com/hec-ovi/censurado-web-brain/blob/main/cli/censurado.py'},
+    {d:2,n:'SKILL.md',t:'file',c:'the resolver skill',href:'https://github.com/hec-ovi/censurado-web-brain/blob/main/cli/SKILL.md'},
+    {d:2,n:'skills/',t:'dir',c:'the thick sub-skills',href:'https://github.com/hec-ovi/censurado-web-brain/tree/main/cli/skills'},
+    {d:2,n:'workflow/',t:'dir',href:'https://github.com/hec-ovi/censurado-web-brain/tree/main/cli/workflow'},
+    {d:3,n:'parameters.json',t:'file',c:'the numeric floors',href:'https://github.com/hec-ovi/censurado-web-brain/blob/main/cli/workflow/parameters.json'},
+    {d:2,n:'templates/',t:'dir',c:'the ComfyUI graph',href:'https://github.com/hec-ovi/censurado-web-brain/tree/main/cli/templates'},
+    {d:1,n:'prompts/',t:'dir',href:'https://github.com/hec-ovi/censurado-web-brain/tree/main/prompts'},
+    {d:2,n:'workflow/',t:'dir',c:'the step-gate nodes + manifest.json',href:'https://github.com/hec-ovi/censurado-web-brain/tree/main/prompts/workflow'},
+    {d:2,n:'editorial/style.md',t:'file',href:'https://github.com/hec-ovi/censurado-web-brain/blob/main/prompts/editorial/style.md'},
+    {d:2,n:'persona/synthesize.md',t:'file',href:'https://github.com/hec-ovi/censurado-web-brain/blob/main/prompts/persona/synthesize.md'},
+    {d:1,n:'newsroom/',t:'dir',c:'the maintenance CLI + the isolated contracts',href:'https://github.com/hec-ovi/censurado-web-brain/tree/main/newsroom'},
+    {d:1,n:'bridge/telegram/',t:'dir',c:'the opt-in bot bridge',href:'https://github.com/hec-ovi/censurado-web-brain/tree/main/bridge/telegram'},
+    {d:1,n:'automation/official-source/',t:'dir',c:'design only, deferred, n8n',href:'https://github.com/hec-ovi/censurado-web-brain/tree/main/automation/official-source'},
+    {d:1,n:'docker-compose.yml',t:'file',href:'https://github.com/hec-ovi/censurado-web-brain/blob/main/docker-compose.yml'},
+    {d:1,n:'EDITORIAL-RULES.md',t:'file',href:'https://github.com/hec-ovi/censurado-web-brain/blob/main/EDITORIAL-RULES.md'},
+    {d:1,n:'deploy/',t:'dir',href:'https://github.com/hec-ovi/censurado-web-brain/tree/main/deploy'},
+    {d:2,n:'deploy-cdn.sh',t:'file',href:'https://github.com/hec-ovi/censurado-web-brain/blob/main/deploy/deploy-cdn.sh'}
   ];
   var treeMap={
-    legend:[{c:'red',t:'repo raiz'},{c:'steel',t:'directorio'},{c:'gold',t:'archivo'}],
+    legend:[{c:'red',t:'repo root'},{c:'steel',t:'directory'},{c:'gold',t:'file'}],
     nodes:[
-      {id:'root',x:44,y:270,w:210,kind:'repo',lane:'red',label:'censurado-web-brain/',summary:'La receta agentica. Sin datos, sin modelo. Carga el docker-compose.',details:['Todo lo que camina el agente vive aqui.']},
-      {id:'cli/',x:360,y:24,w:210,kind:'dir',lane:'steel',label:'cli/',summary:'censurado.py, SKILL.md, skills/, workflow/parameters.json, templates/.',details:['<code>censurado.py</code>: la CLI del agente.','<code>SKILL.md</code>: la skill resolvedora.','<code>workflow/parameters.json</code>: los pisos numericos.','<code>templates/</code>: el grafo de ComfyUI.']},
-      {id:'prompts/',x:360,y:102,w:210,kind:'dir',lane:'steel',label:'prompts/',summary:'workflow/ (step-gate + manifest.json), editorial/style.md, persona/synthesize.md.',details:['Los nodos del workflow y su manifest viven aqui.']},
-      {id:'newsroom/',x:360,y:180,w:210,kind:'dir',lane:'steel',label:'newsroom/',summary:'La CLI de mantenimiento (censurado-brain) + los contratos aislados.',details:['Aqui viven los JSON-Schema y los drift tests.']},
-      {id:'bridge/telegram/',x:360,y:258,w:210,kind:'dir',lane:'steel',label:'bridge/telegram/',summary:'El puente de bot opt-in.',details:['Contenedor aislado.']},
-      {id:'automation/official-source/',x:360,y:336,w:230,kind:'dir',lane:'steel',label:'automation/official-source/',summary:'Solo diseno, diferido, n8n.',details:['Auto-ingestion de gacetillas oficiales, aun sin implementar.']},
-      {id:'docker-compose.yml',x:360,y:414,w:210,kind:'file',lane:'gold',label:'docker-compose.yml',summary:'Define los servicios publish / generate / site / comfyui.',details:['El brain carga este compose.']},
-      {id:'EDITORIAL-RULES.md',x:360,y:492,w:210,kind:'file',lane:'gold',label:'EDITORIAL-RULES.md',summary:'Las reglas editoriales de la casa.',details:['Acentos, titulos honestos, cross-sourcing, cero clichés.']},
-      {id:'deploy/',x:360,y:570,w:210,kind:'dir',lane:'steel',label:'deploy/',summary:'deploy-cdn.sh: el empuje a Cloudflare Pages.',details:['<code>deploy/deploy-cdn.sh</code>']}
+      {id:'root',x:44,y:270,w:210,kind:'repo',lane:'red',label:'censurado-web-brain/',summary:'The agentic recipe. No data, no model. It loads the docker-compose.',details:['Everything the agent walks lives here.','Source: <a href="https://github.com/hec-ovi/censurado-web-brain" target="_blank" rel="noopener">censurado-web-brain</a>']},
+      {id:'cli/',x:360,y:24,w:210,kind:'dir',lane:'steel',label:'cli/',summary:'censurado.py, SKILL.md, skills/, workflow/parameters.json, templates/.',details:['<code>censurado.py</code>: the agent CLI.','<code>SKILL.md</code>: the resolver skill.','<code>workflow/parameters.json</code>: the numeric floors.','<code>templates/</code>: the ComfyUI graph.','Source: <a href="https://github.com/hec-ovi/censurado-web-brain/tree/main/cli" target="_blank" rel="noopener">cli/</a>']},
+      {id:'prompts/',x:360,y:102,w:210,kind:'dir',lane:'steel',label:'prompts/',summary:'workflow/ (step-gate + manifest.json), editorial/style.md, persona/synthesize.md.',details:['The workflow nodes and their manifest live here.','Source: <a href="https://github.com/hec-ovi/censurado-web-brain/tree/main/prompts" target="_blank" rel="noopener">prompts/</a>']},
+      {id:'newsroom/',x:360,y:180,w:210,kind:'dir',lane:'steel',label:'newsroom/',summary:'The maintenance CLI (censurado-brain) + the isolated contracts.',details:['The JSON-Schema and the drift tests live here.','Source: <a href="https://github.com/hec-ovi/censurado-web-brain/tree/main/newsroom" target="_blank" rel="noopener">newsroom/</a>']},
+      {id:'bridge/telegram/',x:360,y:258,w:210,kind:'dir',lane:'steel',label:'bridge/telegram/',summary:'The opt-in bot bridge.',details:['Isolated container.','Source: <a href="https://github.com/hec-ovi/censurado-web-brain/tree/main/bridge/telegram" target="_blank" rel="noopener">bridge/telegram/</a>']},
+      {id:'automation/official-source/',x:360,y:336,w:230,kind:'dir',lane:'steel',label:'automation/official-source/',summary:'Design only, deferred, n8n.',details:['Auto-ingestion of official press releases, not yet implemented.','Source: <a href="https://github.com/hec-ovi/censurado-web-brain/tree/main/automation/official-source" target="_blank" rel="noopener">automation/official-source/</a>']},
+      {id:'docker-compose.yml',x:360,y:414,w:210,kind:'file',lane:'gold',label:'docker-compose.yml',summary:'Defines the publish / generate / site / comfyui services.',details:['The brain loads this compose.','Source: <a href="https://github.com/hec-ovi/censurado-web-brain/blob/main/docker-compose.yml" target="_blank" rel="noopener">docker-compose.yml</a>']},
+      {id:'EDITORIAL-RULES.md',x:360,y:492,w:210,kind:'file',lane:'gold',label:'EDITORIAL-RULES.md',summary:'The house editorial rules.',details:['Accents, honest titles, cross-sourcing, zero clichés.','Source: <a href="https://github.com/hec-ovi/censurado-web-brain/blob/main/EDITORIAL-RULES.md" target="_blank" rel="noopener">EDITORIAL-RULES.md</a>']},
+      {id:'deploy/',x:360,y:570,w:210,kind:'dir',lane:'steel',label:'deploy/',summary:'deploy-cdn.sh: the push to Cloudflare Pages.',details:['<code>deploy/deploy-cdn.sh</code>','Source: <a href="https://github.com/hec-ovi/censurado-web-brain/tree/main/deploy" target="_blank" rel="noopener">deploy/</a>']}
     ],
     edges:[
       {from:'root',to:'cli/'},{from:'root',to:'prompts/'},{from:'root',to:'newsroom/'},
@@ -639,58 +813,60 @@ a.ocard{transition:transform .15s ease, border-color .15s ease, background .15s 
       var guide=r.d>0?'<span class="tguide">'+(r.last?'&#9492;&#9472; ':'&#9500;&#9472; ')+'</span>':'';
       var cls=r.t==='dir'?'tdir':'tfile';
       var com=r.c?('   <span class="tcom"># '+r.c+'</span>'):'';
-      return '<div class="trow">'+indent+guide+'<span class="'+cls+'">'+esc(r.n)+'</span>'+com+'</div>';
+      var name='<span class="'+cls+'">'+esc(r.n)+'</span>';
+      if(r.href) name='<a href="'+r.href+'" target="_blank" rel="noopener">'+name+'</a>';
+      return '<div class="trow">'+indent+guide+name+com+'</div>';
     }).join('');
-    return '<p class="lede"><strong>El layout del brain.</strong> El repo lleva la CLI, los prompts, los contratos aislados, los puentes opt-in y el compose. No guarda datos ni corre modelo.</p>'
-      +'<div class="doc-section"><div class="ds-head"><h3>Arbol del repositorio</h3></div><div class="tree">'+rows+'</div></div>';
+    return '<p class="lede"><strong>The layout of the brain.</strong> The repo carries the CLI, the prompts, the isolated contracts, the opt-in bridges and the compose. It stores no data and runs no model.</p>'
+      +'<div class="doc-section"><div class="ds-head"><h3>Repository tree</h3></div><div class="tree">'+rows+'</div></div>';
   }
 
   // ------------------------------------------------------------- OVERVIEW
   var ovMap={
-    legend:[{c:'steel',t:'operador'},{c:'red',t:'agente + recipe'},{c:'steel',t:'backend'},{c:'green',t:'generador / publico'}],
+    legend:[{c:'steel',t:'operator'},{c:'red',t:'agent + recipe'},{c:'steel',t:'backend'},{c:'green',t:'generator / public'}],
     nodes:[
-      {id:'operator',x:44,y:250,w:180,kind:'humano',lane:'steel',label:'Operador',summary:'Da la orden y aprueba en el preview.',details:['WhatsApp, Telegram, CLI o remoto.']},
-      {id:'agent',x:280,y:250,w:190,kind:'cualquier CLI',lane:'red',label:'Agente / CLI',summary:'Cualquier modelo. Usa los verbos de censurado.',details:['<code>python3 cli/censurado.py &lt;verb&gt;</code>']},
-      {id:'brain',x:540,y:90,w:200,kind:'recipe',lane:'red',label:'brain (recipe)',summary:'censurado-web-brain: la CLI + los prompts + el compose. Sin datos, sin modelo.',details:['Declara la caminata que el agente recorre.']},
-      {id:'backend',x:540,y:250,w:200,kind:'store',lane:'steel',label:'backend (store)',summary:'censurado-web-backend: sqlite, el unico escritor, publish/read API, media, panel admin.',details:['La unica fuente de escritura del sistema.']},
-      {id:'web',x:540,y:410,w:200,kind:'generator',lane:'green',label:'web (generator)',summary:'censurado-web: genera el sitio estatico y sirve el frontend publico.',details:['Reconstruye incrementalmente desde la DB.']},
-      {id:'publico',x:820,y:250,w:200,kind:'produccion',lane:'green',label:'elcensuradoweb.com',summary:'El portal en vivo, en Cloudflare Pages.',details:['publicar empuja el snapshot aqui.']}
+      {id:'operator',x:44,y:250,w:180,kind:'human',lane:'steel',label:'Operator',summary:'Gives the order and approves in the preview.',details:['WhatsApp, Telegram, CLI or remote.']},
+      {id:'agent',x:280,y:250,w:190,kind:'any CLI',lane:'red',label:'Agent / CLI',summary:'Any model. It uses the censurado verbs.',details:['<code>python3 cli/censurado.py &lt;verb&gt;</code>']},
+      {id:'brain',x:540,y:90,w:200,kind:'recipe',lane:'red',label:'brain (recipe)',summary:'censurado-web-brain: the CLI + the prompts + the compose. No data, no model.',details:['It declares the walk the agent runs.','Source: <a href="https://github.com/hec-ovi/censurado-web-brain" target="_blank" rel="noopener">censurado-web-brain</a>']},
+      {id:'backend',x:540,y:250,w:200,kind:'store',lane:'steel',label:'backend (store)',summary:'censurado-web-backend: sqlite, the only writer, publish/read API, media, admin panel.',details:['The only write source of the system.','Source: <a href="https://github.com/hec-ovi/censurado-web-backend" target="_blank" rel="noopener">censurado-web-backend</a>']},
+      {id:'web',x:540,y:410,w:200,kind:'generator',lane:'green',label:'web (generator)',summary:'censurado-web: generates the static site and serves the public frontend.',details:['It rebuilds incrementally from the DB.','Source: <a href="https://github.com/hec-ovi/censurado-web" target="_blank" rel="noopener">censurado-web</a>']},
+      {id:'publico',x:820,y:250,w:200,kind:'production',lane:'green',label:'elcensuradoweb.com',summary:'The live portal, on Cloudflare Pages.',details:['publicar pushes the snapshot here.']}
     ],
     edges:[
-      {from:'operator',to:'agent'},{from:'agent',to:'brain'},{from:'agent',to:'backend',label:'verbos'},
+      {from:'operator',to:'agent'},{from:'agent',to:'brain'},{from:'agent',to:'backend',label:'verbs'},
       {from:'backend',to:'web',type:'seam',label:'Seam A'},{from:'web',to:'publico',type:'gated',label:'publicar'}
     ]
   };
   function ovText(){
     var cards=[
-      ['workflow','The workflow','La compuerta editorial: 13 nodos que el agente camina de a uno.',LANE.red],
-      ['modes','Modes','Mismo motor, distintas listas de nodos: articulo, institucional, batch, mantenimiento.',LANE.steel],
-      ['multiagent','Multi-agent','Un equipo: editor, writers en paralelo y portada.',LANE.violet],
-      ['architecture','Architecture','De la orden al portal: operador, agente, Docker y CDN.',LANE.steel],
-      ['contracts','Contracts','Las dos costuras congeladas y el direccionamiento por contenido.',LANE.gold],
-      ['cli','CLI verbs','La superficie del agente: WRITE, CURATE, OPERATE.',LANE.green],
-      ['tree','Repo tree','El layout del brain: cli, prompts, newsroom, bridges y compose.',LANE.steel]
+      ['workflow','The workflow','The editorial gate: 13 nodes the agent walks one at a time.',LANE.red],
+      ['modes','Modes','Same engine, different node lists: article, institucional, batch, maintenance.',LANE.steel],
+      ['multiagent','Multi-agent','A team: editor, writers in parallel and portada.',LANE.violet],
+      ['architecture','Architecture','From the order to the portal: operator, agent, Docker and CDN.',LANE.steel],
+      ['contracts','Contracts','The two frozen seams and content addressing.',LANE.gold],
+      ['cli','CLI verbs','The agent surface: WRITE, CURATE, OPERATE.',LANE.green],
+      ['tree','Repo tree','The layout of the brain: cli, prompts, newsroom, bridges and compose.',LANE.steel]
     ].map(function(c){
-      return '<a class="ocard" href="#" data-goto="'+c[0]+'"><span class="otop"><span class="dot" style="background:'+c[3]+'"></span><span class="otitle">'+c[1]+'</span></span><span class="odesc">'+c[2]+'</span><span class="ogo">Abrir &rarr;</span></a>';
+      return '<a class="ocard" href="#" data-goto="'+c[0]+'"><span class="otop"><span class="dot" style="background:'+c[3]+'"></span><span class="otitle">'+c[1]+'</span></span><span class="odesc">'+c[2]+'</span><span class="ogo">Open &rarr;</span></a>';
     }).join('');
-    return '<p class="lede"><strong>Censurado es un portal de noticias de IA autohospedado</strong> donde un agente LLM (cualquier modelo, en cualquier CLI) escribe, ilustra y publica articulos de autores-persona a traves de una caminata editorial con compuertas. Tres repos: '
-      +'<code>censurado-web-brain</code> (la receta agentica: la CLI + los prompts; no guarda datos, no corre modelo; lleva el docker-compose), '
-      +'<code>censurado-web-backend</code> (el sqlite store, el unico escritor, la publish API append-only, la read API JSON, el media store y el panel de admin) y '
-      +'<code>censurado-web</code> (el generador de sitio estatico y el frontend publico, en <a href="https://elcensuradoweb.com" target="_blank" rel="noopener">elcensuradoweb.com</a>). '
-      +'Toda la superficie del agente es <code>python3 cli/censurado.py &lt;verb&gt;</code>.</p>'
-      +'<div class="doc-section"><div class="ds-head"><h3>Recorre las secciones</h3></div><div class="overviewGrid">'+cards+'</div></div>';
+    return '<p class="lede"><strong>Censurado is a self-hosted AI news portal</strong> where an LLM agent (any model, in any CLI) writes, illustrates and publishes articles by persona authors through a gated editorial walk. Three repos: '
+      +'<a href="https://github.com/hec-ovi/censurado-web-brain" target="_blank" rel="noopener"><code>censurado-web-brain</code></a> (the agentic recipe: the CLI + the prompts; it stores no data and runs no model; it carries the docker-compose), '
+      +'<a href="https://github.com/hec-ovi/censurado-web-backend" target="_blank" rel="noopener"><code>censurado-web-backend</code></a> (the sqlite store, the only writer, the append-only publish API, the JSON read API, the media store and the admin panel) and '
+      +'<a href="https://github.com/hec-ovi/censurado-web" target="_blank" rel="noopener"><code>censurado-web</code></a> (the static-site generator and the public frontend, at <a href="https://elcensuradoweb.com" target="_blank" rel="noopener">elcensuradoweb.com</a>). '
+      +'The entire surface of the agent is <code>python3 cli/censurado.py &lt;verb&gt;</code>.</p>'
+      +'<div class="doc-section"><div class="ds-head"><h3>Browse the sections</h3></div><div class="overviewGrid">'+cards+'</div></div>';
   }
 
   // ------------------------------------------------------------- SECTIONS registry
   var SECTIONS=[
-    {id:'overview',label:'Overview',dot:'var(--red)',sub:'Que es Censurado y los tres repos.',map:ovMap,text:ovText,defaultMode:'text'},
-    {id:'workflow',label:'The workflow',dot:'var(--red)',star:true,sub:'La compuerta editorial: 13 nodos, sin saltos.',mapNodes:WF,mapEdges:wfEdges,mapLegend:[{c:'steel',t:'research / process'},{c:'red',t:'write / assemble'},{c:'gold',t:'gate / image'},{c:'violet',t:'loop (respin)'},{c:'faint',t:'gated (publicar)'}],text:wfText,defaultMode:'text'},
-    {id:'modes',label:'Modes',dot:'var(--steel)',sub:'Mismo engine, distinta lista de nodos.',map:modesMap,text:modesText,defaultMode:'text'},
-    {id:'multiagent',label:'Multi-agent',dot:'var(--violet)',sub:'Editor, writers en paralelo, portada.',map:maMap,text:maText,defaultMode:'map'},
-    {id:'architecture',label:'Architecture',dot:'var(--steel)',sub:'Operador, agente, Docker, CDN.',map:arMap,text:arText,defaultMode:'map'},
-    {id:'contracts',label:'Contracts',dot:'var(--gold)',sub:'Las dos costuras congeladas.',map:coMap,text:coText,defaultMode:'text'},
-    {id:'cli',label:'CLI verbs',dot:'var(--green)',sub:'La superficie del agente.',map:cliMap,text:cliText,defaultMode:'text'},
-    {id:'tree',label:'Repo tree',dot:'var(--steel)',sub:'El layout del brain.',map:treeMap,text:treeText,defaultMode:'text'}
+    {id:'overview',label:'Overview',dot:'var(--red)',sub:'What Censurado is and the three repos.',map:ovMap,text:ovText,defaultMode:'text'},
+    {id:'workflow',label:'The workflow',dot:'var(--red)',star:true,sub:'The editorial gate: 13 nodes, no skips.',mapNodes:WF,mapEdges:wfEdges,mapLegend:[{c:'steel',t:'research / process'},{c:'red',t:'write / assemble'},{c:'gold',t:'gate / image'},{c:'violet',t:'loop (respin)'},{c:'faint',t:'gated (publicar)'}],text:wfText,defaultMode:'text'},
+    {id:'modes',label:'Modes',dot:'var(--steel)',sub:'Same engine, different node list.',map:modesMap,text:modesText,defaultMode:'text'},
+    {id:'multiagent',label:'Multi-agent',dot:'var(--violet)',sub:'Editor, writers in parallel, portada.',map:maMap,text:maText,defaultMode:'map'},
+    {id:'architecture',label:'Architecture',dot:'var(--steel)',sub:'Operator, agent, Docker, CDN.',map:arMap,text:arText,defaultMode:'map'},
+    {id:'contracts',label:'Contracts',dot:'var(--gold)',sub:'The two frozen seams.',map:coMap,text:coText,defaultMode:'text'},
+    {id:'cli',label:'CLI verbs',dot:'var(--green)',sub:'The agent surface.',map:cliMap,text:cliText,defaultMode:'text'},
+    {id:'tree',label:'Repo tree',dot:'var(--steel)',sub:'The layout of the brain.',map:treeMap,text:treeText,defaultMode:'text'}
   ];
   var SEC_BY_ID={};
   SECTIONS.forEach(function(s){
@@ -704,7 +880,7 @@ a.ocard{transition:transform .15s ease, border-color .15s ease, background .15s 
 
   // Sub-items for nav
   function subItemsOf(sec){
-    if(sec.id==='workflow'){ return WF.map(function(n){return {label:n.id,anchor:'c-workflow-'+n.id};}); }
+    if(sec.id==='workflow'){ return WF.map(function(n){return {label:n.id,step:n.id};}); }
     if(sec.map&&sec.map.nodes){ return sec.map.nodes.slice(0,8).map(function(n){return {label:n.label,node:n.id};}); }
     return [];
   }
@@ -718,9 +894,6 @@ a.ocard{transition:transform .15s ease, border-color .15s ease, background .15s 
   var crumbSub=document.getElementById('crumbSub');
   var mMap=document.getElementById('mMap');
   var mText=document.getElementById('mText');
-  var panel=document.getElementById('panel');
-  var pbody=document.getElementById('pbody');
-  var pclose=document.getElementById('pclose');
 
   var state={section:'overview',mode:'text'};
 
@@ -736,7 +909,7 @@ a.ocard{transition:transform .15s ease, border-color .15s ease, background .15s 
       btn.setAttribute('aria-expanded','false');
       btn.innerHTML='<span class="dot" style="background:'+sec.dot+'"></span>'
         +'<span class="nsecLabel">'+esc(sec.label)+'</span>'
-        +(sec.star?'<span class="star" title="seccion estrella">&#9733;</span>':'')
+        +(sec.star?'<span class="star" title="featured section">&#9733;</span>':'')
         +'<span class="caret">&#9656;</span>';
       wrap.appendChild(btn);
 
@@ -750,15 +923,12 @@ a.ocard{transition:transform .15s ease, border-color .15s ease, background .15s 
         sb.addEventListener('click',function(e){
           e.stopPropagation();
           selectSection(sec.id);
-          if(si.anchor){
-            setMode('text');
-            requestAnimationFrame(function(){
-              var t=document.getElementById(si.anchor);
-              if(t){ t.scrollIntoView({block:'center'}); t.style.outline='2px solid var(--red)'; setTimeout(function(){t.style.outline='';},1200); }
-            });
+          if(si.step){
+            var sn=wfById(si.step);
+            if(sn) openNodeDetail(sn,sec);
           } else if(si.node){
-            setMode('map');
-            requestAnimationFrame(function(){ var n=nodeById(sec,si.node); if(n) openPanel(n); });
+            var n=nodeById(sec,si.node);
+            if(n) openNodeDetail(n,sec);
           }
         });
         li.appendChild(sb); ul.appendChild(li);
@@ -801,7 +971,6 @@ a.ocard{transition:transform .15s ease, border-color .15s ease, background .15s 
     crumbTitle.innerHTML=esc(sec.label)+(sec.star?' <span class="star">&#9733;</span>':'');
     crumbSub.textContent=sec.sub||'';
     syncNav();
-    closePanel();
     if(first){ state.mode=sec.defaultMode||'text'; }
     setMode(state.mode);
   }
@@ -811,7 +980,7 @@ a.ocard{transition:transform .15s ease, border-color .15s ease, background .15s 
      ===================================================================== */
   function renderStage(){
     var sec=SEC_BY_ID[state.section];
-    closePanel();
+    state.step=null;
     if(state.mode==='map' && sec.map && sec.map.nodes && sec.map.nodes.length){
       renderMap(sec);
     } else {
@@ -829,6 +998,13 @@ a.ocard{transition:transform .15s ease, border-color .15s ease, background .15s 
         a.addEventListener('click',function(e){ e.preventDefault(); selectSection(a.getAttribute('data-goto')); });
       })(links[i]);
     }
+    // wire workflow "Open step" buttons
+    var steps=stage.querySelectorAll('.openStepBtn[data-step]');
+    for(var s=0;s<steps.length;s++){
+      (function(b){
+        b.addEventListener('click',function(){ var n=wfById(b.getAttribute('data-step')); if(n) openNodeDetail(n,SEC_BY_ID.workflow); });
+      })(steps[s]);
+    }
   }
 
   /* ---------- map ---------- */
@@ -842,29 +1018,46 @@ a.ocard{transition:transform .15s ease, border-color .15s ease, background .15s 
     return out;
   }
 
-  function ports(n){
-    var w=n.w||NODE_W, h=n.h||NODE_H;
-    return {
-      r:{x:n.x+w,y:n.y+h/2}, l:{x:n.x,y:n.y+h/2},
-      t:{x:n.x+w/2,y:n.y}, b:{x:n.x+w/2,y:n.y+h},
-      cx:n.x+w/2, cy:n.y+h/2, w:w, h:h
-    };
-  }
-  function edgePath(a,b,type){
-    var pa=ports(a), pb=ports(b);
-    if(type==='loop'){
-      var s=pa.l, t=pb.t;
-      if(pb.cx>pa.cx){ s=pa.t; t=pb.l; var dx=Math.max(40,(t.x-s.x)/2); return 'M'+s.x+','+s.y+' C'+(s.x)+','+(s.y-40)+' '+(t.x-dx)+','+t.y+' '+t.x+','+t.y; }
-      return 'M'+s.x+','+s.y+' C'+(s.x-70)+','+s.y+' '+t.x+','+(t.y-70)+' '+t.x+','+t.y;
+  // Universal, geometry-driven edge router used by EVERY section.
+  // It picks A's exit port and B's entry port on the sides that face each
+  // other (horizontal when |dx|>=|dy|, else vertical), then draws a cubic
+  // bezier that leaves A and arrives at B perpendicular to those faces.
+  // The path's first point sits exactly on A's boundary and its last point
+  // on B's boundary, so the marker-end arrowhead lands on B's face.
+  // `off` shifts the ports along the chosen side (fraction of the side
+  // length) so a bidirectional pair (e.g. 60-evaluate <-> 70-respin) draws
+  // as two separated arcs instead of one overlapping corridor.
+  var BIDIR_OFF=0.26;
+  function fmt(v){ return Math.round(v*100)/100; }
+  function edgeGeom(a,b,off){
+    off=off||0;
+    var wa=a.w||NODE_W, ha=a.h||NODE_H, wb=b.w||NODE_W, hb=b.h||NODE_H;
+    var acx=a.x+wa/2, acy=a.y+ha/2, bcx=b.x+wb/2, bcy=b.y+hb/2;
+    var dx=bcx-acx, dy=bcy-acy;
+    var K=0.42, MIN=42;
+    var sx,sy,ex,ey,c1x,c1y,c2x,c2y;
+    if(Math.abs(dx)>=Math.abs(dy)){
+      var right=dx>=0;
+      sx=right?a.x+wa:a.x;   ex=right?b.x:b.x+wb;
+      sy=acy+off*ha;         ey=bcy+off*hb;
+      var cd=Math.max(MIN,Math.abs(ex-sx)*K), sg=right?1:-1;
+      c1x=sx+sg*cd; c1y=sy;  c2x=ex-sg*cd; c2y=ey;
+    } else {
+      var down=dy>=0;
+      sy=down?a.y+ha:a.y;    ey=down?b.y:b.y+hb;
+      sx=acx+off*wa;         ex=bcx+off*wb;
+      var cd2=Math.max(MIN,Math.abs(ey-sy)*K), sg2=down?1:-1;
+      c1x=sx; c1y=sy+sg2*cd2; c2x=ex; c2y=ey-sg2*cd2;
     }
-    if(pb.cx>=pa.cx){
-      var s2=pa.r, t2=pb.l, d2=Math.max(42,(t2.x-s2.x)/2);
-      return 'M'+s2.x+','+s2.y+' C'+(s2.x+d2)+','+s2.y+' '+(t2.x-d2)+','+t2.y+' '+t2.x+','+t2.y;
-    }
-    var s3=pa.b, t3=pb.b, dy=70;
-    return 'M'+s3.x+','+s3.y+' C'+s3.x+','+(s3.y+dy)+' '+t3.x+','+(t3.y+dy)+' '+t3.x+','+t3.y;
+    return {sx:sx,sy:sy,ex:ex,ey:ey,c1x:c1x,c1y:c1y,c2x:c2x,c2y:c2y};
   }
-  function midPoint(a,b){ var pa=ports(a),pb=ports(b); return {x:(pa.cx+pb.cx)/2,y:(pa.cy+pb.cy)/2}; }
+  function edgePath(g){
+    return 'M'+fmt(g.sx)+','+fmt(g.sy)+' C'+fmt(g.c1x)+','+fmt(g.c1y)+' '+fmt(g.c2x)+','+fmt(g.c2y)+' '+fmt(g.ex)+','+fmt(g.ey);
+  }
+  function bezMid(g){
+    return {x:0.125*g.sx+0.375*g.c1x+0.375*g.c2x+0.125*g.ex,
+            y:0.125*g.sy+0.375*g.c1y+0.375*g.c2y+0.125*g.ey};
+  }
 
   function renderMap(sec){
     var data=sec.map;
@@ -877,17 +1070,22 @@ a.ocard{transition:transform .15s ease, border-color .15s ease, background .15s 
         +'<text class="grpLabel" x="'+(g.x+14)+'" y="'+(g.y+22)+'">'+esc(g.label)+'</text>';
     }).join('');
 
+    var edgeSet={};
+    data.edges.forEach(function(e){ edgeSet[e.from+' '+e.to]=true; });
     var edgesSvg=data.edges.map(function(e){
       var a=nodeById(sec,e.from), b=nodeById(sec,e.to);
       if(!a||!b) return '';
       var cfg=EDGE[e.type||'flow']||EDGE.flow;
-      var d=edgePath(a,b,e.type||'flow');
-      var path='<path class="edge" d="'+d+'" style="stroke:'+cfg.stroke+(cfg.dash?';stroke-dasharray:'+cfg.dash:'')+'" marker-end="url(#'+cfg.m+')"></path>';
+      var off=0;
+      if(edgeSet[e.to+' '+e.from]){ off=(String(e.from)<String(e.to))?BIDIR_OFF:-BIDIR_OFF; }
+      var g=edgeGeom(a,b,off);
+      var d=edgePath(g);
+      var path='<path class="edge" data-from="'+esc(e.from)+'" data-to="'+esc(e.to)+'" d="'+d+'" style="stroke:'+cfg.stroke+(cfg.dash?';stroke-dasharray:'+cfg.dash:'')+'" marker-end="url(#'+cfg.m+')"></path>';
       var lbl='';
       if(e.label){
-        var m=midPoint(a,b);
+        var m=bezMid(g);
         var tw=e.label.length*6.1+10;
-        lbl='<g transform="translate('+m.x+','+m.y+')"><rect class="elabel-bg" x="'+(-tw/2)+'" y="-9" width="'+tw+'" height="16" rx="4"></rect>'
+        lbl='<g transform="translate('+fmt(m.x)+','+fmt(m.y)+')"><rect class="elabel-bg" x="'+(-tw/2)+'" y="-9" width="'+tw+'" height="16" rx="4"></rect>'
           +'<text class="elabel" x="0" y="2" text-anchor="middle">'+esc(e.label)+'</text></g>';
       }
       return path+lbl;
@@ -906,13 +1104,13 @@ a.ocard{transition:transform .15s ease, border-color .15s ease, background .15s 
 
     stage.innerHTML=
       '<div class="mapWrap">'
-      +'<svg id="atlas" role="img" aria-label="Mapa de '+esc(sec.label)+'">'
+      +'<svg id="atlas" role="img" aria-label="Map of '+esc(sec.label)+'">'
       +markerDefs()
       +'<g id="viewport">'+groupsSvg+edgesSvg+nodesSvg+'</g>'
       +'</svg></div>'
-      +'<div class="legend"><div class="lgttl">Leyenda</div>'+legend+'</div>'
+      +'<div class="legend"><div class="lgttl">Legend</div>'+legend+'</div>'
       +'<div class="mapctl"><button type="button" id="btnFit">Fit</button><button type="button" id="btnReset">Reset</button></div>'
-      +'<div class="hint">arrastra para moverte &middot; rueda para zoom</div>';
+      +'<div class="hint">drag to move &middot; wheel to zoom</div>';
 
     wireMap(sec);
   }
@@ -983,27 +1181,107 @@ a.ocard{transition:transform .15s ease, border-color .15s ease, background .15s 
     for(var i=0;i<nodeEls.length;i++){
       (function(g){
         var id=g.getAttribute('data-id');
-        g.addEventListener('click',function(){ if(moved) return; var n=nodeById(sec,id); if(n) openPanel(n); });
-        g.addEventListener('keydown',function(e){ if(e.key==='Enter'||e.key===' '){ e.preventDefault(); var n=nodeById(sec,id); if(n) openPanel(n); } });
+        g.addEventListener('click',function(){ if(moved) return; var n=nodeById(sec,id); if(n) openNodeDetail(n,sec); });
+        g.addEventListener('keydown',function(e){ if(e.key==='Enter'||e.key===' '){ e.preventDefault(); var n=nodeById(sec,id); if(n) openNodeDetail(n,sec); } });
       })(nodeEls[i]);
     }
 
     requestAnimationFrame(fit);
   }
 
-  /* ---------- panel ---------- */
-  function openPanel(node){
-    pbody.innerHTML=
-      '<div class="pkind" style="color:'+LANE[node.lane]+'">'+esc(node.kind||'')+'</div>'
-      +'<h3 class="ptitle">'+esc(node.label||node.id)+'</h3>'
-      +'<p class="psum">'+(node.summary||'')+'</p>'
-      +(node.details&&node.details.length?('<ul class="pdetails">'+node.details.map(function(d){return '<li>'+d+'</li>';}).join('')+'</ul>'):'');
-    panel.classList.add('open');
-    panel.setAttribute('aria-hidden','false');
+  /* ---------- node detail (full-screen, section-aware) ----------
+     One mechanism for EVERY section. A node click opens a full-screen
+     detail with an explicit "Back to <Section>" control that returns to
+     that section's current overview (its Map or Text), the section still
+     selected in the nav and the breadcrumb still on it. Workflow keeps its
+     rich What / Inputs / Outputs / gate / Prev-Next content; other sections
+     render from the node's own summary + details (which carry the Source
+     link). Escape and the topbar Map/Text toggle also return to the
+     overview, and selecting another section always lands on its overview. */
+  function wfIndex(id){ for(var i=0;i<WF.length;i++){ if(WF[i].id===id) return i; } return -1; }
+  function wfById(id){ var i=wfIndex(id); return i>=0?WF[i]:null; }
+  function gateLabelFor(node){
+    if(node.id==='60-evaluate'||node.id==='publicar') return 'The gate';
+    if(node.id==='70-respin') return 'The loop';
+    return 'The rule';
   }
-  function closePanel(){ panel.classList.remove('open'); panel.setAttribute('aria-hidden','true'); }
-  pclose.addEventListener('click',closePanel);
-  document.addEventListener('keydown',function(e){ if(e.key==='Escape') closePanel(); });
+  function exitDetail(){ state.step=null; renderStage(); }
+  function stepChip(dir,node){
+    return '<button type="button" class="stepChip '+dir+'" data-step="'+esc(node.id)+'" aria-label="'+(dir==='prev'?'Previous':'Next')+' step '+esc(node.id)+'">'
+      +(dir==='prev'?'<span class="scDir">&lsaquo; Prev</span>':'')
+      +'<span class="scId">'+esc(node.id)+'</span>'
+      +(dir==='next'?'<span class="scDir">Next &rsaquo;</span>':'')
+      +'</button>';
+  }
+  function workflowStepBody(node,laneColor){
+    var i=wfIndex(node.id);
+    var prev=i>0?WF[i-1]:null;
+    var next=(i>=0&&i<WF.length-1)?WF[i+1]:null;
+    var glabel=gateLabelFor(node);
+    var nav='<div class="stepNav" aria-label="Adjacent steps">'
+      +(prev?stepChip('prev',prev):'<span class="stepChip disabled">Start of the walk</span>')
+      +(next?stepChip('next',next):'<span class="stepChip disabled">End of the walk</span>')
+      +'</div>';
+    var what='<div class="doc-section"><div class="ds-head"><span class="eyebrow-s">What it does</span><h3>'+esc(node.name||node.id)+'</h3></div>'
+      +'<p class="stepProse">'+(node.what||node.summary||'')+'</p>'
+      +(node.code?('<pre class="jsonbox"><code>'+node.code+'</code></pre>'):'')
+      +'</div>';
+    var io='<div class="doc-section"><div class="ds-head"><h3>Inputs and outputs</h3></div><div class="cardgrid">'
+      +el.card({label:'Inputs',tag:'consumes',color:laneColor,extra:(node.inputs&&node.inputs.length?el.chips(node.inputs,true):'<div class="sum">None; it opens the walk.</div>')})
+      +el.card({label:'Outputs',tag:'produces',color:laneColor,extra:(node.outputs&&node.outputs.length?el.chips(node.outputs):'<div class="sum">No new artifact.</div>')})
+      +'</div></div>';
+    var gate=node.gate?('<div class="doc-section gateSection"><div class="ds-head"><h3>'+esc(glabel)+'</h3></div>'+node.gate+'</div>'):'';
+    var walk='<div class="stepWalk">'
+      +(prev?'<span class="chip mut">'+esc(prev.id)+'</span>':'<span class="chip mut">start</span>')
+      +' &rarr; <span class="chip cur">'+esc(node.id)+'</span> &rarr; '
+      +(next?'<span class="chip mut">'+esc(next.id)+'</span>':'<span class="chip mut">end</span>')
+      +'</div>';
+    var sits='<div class="doc-section"><div class="ds-head"><h3>Where it sits</h3></div>'
+      +walk
+      +'<div class="row"><span class="lbl">modes</span></div>'
+      +el.chips(node.modes&&node.modes.length?node.modes:['(standalone)'],true)
+      +'</div>';
+    var src='<div class="callout">Source: <a href="https://github.com/hec-ovi/censurado-web-brain/blob/main/prompts/workflow/'+esc(node.id)+'.md" target="_blank" rel="noopener">prompts/workflow/'+esc(node.id)+'.md</a></div>';
+    return nav+what+io+gate+sits+src;
+  }
+  function genericNodeBody(node){
+    var sum='<div class="doc-section"><div class="ds-head"><span class="eyebrow-s">Summary</span><h3>'+esc(node.label||node.id)+'</h3></div>'
+      +'<p class="stepProse">'+(node.summary||'')+'</p></div>';
+    var det='';
+    if(node.details&&node.details.length){
+      det='<div class="doc-section"><div class="ds-head"><h3>Details</h3></div>'
+        +'<ul class="stepList">'+node.details.map(function(d){return '<li>'+d+'</li>';}).join('')+'</ul></div>';
+    }
+    return sum+det;
+  }
+  function openNodeDetail(node,sec){
+    if(!node||!stage||!sec) return;
+    state.step=node.id;
+    var laneColor=LANE[node.lane]||'var(--red)';
+    var isWf=(sec.id==='workflow');
+    var head='<div class="stepHead">'
+      +'<button type="button" class="stepBack" aria-label="Back to '+esc(sec.label)+'">&larr; Back to '+esc(sec.label)+'</button>'
+      +'<div class="stepHeadText"><span class="stepEyebrow">'+esc(isWf?node.id:sec.label)+'</span>'
+      +'<h2 class="stepTitle">'+esc(isWf?(node.name||node.id):(node.label||node.id))+'</h2></div>'
+      +'<span class="stepPill" style="color:'+laneColor+';border-color:'+laneColor+'">'+esc(node.kind||'')+'</span>'
+      +'</div>';
+    var body=isWf?workflowStepBody(node,laneColor):genericNodeBody(node);
+    stage.innerHTML='<div class="stepWrap"><div class="stepDetail" role="region" aria-label="Detail '+esc(node.id)+'">'
+      +head+body+'</div></div>';
+
+    var back=stage.querySelector('.stepBack');
+    if(back) back.addEventListener('click',exitDetail);
+    var chips=stage.querySelectorAll('.stepChip[data-step]');
+    for(var j=0;j<chips.length;j++){
+      (function(b){ b.addEventListener('click',function(){ var t=wfById(b.getAttribute('data-step')); if(t) openNodeDetail(t,sec); }); })(chips[j]);
+    }
+    if(back){ try{ back.focus({preventScroll:true}); }catch(_){ back.focus(); } }
+  }
+
+  document.addEventListener('keydown',function(e){
+    if(e.key!=='Escape') return;
+    if(stage && stage.querySelector('.stepDetail')){ exitDetail(); }
+  });
 
   /* ---------- resize: refit map ---------- */
   var rt=null;

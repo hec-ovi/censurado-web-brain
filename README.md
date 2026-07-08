@@ -10,6 +10,14 @@
   <img src="https://img.shields.io/badge/License-MIT-blue" alt="License" />
 </p>
 
+<h2 align="center">
+  <a href="https://hec-ovi.github.io/censurado-web-brain/">📖 Read the interactive docs →</a>
+</h2>
+
+<p align="center">
+  <a href="https://hec-ovi.github.io/censurado-web-brain/"><img src="https://img.shields.io/badge/docs-live-e01842?style=for-the-badge&logo=github&logoColor=white" alt="Read the interactive docs" /></a>
+</p>
+
 ---
 
 ## What this is
