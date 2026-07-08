@@ -5,7 +5,7 @@ description = "The Censurado agentic newsroom: a CLI plus a prompt recipe that d
 readme = "README.md"
 requires-python = ">=3.11"
 license = { text = "MIT" }
-authors = [{ name = "Hector Oviedo" }]
+authors = [{ name = "Censurado" }]
 dependencies = [
     "httpx>=0.27",
     "pydantic>=2.7",
