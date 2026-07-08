@@ -1071,6 +1071,15 @@ def cmd_create_author(a):
     handle, body = _persona_json_to_author_input(payload)
     if not handle:
         fail('could not derive a handle: give an explicit "id", or a non-empty "display_name".')
+    # The walk needs the author's language to load the right per-language editorial anchors
+    # (`editorial-rules <language>`). synthesize.md solicits it as required; if a JSON omits it,
+    # default to Spanish (the live language) and say so, so an author is never languageless.
+    meta = body.setdefault("metadata", {})
+    if not meta.get("language"):
+        meta["language"] = "es"
+        sys.stderr.write("note: the persona JSON had no `language`; defaulting to \"es\". Set it "
+                         "explicitly (synthesize solicits it) so the walk loads the right "
+                         "per-language editorial rules.\n")
     st, rb = api("POST", "/authors", body)
     sys.stdout.write(rb.decode("utf-8", "replace") + "\n")
     sys.stderr.write(f"create-author {handle} -> HTTP {st}\n")
@@ -1212,6 +1221,101 @@ def cmd_style(a):
              f"prompt file in the recipe; check this repo's prompts/ dir (or set "
              f"CENSURADO_PROMPTS_DIR).")
     sys.stdout.write(_read_file(path, "the editorial style guide").rstrip() + "\n")
+    return 0
+
+
+def _editorial_rows(lang):
+    """The editorial-config catalog for a language as a {key: value} map, read from the
+    backend editorial_text scope (GET /editorial-text?lang=<lang>). The values are plain
+    text or JSON-encoded (a list or an object); the caller decodes per key. An empty map
+    means no anchors are seeded for that language yet."""
+    st, body = api("GET", "/editorial-text?lang=" + urllib.parse.quote(lang))
+    if st != 200:
+        fail(f"cannot read the editorial catalog (GET /editorial-text HTTP {st}). Is the backend "
+             f"up at {PUBLISH} and the operator token valid?")
+    entries = _json(body, "the editorial-text response", want=dict).get("entries", [])
+    return {e.get("key"): e.get("value", "") for e in entries
+            if isinstance(e, dict) and e.get("key")}
+
+
+def _decode_json(v, want):
+    """Decode a JSON-encoded editorial value to `want` (list or dict), or an empty one on
+    any parse/type mismatch, so a hand-edited row never crashes the render."""
+    try:
+        val = json.loads(v)
+    except (json.JSONDecodeError, TypeError):
+        return want()
+    return val if isinstance(val, want) else want()
+
+
+def render_editorial_rules(lang, rows):
+    """Render the per-language editorial anchors into a readable block the walk applies:
+    the banned lexicon and swaps, the orthography charset + examples, the slop phrases and
+    candor tics to avoid, and the plain-text attribution and satire-disclaimer exemplars.
+    The `bot.directive` row (the Telegram bridge's directive) is intentionally not shown:
+    it is not an article-writing anchor. Only the keys present are printed, so a partial
+    catalog renders cleanly."""
+    lines = [f"EDITORIAL ANCHORS for language: {lang}",
+             "(the language-specific list the workflow applies; the rules themselves stay in "
+             "the prompt nodes. Re-run this verb whenever you need the exact list.)", ""]
+    bans = _decode_json(rows.get("lexicon.bans", ""), list)
+    if bans:
+        lines.append("Banned words (never use): " + ", ".join(str(b) for b in bans))
+    swaps = _decode_json(rows.get("lexicon.swaps", ""), dict)
+    if swaps:
+        lines.append("Preferred swaps: " + ", ".join(f"{k} -> {v}" for k, v in swaps.items()))
+    slop = _decode_json(rows.get("slop.phrases", ""), list)
+    if slop:
+        lines.append("Slop phrases to avoid: " + ", ".join(f'"{p}"' for p in slop))
+    tics = _decode_json(rows.get("slop.candor_tics", ""), list)
+    if tics:
+        lines.append("Candor tics to avoid: " + ", ".join(f'"{p}"' for p in tics))
+    charset = rows.get("orthography.charset", "")
+    ex = _decode_json(rows.get("orthography.examples", ""), dict)
+    if charset or ex:
+        ortho = "Orthography: " + charset
+        if ex:
+            ortho += " (e.g. " + ", ".join(f"{k} -> {v}" for k, v in ex.items()) + ")"
+        lines.append(ortho)
+    attr = rows.get("attribution.example", "")
+    if attr:
+        lines.append(f'Attribution: name every source as plain text, e.g. "{attr}", never as a link.')
+    disc = rows.get("disclaimer.satire", "")
+    if disc:
+        lines.append(f"Satire/opinion/fiction disclaimer: ONE italic line, e.g. {disc}")
+    return "\n".join(lines) + "\n"
+
+
+def cmd_editorial_rules(a):
+    """Read the newsroom's per-language editorial anchors from the backend (the operator-
+    editable editorial catalog): the banned lexicon and preferred swaps, the orthography
+    charset + worked examples, the slop phrases and candor tics to avoid, and the plain-text
+    attribution and satire-disclaimer exemplars for a language. The workflow prompts state
+    the language-agnostic RULES; this verb supplies the language-SPECIFIC list they apply.
+    Run it once you know your author's `language` (from `persona <id>`), and re-run it any
+    time you need the exact list. The anchors are DB rows, not hardcoded, so a new language
+    is added by seeding/translating its rows, never by editing the prompts.
+
+    With --bot-directive it prints ONLY the Telegram bot's response directive (the
+    `bot.directive` row): the register the bridge prepends so the agent answers in the portal's
+    voice. That prints nothing (exit 0) when the row is absent, so the bridge falls back to its
+    built-in default. The bridge calls it with the flag at startup and caches the result."""
+    rows = _editorial_rows(a.lang)
+    if getattr(a, "bot_directive", False):
+        directive = rows.get("bot.directive", "").strip()
+        if directive:
+            sys.stdout.write(directive + "\n")
+        return 0
+    # bot.directive is a bridge concern, not a writing anchor (render_editorial_rules skips it), so
+    # it does not count toward "this language has anchors" (a language may be seeded for the bot
+    # before its writing anchors exist).
+    if not any(k != "bot.directive" for k in rows):
+        sys.stderr.write(
+            f"no editorial anchors are seeded for language {a.lang!r}. The prompt nodes still carry "
+            f"the language-agnostic rules, so proceed; ask the operator to seed or translate this "
+            f"language's editorial rows in the backend so its specific lexicon and orthography apply.\n")
+        return 0
+    sys.stdout.write(render_editorial_rules(a.lang, rows))
     return 0
 
 
@@ -1795,7 +1899,7 @@ def build_parser():
 
     im = sub.add_parser("image", help="render an art-directed FLUX.2 hero (ComfyUI) and upload it")
     im.add_argument("--prompt", required=True, help="the art-directed image prompt (see cli/skills/media/SKILL.md)")
-    im.add_argument("--alt", default="", help="short Spanish alt text for accessibility")
+    im.add_argument("--alt", default="", help="short alt text (in the author's language) for accessibility")
     im.add_argument("--seed", type=int, default=None, help="override the stable per-prompt seed")
     im.add_argument("--width", type=int, default=1344, help="wide landscape by default (~16:9); heroes read wide, not tall")
     im.add_argument("--height", type=int, default=768)
@@ -1889,8 +1993,18 @@ def build_parser():
     spp.set_defaults(fn=cmd_set_prompt)
 
     sy = sub.add_parser("style",
-                        help="read the editorial style guide (voice/lexicon/house rules); numbers live in parameters.json")
+                        help="read the editorial style guide (voice/house rules); the per-language "
+                             "lexicon/orthography live in `editorial-rules`, numbers in parameters.json")
     sy.set_defaults(fn=cmd_style)
+
+    er = sub.add_parser("editorial-rules",
+                        help="read a language's editorial anchors (banned lexicon/swaps, orthography, "
+                             "slop phrases, attribution/disclaimer exemplars) from the backend")
+    er.add_argument("lang", nargs="?", default="es",
+                    help="language code of the author you write as (its `language`); defaults to es")
+    er.add_argument("--bot-directive", dest="bot_directive", action="store_true",
+                    help="print ONLY the Telegram bot response directive (the bridge reads this)")
+    er.set_defaults(fn=cmd_editorial_rules)
 
     sfl = sub.add_parser("set-floor",
                          help="set the sourcing floor the walk enforces (MIN_SOURCES / MIN_PER_TYPE) in parameters.json")

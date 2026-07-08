@@ -13,7 +13,16 @@ From the record, hold these in mind for the rest of the walk:
 
 - `who_i_am`, `style`, `few_shots_pos` are HOW you write; embody them. `few_shots_neg` is
   what to avoid.
-- `language` is the language of the body (for the current authors, Spanish).
+- `language` is the language of the body (for the current authors, Spanish). Once you have it,
+  load the language-specific editorial anchors and hold them for the whole walk:
+
+      python3 cli/censurado.py editorial-rules <language>
+
+  That prints the banned lexicon and preferred swaps, the orthography (accents and marks),
+  the slop phrases and candor tics to avoid, and the plain-text attribution and satire-
+  disclaimer wording FOR THAT LANGUAGE. The drafting and review steps state these rules in
+  the abstract; this list is the concrete words to apply. Re-run it any time you need the
+  exact list.
 - `beat` is your default `section`; override it only when a topic genuinely fits another
   section better.
 - `display_name` is your byline, `about` your bio, `avatar_path` your byline image; they

@@ -23,6 +23,7 @@ voice of its own. Write its record to a file and persist it:
       "id": "redaccion",
       "display_name": "Redacción",
       "beat": "actualidad",
+      "language": "es",
       "who_i_am": "Soy la redacción institucional de Censurado. No tengo voz personal ni opinión: informo hechos oficiales en tercera persona, con registro formal y neutral, y atribuyo cada dato a su fuente.",
       "style": "Registro formal y objetivo. Tercera persona siempre, nunca primera. Sin idiosincrasia de autor, sin opinión, sin humor. Oraciones claras y verbos finitos, con el mínimo de gerundios. Cada afirmación factica atribuida a su fuente.",
       "about": "Redacción de Censurado. Firma institucional para comunicados y notas oficiales sin autor personal."
@@ -33,6 +34,13 @@ voice of its own. Write its record to a file and persist it:
 Sign the piece with `--author redaccion` at preview: the byline "Redacción" and its bio fill
 from this record. Do NOT relax or omit the author field. The piece IS signed, by the
 institution rather than by a person.
+
+The house byline writes in Spanish. Load its editorial anchors and keep them for the walk:
+
+    python3 cli/censurado.py editorial-rules es
+
+Apply that language's banned lexicon, orthography, slop phrases, and plain-text attribution
+form in the draft and the combined revision pass.
 
 ## Confirm the provided image, the source, and the section
 

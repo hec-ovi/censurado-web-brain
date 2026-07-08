@@ -11,9 +11,10 @@ dimensions PASS or REVISE, with a short, specific note on what to fix when it is
    under-represented, REVISE and name the under-sourced facts. Every NAMED media outlet is one of
    the author's ASSIGNED sources; a web-found outlet named in the prose (rather than reported
    through the primary actor) is a REVISE.
-2. **Accents and Spanish orthography.** Full accents (á, é, í, ó, ú, ü), the ñ, and the
-   opening marks ¿ and ¡ are all present and correct. Any stripped accent, missing ñ,
-   missing opening mark, or ASCII-only Spanish is a REVISE, listing the offending words.
+2. **Accents and orthography.** The full accents, opening marks, and special letters your
+   author's language requires (the charset and worked examples `editorial-rules` printed) are
+   present and correct throughout. Any stripped accent, missing mark, or ASCII-only spelling in
+   a language that needs them is a REVISE, listing the offending words.
 3. **Entities.** The proper-noun entities (people, organizations, places) are named
    correctly and will be tagged. A misnamed or untagged central entity is a REVISE.
 4. **Title and bajada.** The title is honest, objective, and informative: it is NO MORE THAN 5
@@ -28,11 +29,11 @@ dimensions PASS or REVISE, with a short, specific note on what to fix when it is
    filler, or a coasting layer is a REVISE, naming the slack passages.
 6. **Non-redundancy and slop.** No layer restates an earlier one, no repeated wording, and
    the close does not restate the opening. A politics-section piece is in the THIRD person (a
-   first-person "yo" in a politics piece is a REVISE), and gerunds (-ando / -iendo) are sparse,
-   with finite verbs preferred. No AI-slop tell survives: an em or en dash, a
-   "no es X, es Y" inversion or an aphorism built on a negation, a candor tic ("la verdad
-   es que", "seamos honestos"), three adjectives standing in for a fact, a thing (a market,
-   a law, a country) given feelings or will. Any of these is a REVISE.
+   first-person voice in a politics piece is a REVISE), and gerunds are sparse, with finite
+   verbs preferred. No AI-slop tell survives: an em or en dash, a negation-inversion aphorism
+   ("not X, but Y"), any of the candor tics or slop phrases `editorial-rules` lists for the
+   language, three adjectives standing in for a fact, a thing (a market, a law, a country)
+   given feelings or will. Any of these is a REVISE.
 
 Record the per-dimension verdict and the overall one: PASS only when every dimension
 passes. If the overall verdict is REVISE, the next step (respin) fixes it; you will run

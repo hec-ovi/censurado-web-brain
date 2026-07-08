@@ -102,11 +102,12 @@ def test_source_attribution_is_plain_text_with_no_body_links():
         assert "titled link" not in low, f"{node} still mandates a link format"
         assert "extremely relevant" not in low and "genuinely relevant" not in low, \
             f"{node} must not keep a link exception; links are banned outright"
-    # the editorial rules + style guide carry the same plain-text, no-links rule
+    # the editorial contract + style guide carry the same plain-text, no-links rule in English;
+    # the per-language attribution WORDING is deferred to the `editorial-rules` DB anchors.
     rules = " ".join((PROMPTS_DIR.parent / "EDITORIAL-RULES.md").read_text(encoding="utf-8").lower().split())
-    assert "texto plano" in rules and ("sin hipervinculos" in rules or "no pongas enlaces" in rules)
+    assert "plain text" in rules and "no links" in rules
     style = " ".join((PROMPTS_DIR / "editorial" / "style.md").read_text(encoding="utf-8").lower().split())
-    assert "texto plano" in style and "sin enlaces" in style
+    assert "plain text" in style and "no links" in style
 
 
 def test_named_outlets_must_be_assigned_only():
@@ -127,11 +128,44 @@ def test_named_outlets_must_be_assigned_only():
             assert needle in low, f"{node} must carry the assigned-only naming rule ({needle!r})"
         assert any(p in low for p in not_named), \
             f"{node} must say a non-assigned/web-found outlet is not named"
-    # The canonical Spanish rule lives in the editorial contract and the style guide.
+    # The same assigned-only rule lives in the editorial contract and the style guide (English now).
     rules = " ".join((PROMPTS_DIR.parent / "EDITORIAL-RULES.md").read_text(encoding="utf-8").lower().split())
-    assert "asignadas" in rules and "actores primarios" in rules
+    assert "assigned" in rules and "primary actor" in rules
     style = " ".join((PROMPTS_DIR / "editorial" / "style.md").read_text(encoding="utf-8").lower().split())
-    assert "asignada" in style and ("actor primario" in style or "actores primarios" in style)
+    assert "assigned" in style and "primary actor" in style
+
+
+def test_language_anchors_are_deferred_to_editorial_rules():
+    # The per-language anchors (banned lexicon, orthography, slop phrases, attribution and
+    # disclaimer wording) moved to the DB editorial catalog; each node states the language-
+    # agnostic RULE and points at `editorial-rules` for the concrete list, so a non-Spanish
+    # author gets its own anchors. Pin both halves: the pointer is present, and the old inline
+    # Spanish exemplars are gone from every workflow node.
+    assert "editorial-rules" in _flat("15-pick-author.md"), \
+        "15-pick-author must tell the walk to load the language anchors"
+    assert "editorial-rules" in _flat("10-institucional.md"), \
+        "the institucional lane (no 15-pick-author) must load the anchors itself"
+    for node in ("50-draft.md", "50-draft-institucional.md", "60-evaluate.md",
+                 "62-semantica-calidad.md", "85-accents-entities.md", "70-respin.md",
+                 "75-factcheck.md", "90-finalize.md"):
+        assert "editorial-rules" in _flat(node), f"{node} must defer to the editorial-rules anchors"
+    # The old inline Spanish exemplars now live in the DB, not the prompts. (This scans every
+    # node; the redaccion persona JSON in 10-institucional is legitimate Spanish DATA and carries
+    # none of these phrases.)
+    # Every category of removed exemplar: candor tics, slop phrases, the negation-inversion
+    # pattern, plain-text attribution wording, banned lexicon, lexicon-swap sources, the satire
+    # disclaimer, and the Spanish gerund suffixes. (All Spanish-specific; none appears in the
+    # legit redaccion persona JSON in 10-institucional, which is checked to stay clean.)
+    dead = ("la verdad es que", "seamos honestos", "hay que decirlo",
+            "en el mundo actual", "es importante notar", "no es x, es y",
+            "según x", "según la municipalidad", "según el comunicado",
+            "demoledor", "escandaloso", "sin precedentes", "fulminó", "castigó",
+            "cuentillo de ciencia", "-ando", "-iendo")
+    for node_path in sorted((PROMPTS_DIR / "workflow").glob("*.md")):
+        low = " ".join(node_path.read_text(encoding="utf-8").lower().split())
+        for phrase in dead:
+            assert phrase not in low, \
+                f"{node_path.name} still hardcodes the Spanish exemplar {phrase!r}; move it to editorial-rules"
 
 
 def test_loop_nodes_carry_global_spanish_format_rules():

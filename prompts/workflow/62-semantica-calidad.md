@@ -10,7 +10,8 @@ still fails.
 
 - **Accuracy against the sources.** Every factual claim matches the official source and the
   ledger line behind it: names, titles, offices, dates, and figures are exact and named as plain
-  text ("según X"), with no links in the body: remove every link (keep only its text). Correct any
+  text (use the attribution form `editorial-rules` printed), with no links in the body: remove
+  every link (keep only its text). Correct any
   claim that drifts from its source; cut any claim no ledger line supports. Name a media outlet
   only when it is one of the byline's ASSIGNED sources; a web-found outlet is never named. The
   house byline carries no assigned sources, so it names no medium, only the primary actor (the
@@ -19,7 +20,7 @@ still fails.
   that misstates what the source actually said. The reader must take away exactly what the
   official act means, no more and no less.
 - **Register holds.** The piece stays third person, objective, and neutral, with minimal
-  gerunds (rewrite `-ando` / `-iendo` to finite verbs). No opinion or slant crept in.
+  gerunds (rewrite them to finite verbs). No opinion or slant crept in.
 
 ## Improve the quality
 
@@ -28,9 +29,10 @@ still fails.
   subheading, a short list) without changing the meaning or adding a fact.
 - **No redundancy.** No layer restates an earlier one, no wording repeats, and the close does
   not restate the opening. Say each idea once.
-- **House format.** Full Spanish orthography: accents (á, é, í, ó, ú, ü), the ñ, and the
-  opening marks ¿ and ¡. Clean Markdown (well-formed headings, lists, and links; each widget
-  marker on its own line). No em or en dash, no vetoed words, no AI-slop tell.
+- **House format.** Full orthography for the author's language: the accents, marks, and letters
+  `editorial-rules` printed. Clean Markdown (well-formed headings, lists, and links; each widget
+  marker on its own line). No em or en dash, none of the banned lexicon `editorial-rules` lists,
+  no AI-slop tell.
 
 Add no new factual claim and no source outside the ledger. There is no length limit; shorten
 only by removing noise, never by dropping substance. When every check passes, the piece is

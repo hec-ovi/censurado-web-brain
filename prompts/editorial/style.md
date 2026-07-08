@@ -1,69 +1,75 @@
 # Editorial style guide
 
-The newsroom's qualitative voice, house rules, and lexicon: the WHAT-it-should-read-like
-guide the `style` verb prints. It is NOT the enforced numeric bar. The counts the walk
-actually enforces live in `cli/workflow/parameters.json` as MIN_SOURCES / MIN_PER_TYPE /
-TOPIC_CAP / RESPIN_PASSES, and `step` fills them into the nodes. `set-floor` sets the two
-source counts (MIN_SOURCES, MIN_PER_TYPE); the tag cap and the respin budget are edited in
-parameters.json directly. Use this file for the voice and the rules; use parameters.json for
-the numbers.
+The newsroom's qualitative voice and house rules: the what-it-should-read-like guide the
+`style` verb prints. It is NOT the enforced numeric bar (that lives in
+`cli/workflow/parameters.json` as MIN_SOURCES / MIN_PER_TYPE / TOPIC_CAP / RESPIN_PASSES,
+which `step` fills into the nodes; `set-floor` sets the two source counts). It is also NOT
+the per-language word lists: the banned lexicon, the preferred swaps, the orthography, the
+slop phrases, and the attribution and disclaimer wording are DB rows, authored per language.
+Read them for your author's language with:
+
+    python3 cli/censurado.py editorial-rules <language>
 
 ## Voice
-Escribimos en espanol, con voz propia y desde un punto de vista: cada autor escribe desde el
-lado que su persona declara y lo defiende con el dato en la mano. Lo que se mantiene neutral y
-exacto son los HECHOS: contamos el hecho antes que la reaccion, atribuimos cada afirmacion a una
-fuente nombrada y separamos lo confirmado de lo que una sola parte sostiene. El encuadre, el
-enfasis y el argumento son la posicion del autor, no un centro tibio. La nota tiene que atrapar
-y sostener la atencion, y gana con el detalle mas filoso y verdadero, nunca con adjetivos huecos.
+Write in the author's own voice, in the first person, from a clear point of view: each author
+argues the side their persona declares and defends it with the evidence in hand. What stays
+neutral and exact are the FACTS: report the fact before the reaction, attribute every claim to
+a named source, and separate what is confirmed from what only one side asserts. The framing,
+the emphasis, and the argument are the author's position, never a lukewarm middle. A piece has
+to catch and hold attention, and it wins with the sharpest true detail, never with hollow
+adjectives. (A politics-section piece is the one exception to the first person: it is written
+in the third person, with the slant living only in the framing.)
 
 ## Examples
-Good: "La autoridad monetaria subio la tasa de referencia al 40 por ciento, segun su comunicado
-oficial." (Hecho concreto, cifra, fuente nombrada; el encuadre puede tener postura, el dato no se toca.)
+Good: name the concrete fact with its figure and its source, e.g. "the central bank raised
+the benchmark rate to 40 percent, according to its official statement." The framing may take a
+side; the datum is untouched.
 
-Bad: "En una decision demoledora, volvieron a castigar a los ahorristas." (Adjetivo hueco y
-sensacionalista, sin cifra y sin fuente: el filo tiene que venir del dato, no del adjetivo.)
+Bad: an empty, sensational adjective with no figure and no source, e.g. "in a crushing
+decision, they punished savers again." The edge has to come from the fact, not the adjective.
 
 ## Rules
-Gate (an article must pass these to publish):
-- hecho-primero: Abri con el hecho central y su consecuencia concreta.
-- atribuir: Nombra la fuente como texto plano ("segun X"), sin enlaces en el cuerpo. Nombra un
-  medio solo si es una fuente ASIGNADA del autor; los actores primarios (personas, empresas,
-  funcionarios, instituciones y documentos que son la noticia) siempre se nombran.
-- fuentes-multiples: Apoya el hecho central en fuentes independientes (el piso lo fija
-  MIN_SOURCES en parameters.json).
-- confirmado: Distingui lo confirmado de lo que afirma una sola parte.
-- sin-inventar: Usa solo datos y citas presentes en las fuentes reunidas.
-- neutral: La neutralidad es de los HECHOS (exactos y atribuidos), no de la postura: toma partido en el encuadre y el argumento, nunca deformando el dato.
+Gate (a piece must pass these to publish):
+- fact-first: open with the central fact and its concrete consequence.
+- attribute: name the source as plain text (the attribution form is per-language, see
+  `editorial-rules`), with no links in the body. Name a media outlet only when it is one of
+  the author's ASSIGNED sources; the primary actors (people, companies, officials,
+  institutions, and documents that ARE the news) are always named.
+- cross-sourcing: corroborate the central fact across independent sources (the floor is
+  MIN_SOURCES in parameters.json).
+- confirmed vs asserted: distinguish what is confirmed from what only one party claims.
+- no invention: use only facts and quotes present in the gathered sources.
+- neutral facts, not neutral stance: neutrality belongs to the FACTS (exact and attributed);
+  take a side in the framing and the argument, never by bending the datum.
 
 Preference (aim for these; they sharpen the piece):
-- titulo-directo: Escribi un titulo breve y directo: el hecho esencial, sin relleno.
-- cifras-con-fuente: Acompana cada cifra con su fuente y su fecha.
-- contexto-local: Da el contexto que el lector local necesita, sin asumir que ya lo sabe.
-- sin-jerga: Explica cualquier termino tecnico la primera vez que aparece.
-- no-repetir: Aporta lo nuevo del dia y enlaza la cobertura previa relacionada.
-- cierre-util: Cierra con lo que sigue o lo que aun no se sabe, no con un remate de opinion vacia.
-- engancha: Que la nota atrape y entretenga; rompe la monotonia con un recurso donde el material lo permita (una cita destacada, una lista, una cifra suelta, una imagen).
+- direct title: a short, direct headline, the essential fact, no filler.
+- figures with a source: pair every figure with its source and its date.
+- local context: give the context the local reader needs, without assuming it is known.
+- no jargon: explain any technical term the first time it appears.
+- no repetition: add what is new today and link the related prior coverage.
+- useful close: close with what comes next or what is still unknown, not an empty flourish.
+- engage: keep the piece alive; break the monotony with a real device where the material earns
+  it (a pull-quote, a short list, a lone figure, an image).
 
-## Lexicon
-Banned terms: demoledor, escandaloso, letal, brutal, sin precedentes, increible,
-no te lo podes perder.
-
-Preferred swaps: polemico -> discutido, fulmino -> rechazo, castigo -> afecto,
-historico -> destacado.
+## Lexicon and orthography
+The banned sensational words, the preferred swaps, and the accents and marks the author's
+language requires are per-language and live in the DB, not here. Fetch and apply them with
+`editorial-rules <language>`; the orthography pass (`85-accents-entities`) enforces them.
 
 ## Sourcing
-Apoya el hecho central en al menos MIN_SOURCES fuentes independientes, con al menos
-MIN_PER_TYPE de cada tipo (derecha, neutral, izquierda). Si al autor le faltan fuentes de un
-tipo, usa la busqueda web a discrecion para INFORMAR el hecho, pero el medio que aparezca ahi es
-material de fondo y NO se nombra. Nombra un medio solo si es una fuente ASIGNADA del autor; un dato
-sacado de un medio no asignado se atribuye al actor primario (la persona, empresa, funcionario,
-institucion o documento que es la noticia) o se cuenta sin nombrar medio. Si el autor no tiene
-fuentes asignadas, no nombres ningun medio, solo actores primarios. Atribui cada afirmacion y
-nunca inventes citas.
+Corroborate the central fact across at least MIN_SOURCES independent sources, with at least
+MIN_PER_TYPE of each political lean (right, neutral, left). If the author lacks sources of one
+lean, use web search at your discretion to INFORM the fact, but any outlet that surfaces there
+is background and is NOT named. Name a media outlet only when it is one of the author's
+ASSIGNED sources; a fact drawn from a non-assigned outlet is attributed to the primary actor
+(the person, company, official, institution, or document that is the news) or reported with no
+outlet named. If the author has no assigned sources, name no outlet, only primary actors.
+Attribute every claim and never invent a quote.
 
 ## Structure
-- Headline: breve y directo, el hecho esencial, sin relleno ni adjetivos.
-- Dateline: CIUDAD, fecha, al inicio del cuerpo.
-- Lede: primer parrafo con que paso, quien, cuando y por que importa.
-- Tags: hasta TOPIC_CAP etiquetas (parameters.json), nombrando las entidades propias.
-- Respin: hasta RESPIN_PASSES pasadas de revision antes de publicar.
+- Headline: short and direct, the essential fact, no filler or adjectives.
+- Dateline: CITY, date, at the start of the body.
+- Lede: first paragraph with what happened, who, when, and why it matters.
+- Tags: up to TOPIC_CAP tags (parameters.json), naming the proper entities.
+- Respin: up to RESPIN_PASSES revision passes before publishing.

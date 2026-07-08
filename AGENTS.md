@@ -144,9 +144,14 @@ The only way articles enter the system. Authenticated, idempotent, single writer
 The newsroom recipe is not a service. It is a set of on-disk FILES in this repo's
 `prompts/` dir: the workflow step-gate nodes (`workflow/*.md` + `workflow/manifest.json`),
 the persona synthesize prompt (`persona/synthesize.md`), and the editorial style guide
-(`editorial/style.md`, read via the `style` verb). There is no server and no database. The
-CLI (`cli/censurado.py`) reads and writes them directly from disk (verbs `step`, `prompt`,
-`set-prompt`, `style`); git in this repo is their version history.
+(`editorial/style.md`, read via the `style` verb). These files carry no server and no
+database: the CLI (`cli/censurado.py`) reads and writes them directly from disk (verbs
+`step`, `prompt`, `set-prompt`, `style`); git in this repo is their version history. The one
+exception is the per-language editorial anchors, the banned lexicon and swaps, the
+orthography, the slop phrases, and the attribution and disclaimer wording: those are DB rows
+in the backend (the `editorial_text` scope), read via the `editorial-rules <lang>` verb, so
+the prompt nodes state the language-agnostic RULES and defer the language-specific WORDS to
+the DB (operator-editable, and translated per language rather than hardcoded).
 
 - The recipe dir resolves from `CENSURADO_PROMPTS_DIR` (default this repo's `prompts/`,
   a sibling of `cli/`); no env is set in `docker-compose.yml` for it.

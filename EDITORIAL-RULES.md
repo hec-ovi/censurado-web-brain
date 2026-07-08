@@ -1,109 +1,97 @@
-# Reglas editoriales de Censurado (para redactar una nota)
+# Censurado editorial rules (writing one article)
 
-Guia compacta para escribir UNA nota lista para publicar. Pegala como instrucciones y pedile
-al modelo la nota. Cubre solo el CONTENIDO (texto). Fuera de alcance: tarjetas de X/tweets,
-notas relacionadas y demas widgets (no los uses aca).
+A compact contract for writing ONE publish-ready article. It covers only the CONTENT (text);
+out of scope: X/tweet cards, related notes, and the other `{{...}}` widgets. The live,
+enforced version of these rules is the step-gate workflow (`python3 cli/censurado.py step`);
+the qualitative voice guide is `style`; and the per-language word lists (banned lexicon,
+preferred swaps, orthography, slop phrases, attribution and disclaimer wording) are DB rows
+you read with `editorial-rules <language>`, not literals in this file.
 
-## 1. Voz y postura
-- Escribi en espanol, en primera persona, desde la voz del autor y con un punto de vista claro:
-  defende esa posicion con el dato en la mano. No hay medio tibio ni falso equilibrio.
-- La postura vive en el ENCUADRE, el enfasis y el argumento. NUNCA en los hechos: cada dato,
-  fecha, cifra y nombre queda exacto y atribuido.
-- La nota tiene que atrapar y sostener la atencion. El filo viene del detalle mas agudo y
-  verdadero, jamas de adjetivos huecos.
-- Escribi para ser LEIDA, no archivada: que entretenga mientras informa. Un muro plano de
-  parrafos iguales es un fracaso aunque los hechos esten bien.
+## 1. Voice and stance
+- Write in the author's voice, in the first person, from a clear point of view: defend that
+  position with the evidence. No lukewarm middle, no false balance.
+- The stance lives in the FRAMING, the emphasis, and the argument. NEVER in the facts: every
+  datum, date, figure, and name stays exact and attributed.
+- The piece has to catch and hold attention. The edge comes from the sharpest true detail,
+  never from empty adjectives.
+- Write to be READ, not filed: entertain while informing. A flat wall of identical paragraphs
+  is a failure even when the facts are right.
 
-## 2. Hechos y atribucion (innegociable)
-- Abri con el hecho central y su consecuencia concreta (hecho antes que reaccion).
-- Nombra cada fuente como texto plano ("segun X", "X informo"). No pongas enlaces en el cuerpo:
-  sin hipervinculos. Las imagenes y los widgets `{{...}}` no son enlaces.
-- Nombra un MEDIO solo si es una de las fuentes ASIGNADAS del autor (las que devuelven `persona
-  <id>` / `sources <id>`). La busqueda web puede INFORMAR el hecho, pero cualquier medio que
-  aparezca ahi es material de fondo y NUNCA se nombra. Los ACTORES PRIMARIOS si se nombran siempre
-  y no son "medios": las personas, empresas, funcionarios, instituciones y documentos que SON la
-  noticia (una declaracion, un comunicado, un fallo, un ministerio, una municipalidad). Un dato
-  sacado de un medio no asignado se atribuye al actor primario o se cuenta sin nombrar ningun
-  medio. Si el autor no tiene fuentes asignadas, no nombres ningun medio, solo actores primarios.
-- Distingui lo confirmado de lo que sostiene una sola parte.
-- Acompana cada cifra con su fuente y su fecha. No inventes datos ni citas.
-- Da el contexto local que el lector necesita; explica cualquier termino tecnico la primera vez.
+## 2. Facts and attribution (non-negotiable)
+- Open with the central fact and its concrete consequence (fact before reaction).
+- Name every source as plain text (the exact attribution form is per-language, see
+  `editorial-rules`). Put NO links in the body: no hyperlinks. Images and `{{...}}` widgets are
+  not links.
+- Name a media outlet only when it is one of the author's ASSIGNED sources (what `persona <id>`
+  / `sources <id>` return). Web search may INFORM a fact, but any outlet that surfaces there is
+  background and is NEVER named. The PRIMARY ACTORS are always named and are not "media": the
+  people, companies, officials, institutions, and documents that ARE the news. A fact from a
+  non-assigned outlet is attributed to the primary actor or reported with no outlet named. If
+  the author has no assigned sources, name no outlet, only primary actors.
+- Distinguish what is confirmed from what only one party asserts.
+- Pair every figure with its source and its date. Invent no data and no quotes.
+- Give the local context the reader needs; explain any technical term the first time.
 
-## 3. Titulo, bajada y entradilla (cuatro capas distintas, ninguna repite a otra)
-- **Titulo**: el mas compacto y magnetico que la historia pueda sostener con honestidad. Es una
-  promesa: el cuerpo cumple exactamente lo que insinua. Al menos DOS ganchos (hecho concreto al
-  frente, verbo activo en presente, apuesta visible, tension o giro). Nombra la cosa real (nunca
-  "esto" o "lo que paso"), sin sobrepromesa, con las cifras en contexto, sin urgencia falsa. Es
-  UN solo pensamiento: nunca dos mitades unidas por `;`, `:` ni guion. Si necesita empalme, son
-  dos titulos: elegi uno.
-- **Bajada (dek)**: una linea, el dato mas fuerte y cierto que la nota guarda, el que obliga a
-  seguir. NO repite las palabras ni el sujeto del titulo. Misma prohibicion de empalmes.
-- **Entradilla (standfirst)**: un parrafo denso y con postura que entrega toda la historia; quien
-  se detiene ahi ya sabe que paso, por que importa y donde se para el autor. Nunca es una resena
-  del autor.
+## 3. Title, dek, and standfirst (distinct layers, none repeating another)
+- Title: the most compact, magnetic headline the story can honestly carry, no more than five
+  words. It is a promise the body keeps. Name the real thing (never "this" or "what happened"),
+  no overclaim, figures in context, no fake urgency. ONE whole thought: never two halves
+  spliced by a `;`, a `:`, or a dash.
+- Dek (the bajada): one line, 20 to 30 words, the strongest true fact the piece holds. It does
+  NOT repeat the title's words or subject. Same ban on splices. No separate subtitle.
+- Standfirst (the entradilla): a dense opening paragraph with stance that delivers the whole
+  story. Never a review of the author.
 
-## 4. Estructura del cuerpo
-- **Dateline** al inicio: CIUDAD, fecha.
-- **Lede**: primer parrafo con que paso, quien, cuando y por que importa.
-- **Capas**: resumen autocontenido, luego el detalle, luego el contexto completo. Cada capa es
-  NUEVA y densa; nunca reformula una anterior.
-- Escribi la pieza completa: no hay limite de longitud y no se dejan placeholders.
+## 4. Body structure
+- Dateline at the start: CITY, date.
+- Lede: first paragraph with what happened, who, when, and why it matters.
+- Layers: self-contained summary, then the detail, then the full context. Each layer is NEW and
+  dense; none restates an earlier one.
+- Write the complete piece: no length limit, no placeholders.
 
-## 5. No redundancia (clave)
-- Deci cada idea UNA vez. Un reparo, un descargo o una nota de encuadre se dice una sola vez, en
-  una linea corta, y no se repite.
-- No apiles tres, cuatro o cinco sinonimos del mismo reparo, ni lo repitas en cada parrafo.
-- Ninguna capa reformula a otra. El cierre NO reformula la apertura: cerra con lo que sigue o lo
-  que aun no se sabe, no con un remate de opinion vacia.
-- Todo punto que la nota ya hizo se AVANZA, nunca se repite.
+## 5. No redundancy
+- Say each idea ONCE. A caveat or framing note is stated one time, in a short line, never
+  repeated.
+- Do not stack synonyms of the same point. No layer restates another. The close does NOT
+  restate the opening.
 
-## 6. Limpieza (proofread) y densidad
-- Corta relleno, muletillas y toda repeticion. Cada linea gana su lugar (alta informacion por
-  palabra); nada de capas que "van tirando".
-- Ortografia espanola completa y correcta: acentos (a, e, i, o, u, u con dieresis), la n con
-  tilde, y los signos de apertura ¿ y ¡. Nada de espanol en ASCII pelado.
-- Markdown limpio: titulos, listas y enlaces bien formados; sin sintaxis suelta.
+## 6. Cleanup and density
+- Cut filler and repetition. Every line earns its place (high information per word).
+- Full orthography for the author's language: apply the accents, marks, and letters
+  `editorial-rules` lists. No ASCII-stripped spelling in a language that needs the marks.
+- Clean Markdown: well-formed headings, lists, and links; no stray syntax.
 
-## 7. Enriquecer (romper la monotonia)
-Donde el material lo permita, mete un recurso que corte el ritmo (no fuerces ninguno):
-- Una cita destacada con `> blockquote` (reservala para la linea que mas pega).
-- Una lista corta cuando de verdad ayuda.
-- Una cifra sola en su propia linea.
-- Una tabla GFM solo cuando compares cosas de verdad.
-- Una segunda imagen a mitad del cuerpo con Markdown plano `![descripcion](url)` donde un visual
-  se lo gane.
-Varia el ritmo (parrafos cortos contra largos, subtitulos donde la historia gira). No corras tres
-parrafos grises identicos seguidos si uno de estos llevaria mejor al lector.
+## 7. Enrich (break the monotony)
+Where the material earns it (never forced): a `> blockquote` pull-quote for the sharpest line,
+a short list, a lone figure on its own line, a GFM table only for a real comparison, a second
+mid-body image with plain Markdown `![alt](url)`. Vary the rhythm; do not run three identical
+gray paragraphs in a row.
 
-## 8. Prohibido (tics de IA y sensacionalismo)
-- **Guiones largos (em/en dash): NUNCA.** Usa comas, puntos, parentesis o dos puntos.
-- Palabras vetadas: demoledor, escandaloso, letal, brutal, sin precedentes, increible,
-  "no te lo podes perder".
-- Nada de inversion/aforismo por negacion ("no es X, es Y").
-- Nada de muletillas de sinceridad ("la verdad es que", "seamos honestos", "hay que decirlo").
-- Nada de "en el mundo actual", "es importante notar", ni tres adjetivos en lugar de un dato.
-- No le des sentimientos ni voluntad a una cosa (un mercado, una ley, un pais no "sienten").
-- Nada de cierre que solo reformula la apertura, ni de falso equilibrio.
-- **Reemplazos preferidos**: polemico -> discutido, fulmino -> rechazo, castigo -> afecto,
-  historico -> destacado.
+## 8. Banned (AI tells and sensationalism)
+- Em and en dashes: NEVER. Use commas, periods, parentheses, or a colon.
+- The banned words, the preferred swaps, the slop phrases, and the candor tics are per-language:
+  apply the ones `editorial-rules` lists. No negation-inversion aphorism ("not X, but Y"). No
+  thing (a market, a law, a country) given feelings or will. No close that only restates the
+  opening, no false balance.
 
-## 9. Ficcion / opinion / satira
-Si la voz es satira, opinion o ficcion, abri el cuerpo con UNA sola linea de descargo en italica
-y nada mas (por ejemplo `*Tomelo como un cuentillo de ciencia ficcion.*`). Una voz de noticia
-recta no lleva descargo ni etiqueta de "opinion"/"analisis" y nunca nombra su propia firma.
+## 9. Satire, opinion, fiction
+If the voice is satire, opinion, or fiction, open the body with ONE italic disclaimer line
+(the wording is the one `editorial-rules` prints for the language) and nothing more. A
+straight-news voice carries no disclaimer and no "opinion"/"analysis" label, and never names
+its own byline.
 
-## 10. Tags y keywords
-- **topics**: hasta 12 etiquetas, las mas especificas y optimizadas: los TEMAS mas las ENTIDADES
-  propias (personas, organizaciones, lugares), en minuscula y con acento donde corresponda. Pocas
-  etiquetas filosas valen mas que un tope lleno de etiquetas flojas.
-- **keywords**: los terminos de busqueda mas acotados y propios de ESTA nota (los nombres, lugares,
-  organizaciones y conceptos distintivos), sacados solo del texto de la nota.
+## 10. Tags and keywords
+- topics: up to 12 tags, the most specific: the THEMES plus the proper ENTITIES (people,
+  organizations, places), lowercase and accented where the language requires. A few sharp tags
+  beat a full cap of loose ones.
+- keywords: the narrower search terms proper to THIS article, drawn only from its text.
 
-## Checklist final (antes de entregar)
-1. Titulo honesto y magnetico, un solo pensamiento, >= 2 ganchos, sin empalmes.
-2. Bajada que no repite el titulo; entradilla que cuenta toda la historia con postura.
-3. Hecho central atribuido a fuentes nombradas; cifras con fecha; confirmado != version de parte.
-4. Cada idea una vez; ninguna capa repite otra; el cierre no reformula la apertura.
-5. Sin guiones largos, sin palabras vetadas, sin tics de IA.
-6. Acentos y signos ¿ ¡ correctos; Markdown limpio.
-7. topics y keywords especificos; pieza completa, sin placeholders.
+## Final checklist (before you hand it in)
+1. Title honest and magnetic, one whole thought, no splices, at most five words.
+2. Dek that does not repeat the title; standfirst that tells the whole story with stance.
+3. Central fact attributed to named sources as plain text; figures with dates; confirmed is not
+   one party's version.
+4. Each idea once; no layer repeats another; the close does not restate the opening.
+5. No em or en dashes, none of the banned words, no AI tells.
+6. Orthography correct for the language; clean Markdown.
+7. topics and keywords specific; complete piece, no placeholders.

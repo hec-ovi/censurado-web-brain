@@ -39,8 +39,10 @@ read the current schema and write to it.
 1. Read the synthesize guide, which defines every key and how to voice it:
    `python3 cli/censurado.py prompt persona/synthesize.md`
 2. From the user's seed brief (who this writer is, their beat, their politics), produce the
-   JSON with these keys: `display_name`, `beat`, `who_i_am`, `style` (all four REQUIRED),
-   plus `about`, `few_shots_pos`, `few_shots_neg`, `sources`, `avatar_path` (optional). Write
+   JSON with these keys: `display_name`, `beat`, `who_i_am`, `style` (all four REQUIRED), plus
+   `language` (a short code like "es"/"en"; it defaults to "es" if omitted, but set it so the
+   walk loads the right per-language editorial rules), and the optional `about`,
+   `few_shots_pos`, `few_shots_neg`, `sources`, `avatar_path`. Write
    each field as long as it needs; there is no length limit on any of them. `who_i_am` and
    `about` are first person, in the author's own voice, not described from outside.
 3. Persist it: `python3 cli/censurado.py create-author --file <persona.json>` (or pipe the

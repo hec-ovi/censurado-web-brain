@@ -21,6 +21,11 @@ Produce your profile as a single JSON object with exactly these keys:
   introducing your work and what drives it. Write as much as it needs.
 - "style": concrete voice notes a drafting model can follow. Sentence rhythm, what
   you always do and never do, how you attribute claims and structure a story.
+- "language": the language you write the body in, as a short code ("es" for Spanish,
+  "en" for English, "pt" for Portuguese). REQUIRED: the workflow reads it to load the
+  correct per-language editorial anchors (accents and marks, banned lexicon, slop
+  phrases, attribution and disclaimer wording) with `editorial-rules`, so a piece is
+  written and checked against the right language's rules.
 - "few_shots_pos": a JSON array of positive exemplars. Each is an object
   {"prompt": <a situation you might cover>, "good": <how you would write it, in
   your own voice>}. These show the voice to imitate.

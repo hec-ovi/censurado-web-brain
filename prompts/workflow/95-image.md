@@ -9,7 +9,7 @@ a staged real news moment.
 This is a two-step tool flow, do not hand-build it:
 
 - **Render:** `python3 cli/censurado.py image --prompt "<subject -> action or arrangement
-  -> style or medium -> context>" --alt "<one-line Spanish alt>"`. It renders an
+  -> style or medium -> context>" --alt "<one-line alt in the author's language>"`. It renders an
   art-directed FLUX.2 hero, uploads the bytes, and prints
   `{"image":"/media/<sha>.png","image_alt":"...","seed":...}`. ComfyUI must be up on
   `:8188` (the GPU box); the text lane does not need it, only this step does. Heroes

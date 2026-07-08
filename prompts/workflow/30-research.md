@@ -31,10 +31,10 @@ embed it later as a card. Some of your author's outlets are X accounts: web sear
 accounts posted about this story (the handle plus the topic), and treat a protagonist's post
 as a primary source of intent, not just a quote. Establish what the
 post is doing (whom it answers, what it announces, what it buries) so the article can
-report that intention with the post embedded as its evidence. A post in English gets an
-exact Spanish translation in the prose plus a one-time note that the original is in
-English. Be surgical: a post card earns its place in maybe one story in several, never by
-default.
+report that intention with the post embedded as its evidence. A foreign-language post gets
+translated into your author's language in the prose, plus a one-time note that the original
+was in another language. Be surgical: a post card earns its place in maybe one story in
+several, never by default.
 
 **Sweep the author's own archive before you write.** A repeat corrodes the portal. List
 what this author already published around your subject with `python3 cli/censurado.py

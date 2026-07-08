@@ -77,23 +77,34 @@ BUILTIN_AGENTS = {
     },
 }
 
-# Prepended to every message. Practical Telegram framing (shape by content, not a length
-# cap) plus the newsroom operator guardrail. Override wholesale with AGENT_SYSTEM.
+# Prepended to every message, AFTER the response-language directive (see BOT_DIRECTIVE_FALLBACK):
+# practical Telegram framing (shape by content, not a length cap) plus the newsroom operator
+# guardrail, in English. The operator's own trigger words («publicá»...) and the confirmation
+# line the bot says back («lo publiqué en el sitio») stay Spanish, since the operator types and
+# reads Spanish. Override the WHOLE prepended block (directive + this) with AGENT_SYSTEM.
 DEFAULT_PREAMBLE = (
+    "You are answering inside a Telegram chat on a phone: go straight to the answer, with no "
+    "greetings, preambles, sign-offs, or filler, and format in short paragraphs and bullets "
+    "that read well on a phone. Operate the Censurado portal only through the censurado skill "
+    "(python3 cli/censurado.py <verb>), walking the gated editorial flow step by step. Act "
+    "directly: do what you are asked without asking for confirmation or returning questions. "
+    "When the operator says «publicá», «publicalo», «publicalas», «subilo» or «mandalo al "
+    "sitio», they want it LIVE on the public site: finish the walk and run "
+    "`python3 cli/censurado.py publicar --yes`, which publishes the snapshot to the public "
+    "site. «publicar» is ALWAYS production (the public site); «preview» is local only (debug) "
+    "and never reaches the internet. Tell the operator «lo publiqué en el sitio»; do not use "
+    "the English word «deploy». Without that request, stay on the local preview. If a command "
+    "fails, say in one line what failed."
+)
+
+# The response-language directive: the register the bot answers in, prepended before the
+# English framing. It lives in the backend editorial config (the `bot.directive` row, read via
+# `cli/censurado.py editorial-rules <lang> --bot-directive`) so it is operator-editable per
+# language; this is the built-in fallback used when that read fails, so the bot never stops
+# answering in Spanish.
+BOT_DIRECTIVE_FALLBACK = (
     "Respondé siempre en español rioplatense (voseo), el registro del portal Censurado, "
-    "aunque te escriban en otro idioma. Estás contestando dentro de un chat de Telegram en "
-    "un celular: andá directo a la respuesta, sin saludos, preámbulos, despedidas ni "
-    "relleno, y formateá en párrafos y viñetas que se lean bien en el celular. "
-    "Operá el portal Censurado solo a través del skill censurado (python3 cli/censurado.py "
-    "<verbo>), recorriendo el flujo editorial gateado paso a paso. Actuá directo: hacé lo "
-    "que te piden sin pedir confirmación ni devolver preguntas. "
-    "Cuando el operador diga «publicá», «publicalo», «publicalas», «subilo» o «mandalo al "
-    "sitio», querés dejarlo EN VIVO en el sitio público: terminá el walk y corré "
-    "`python3 cli/censurado.py publicar --yes`, que publica el snapshot al sitio público. "
-    "«publicar» es SIEMPRE producción (el sitio público); «preview» es solo local (debug) y "
-    "nunca sale a internet. Decile al operador «lo publiqué en el sitio»; no uses la palabra "
-    "en inglés «deploy». Sin ese pedido, quedate en la vista previa local. "
-    "Si un comando falla, decí en una línea qué falló."
+    "aunque te escriban en otro idioma."
 )
 
 # Substrings in agent output that signal an auth problem (best-effort, for a clearer reply).
@@ -120,6 +131,11 @@ class Config:
     admin_host: str = "127.0.0.1"
     admin_port: int = 8090
     preamble: str = DEFAULT_PREAMBLE
+    # The response-language directive prepended before `preamble`. Empty when AGENT_SYSTEM
+    # overrides the whole block; otherwise the DB value (or BOT_DIRECTIVE_FALLBACK). bot_lang
+    # is the language whose `bot.directive` row the bridge reads at startup.
+    bot_directive: str = ""
+    bot_lang: str = "es"
     default_agent: str = "codex"
     seed_allowed: list[int] = field(default_factory=list)
     agents: dict = field(default_factory=dict)
@@ -140,6 +156,10 @@ class Config:
             default_agent = "codex"
         raw_ids = (e.get("TG_ALLOWED_IDS") or "").strip()
         seed = [int(x) for x in raw_ids.replace(";", ",").split(",") if x.strip()]
+        # AGENT_SYSTEM overrides the WHOLE prepended block, so when it is set the separate
+        # language directive is dropped (the operator owns the full text). Otherwise the
+        # directive defaults to the built-in fallback; main() replaces it with the DB value.
+        agent_system = (e.get("AGENT_SYSTEM") or "").strip()
         return cls(
             token=token,
             admin_token=(e.get("TG_ADMIN_TOKEN") or "").strip(),
@@ -150,7 +170,9 @@ class Config:
             typing_interval=float(e.get("TG_TYPING_INTERVAL") or "4"),
             admin_host=(e.get("TG_ADMIN_HOST") or "127.0.0.1").strip(),
             admin_port=int(e.get("TG_PANEL_PORT") or "8090"),
-            preamble=(e.get("AGENT_SYSTEM") or DEFAULT_PREAMBLE),
+            preamble=(agent_system or DEFAULT_PREAMBLE),
+            bot_directive=("" if agent_system else BOT_DIRECTIVE_FALLBACK),
+            bot_lang=(e.get("BOT_LANG") or "es").strip(),
             default_agent=default_agent,
             seed_allowed=seed,
             agents=agents,
@@ -404,7 +426,10 @@ def run_agent(cfg: Config, agent_key: str, rec: dict, text: str,
         return (f"Agent {agent_key!r} is not configured.", False)
 
     workdir = rec["workdir"]
-    prompt = f"{cfg.preamble}\n\n{text}".strip() if cfg.preamble else text
+    # The prepended block is the response-language directive, then the English framing, then the
+    # message. Empty parts (e.g. no directive under AGENT_SYSTEM) are skipped.
+    parts = [(cfg.bot_directive or "").strip(), (cfg.preamble or "").strip(), text]
+    prompt = "\n\n".join(p for p in parts if p)
     argv, stdin = build_invocation(spec["cmd"], rec["session"], workdir, cfg.repo_dir, prompt)
 
     child_env = {k: v for k, v in os.environ.items() if k not in SECRET_ENV}
@@ -435,6 +460,24 @@ def run_agent(cfg: Config, agent_key: str, rec: dict, text: str,
         return (f"⚠️ {detail}", False)
     status.ok(agent_key)
     return (out or "(the agent produced no output)", True)
+
+
+def fetch_bot_directive(cfg: Config) -> str:
+    """Best-effort read of the bot response directive from the backend, via the censurado CLI
+    (which owns the backend URL + operator token). Returns the directive text, or "" on any
+    failure so the caller keeps the built-in fallback. Run once at startup."""
+    try:
+        proc = subprocess.run(
+            [sys.executable, "cli/censurado.py", "editorial-rules", cfg.bot_lang, "--bot-directive"],
+            cwd=cfg.repo_dir, capture_output=True, timeout=15)
+    except Exception as ex:
+        log.warning("bot-directive fetch failed to launch: %s", ex)
+        return ""
+    if proc.returncode != 0:
+        log.warning("bot-directive fetch exited %s: %s", proc.returncode,
+                    proc.stderr.decode(errors="replace").strip()[:200])
+        return ""
+    return proc.stdout.decode(errors="replace").strip()
 
 
 # ---------------------------------------------------------------- structured shortcuts
@@ -918,6 +961,16 @@ def main():
     logging.basicConfig(level=os.environ.get("LOG_LEVEL", "INFO"),
                         format="%(asctime)s %(levelname)s %(name)s %(message)s", stream=sys.stdout)
     cfg = Config.from_env()
+    # Load the response-language directive from the backend editorial config; keep the built-in
+    # fallback when the read fails or is empty, so the bot always has a directive. Skipped when
+    # AGENT_SYSTEM owns the whole prepended block (bot_directive is "" then).
+    if cfg.bot_directive:
+        fetched = fetch_bot_directive(cfg)
+        if fetched:
+            cfg.bot_directive = fetched
+            log.info("bot directive loaded from the backend (lang=%s)", cfg.bot_lang)
+        else:
+            log.info("bot directive: using the built-in fallback (backend read failed or empty)")
     store = ConfigStore(cfg.data_dir, cfg.default_agent, cfg.seed_allowed)
     status = Status()
     bridge = Bridge(cfg, store, status)

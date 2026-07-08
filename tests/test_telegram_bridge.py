@@ -150,15 +150,66 @@ def test_runs_selected_agent_with_preamble(tmp_path):
     assert br.tg.typing
 
 
-def test_default_preamble_is_spanish_and_maps_publicar_to_production():
-    # The bot must default to Spanish, act without asking, and treat the operator's
-    # "publicá/publicalo" as going live via `publicar` (push to the public site), never local preview.
+def test_bot_directive_fallback_is_spanish_rioplatense():
+    # The response-language directive is Spanish rioplatense/voseo. It is the built-in fallback the
+    # bridge prepends when the DB read fails, so the bot never stops answering in the portal's voice.
+    d = router.BOT_DIRECTIVE_FALLBACK.lower()
+    assert "español" in d and "voseo" in d
+
+
+def test_english_framing_maps_publicar_to_production_without_asking():
+    # The framing preamble is English now (the Spanish register moved to the directive), but it
+    # still maps the operator's "publicá" to going LIVE via `publicar`, acts without confirmation,
+    # and never uses the old "deploy" verb.
     p = router.DEFAULT_PREAMBLE.lower()
-    assert "español" in p                            # Spanish by default
-    assert "publicá" in p                            # maps the operator's "publicá" to going live
-    assert "cli/censurado.py publicar" in p          # names the exact live-push (production) command
-    assert "cli/censurado.py deploy" not in p        # the old confusing "deploy" verb is gone from the surface
-    assert "sin pedir confirmación" in p             # act directly, no questioning
+    assert "español" not in p                         # the register lives in the directive, not the framing
+    assert "publicá" in p                             # the operator's trigger word is still handled
+    assert "cli/censurado.py publicar" in p           # names the exact live-push (production) command
+    assert "cli/censurado.py deploy" not in p         # the old confusing "deploy" verb stays off the surface
+    assert "without asking for confirmation" in p     # act directly, no questioning
+
+
+def test_from_env_directive_defaults_to_fallback_unless_agent_system_owns_the_block(tmp_path):
+    # Without AGENT_SYSTEM the directive defaults to the Spanish fallback and the framing is the
+    # English default; with AGENT_SYSTEM the operator owns the WHOLE prepended block (no directive).
+    plain = router.Config.from_env({"TELEGRAM_BOT_TOKEN": "t", "DATA_DIR": str(tmp_path)})
+    assert plain.bot_directive == router.BOT_DIRECTIVE_FALLBACK
+    assert plain.preamble == router.DEFAULT_PREAMBLE
+    owned = router.Config.from_env({"TELEGRAM_BOT_TOKEN": "t", "DATA_DIR": str(tmp_path),
+                                    "AGENT_SYSTEM": "custom block"})
+    assert owned.bot_directive == "" and owned.preamble == "custom block"
+
+
+def test_directive_is_prepended_before_the_framing_and_message(tmp_path):
+    # run_agent prepends the directive, then the framing, then the message; empty parts are skipped.
+    ag = _agent(tmp_path, "echo.py", "sys.stdout.write(sys.stdin.read())")
+    cfg = _cfg(tmp_path, codex=f"{sys.executable} {ag}", allowed=(1,), preamble="FRAME")
+    cfg.bot_directive = "DIR"
+    br = _bridge(cfg)
+    br.process(chat_id=7, user_id=1, text="hola")
+    assert br.tg.sent == [(7, "DIR\n\nFRAME\n\nhola")]
+
+
+def test_fetch_bot_directive_reads_stdout_and_falls_back_on_failure(tmp_path):
+    # The bridge invokes `python3 cli/censurado.py editorial-rules <lang> --bot-directive` from
+    # repo_dir. The stub asserts the exact argv (verb, lang, flag) and echoes a directive; the
+    # nonzero-exit AND the exit-0-empty (unseeded language) paths both yield "" so the built-in
+    # fallback holds.
+    cli = tmp_path / "cli"
+    cli.mkdir()
+    (cli / "censurado.py").write_text(
+        "import sys\n"
+        "argv = sys.argv[1:]\n"
+        "assert argv[:1] == ['editorial-rules'] and 'es' in argv and '--bot-directive' in argv, argv\n"
+        "sys.stdout.write('DIRECTIVE FROM DB\\n')\n")
+    cfg = _cfg(tmp_path, allowed=(1,))  # _cfg sets repo_dir=tmp_path; bot_lang defaults to 'es'
+    assert router.fetch_bot_directive(cfg) == "DIRECTIVE FROM DB"
+    # A CLI that exits nonzero -> "".
+    (cli / "censurado.py").write_text("import sys; sys.exit(1)")
+    assert router.fetch_bot_directive(cfg) == ""
+    # An unseeded language: exit 0 with no stdout -> "" (the bridge keeps its fallback).
+    (cli / "censurado.py").write_text("pass\n")
+    assert router.fetch_bot_directive(cfg) == ""
 
 
 def test_from_env_includes_claude_opus_agent(tmp_path):
