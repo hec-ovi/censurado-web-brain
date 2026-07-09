@@ -16,7 +16,7 @@ RUFF := $(VENV)/bin/ruff
 ARGS ?=
 
 .PHONY: install test lint fmt clean \
-        bootstrap start build up up-gpu comfyui down ps logs generate init-perms config stack-clean deploy
+        bootstrap start build up up-gpu comfyui down ps logs generate init-perms config stack-clean serve deploy
 
 # ----- python package (the CLI + the newsroom sweeps) -----
 # Toolchain: uv (https://docs.astral.sh/uv). It provisions the interpreter and the
@@ -77,6 +77,9 @@ config:           ## validate the composed topology
 
 stack-clean:      ## stop, DELETE the named volumes (site/gocache/comfyui) + any orphans
 	./run.sh stack-clean
+
+serve:            ## the 24/7 loop: stack + telegram bridge + agent fallback chain (needs node)
+	./run.sh serve
 
 deploy:           ## build a fresh snapshot and push it to Cloudflare Pages (live site)
 	./run.sh deploy

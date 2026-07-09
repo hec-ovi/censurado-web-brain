@@ -228,7 +228,7 @@ context: `../comfyui-strix-docker/`.
 - `deploy/deploy-cdn.sh` + `deploy/CACHING.md` the Cloudflare Pages push + cache policy.
 - `functions/` the Cloudflare Pages Function for article reactions (like/dislike + D1).
 - `tests/` the local suite (CLI, sweeps, prompt drift, contracts, compose wiring).
-- `bridge/telegram/` the opt-in Telegram bot bridge (behind the `bridge` compose profile); see its README.
+- `automation/` `auto-batch.sh` (one unattended batch) + `supervisor/` (the 24/7 serve loop: docker + the telegram-bot-skill bridge + the agent fallback chain; see its REQUIREMENTS.md).
 
 **Data + API (`../censurado-web-backend`)**
 - Publish + read API and media store: `internal/publish/`, `cmd/censurado/publish/`

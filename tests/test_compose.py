@@ -231,34 +231,8 @@ def test_single_shared_network(tmp_path):
         assert "censurado" in svc["networks"], f"{name} is off the shared network"
 
 
-def test_tg_bridge_is_opt_in_behind_bridge_profile(tmp_path):
-    # The Telegram bot bridge is OPT-IN behind the `bridge` profile: a plain `up` must not
-    # start it (so the core newsroom is unchanged), and it never becomes a dependency of a
-    # default service. It stays localhost-only and non-root when present.
-    assert "tg-bridge" not in _config(tmp_path)["services"], "tg-bridge must be profile-gated"
-
-    # With the profile, it joins the shared network, localhost-only, as a non-root user.
-    env = tmp_path / "bridge.env"
-    env.write_text("TELEGRAM_BOT_TOKEN=x\nTG_ADMIN_TOKEN=y\n")
-    proc = subprocess.run(
-        ["docker", "compose", "-f", str(COMPOSE_FILE), "--env-file", str(env),
-         "--profile", "bridge", "config", "--format", "json"],
-        cwd=ROOT, env={**os.environ, "COMPOSE_PROJECT_NAME": "newsroom-test"},
-        capture_output=True, text=True)
-    assert proc.returncode == 0, f"compose --profile bridge config failed:\n{proc.stderr}"
-    cfg = json.loads(proc.stdout)
-    b = cfg["services"]["tg-bridge"]
-    assert b.get("profiles") == ["bridge"]
-    assert "censurado" in b["networks"], "tg-bridge must join the shared network"
-    assert b["ports"][0]["host_ip"] == "127.0.0.1", "admin panel must stay localhost-only"
-    assert str(b["ports"][0]["target"]) == "8090"
-    assert b.get("user") and str(b["user"]) not in ("0", "0:0", "root"), "must run non-root"
-    assert b["cap_drop"] == ["ALL"] and "no-new-privileges:true" in b["security_opt"]
-    # The repo is mounted read-only so the agent cannot edit code.
-    repo = [v for v in b["volumes"] if v["target"] == "/repo"][0]
-    assert repo["read_only"] is True
-    # Nothing in a default `up` waits on the opt-in bot.
-    for name, spec in cfg["services"].items():
-        if name == "tg-bridge":
-            continue
-        assert "tg-bridge" not in (spec.get("depends_on") or {})
+def test_no_telegram_service_in_compose(tmp_path):
+    # The Telegram lane retired from compose (automation/supervisor/REQUIREMENTS.md R7):
+    # the bot is the telegram-bot-skill sibling run on the HOST by the serve loop, because
+    # the agent CLIs and their auth live on the host. Guard against it creeping back in.
+    assert "tg-bridge" not in _config(tmp_path)["services"], "the in-container bridge retired; keep telegram out of compose"

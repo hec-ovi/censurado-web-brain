@@ -3,8 +3,9 @@
   "version": "0.0.0",
   "private": true,
   "type": "module",
-  "description": "JS tests for the Cloudflare Pages Functions shipped by the deploy (functions/).",
+  "description": "JS lane: the 24/7 serve loop (automation/supervisor/) and tests for it plus the Cloudflare Pages Functions (functions/).",
   "scripts": {
+    "serve": "node automation/supervisor/serve.mjs",
     "test": "vitest run"
   },
   "devDependencies": {

@@ -1,0 +1,83 @@
+{
+  "repoRoot": "../..",
+  "bridge": {
+    "dir": "../../../telegram-bot-skill",
+    "startCmd": ["node", "src/bot.ts"],
+    "stateFile": "bot-state.json",
+    "envFile": ".env",
+    "envCascade": ["TELEGRAM_BOT_TOKEN", "OWNER_ID"]
+  },
+  "docker": {
+    "checkCmd": ["python3", "cli/censurado.py", "status"],
+    "checkTimeoutMs": 30000,
+    "upCmd": ["docker", "compose", "up", "-d", "publish", "generate", "site"],
+    "upTimeoutMs": 300000
+  },
+  "intervals": {
+    "dockerCheckMs": 60000,
+    "activeCanaryMs": 600000,
+    "promotionProbeMs": 900000
+  },
+  "swap": { "quietMs": 120000, "graceMs": 10000 },
+  "thresholds": { "failureCount": 3, "failureWindowMs": 600000 },
+  "cooldowns": { "AUTH": 1800000, "QUOTA": 3600000, "SOFT": 600000 },
+  "restartBudget": { "max": 5, "windowMs": 1800000 },
+  "canaryPrompt": "Health check: respond with the single word OK.",
+  "canary": { "timeoutMs": 120000, "expect": "OK" },
+  "notify": true,
+  "logFile": "../logs/serve.log",
+  "lockFile": "../logs/.serve.lock",
+  "stateFile": "../logs/.serve-state.json",
+  "chain": [
+    { "name": "agy", "adapter": "agy", "canaryCmd": ["agy", "--print-timeout", "90s", "-p", "{prompt}"] },
+    { "name": "codex", "adapter": "codex", "canaryCmd": ["codex", "exec", "{prompt}"] },
+    { "name": "claude", "adapter": "claude-code", "canaryCmd": ["claude", "-p", "{prompt}"] },
+    { "name": "local", "adapter": "pi", "canaryCmd": ["pi", "-p", "{prompt}"] }
+  ],
+  "patterns": {
+    "UNSUPPORTED": [
+      "Unknown AGENT_ADAPTER",
+      "command not found",
+      "No such file or directory"
+    ],
+    "AUTH": [
+      "unauthori[sz]ed",
+      "\\b401\\b",
+      "\\b403\\b",
+      "please (log ?in|sign ?in|authenticate)",
+      "log ?in required",
+      "not logged in",
+      "auth(entication|orization)? (error|failed|expired|required)",
+      "credential",
+      "oauth",
+      "api key (invalid|missing|not set|expired)",
+      "token (expired|invalid|revoked)"
+    ],
+    "QUOTA": [
+      "quota",
+      "rate.?limit",
+      "\\b429\\b",
+      "usage limit",
+      "limit (exceeded|reached)",
+      "insufficient (credits?|quota|balance|funds)",
+      "credit balance",
+      "out of credits?",
+      "no credits? remaining",
+      "billing",
+      "exceeded your"
+    ],
+    "TRANSIENT": [
+      "ETIMEDOUT",
+      "ECONNRESET",
+      "ECONNREFUSED",
+      "ENOTFOUND",
+      "EAI_AGAIN",
+      "socket hang up",
+      "network error",
+      "\\b50[0-4]\\b",
+      "overloaded",
+      "temporarily unavailable",
+      "timed? ?out"
+    ]
+  }
+}

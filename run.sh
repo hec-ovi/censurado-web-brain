@@ -23,6 +23,7 @@ Censurado stack runner (needs only bash + docker):
   ./run.sh down           stop the stack (keeps data)
   ./run.sh ps | logs      status / follow logs
   ./run.sh generate       one-shot rebuild of the static site, then exit
+  ./run.sh serve          the 24/7 loop: stack + telegram bridge + agent fallback chain (needs node)
   ./run.sh build | config | init-perms | stack-clean | bootstrap | deploy
   ./run.sh start          alias of 'up'
 Once up: site http://localhost:${WEB_PORT}  ·  API + panel http://localhost:${PUB_PORT}
@@ -98,6 +99,7 @@ case "$cmd" in
   config)      run docker compose config -q && echo OK ;;
   stack-clean) run docker compose down -v --remove-orphans ;;
   bootstrap)   run ./bootstrap.sh ;;
+  serve)       run node automation/supervisor/serve.mjs ;;
   deploy)      run ./deploy/deploy-cdn.sh ;;
   help | -h | --help) usage ;;
   *)
