@@ -641,7 +641,7 @@ a.ocard{transition:transform .15s ease, border-color .15s ease, background .15s 
       +el.card({label:'single-author / authors',tag:'article',color:LANE.red,sum:'The 13 nodes; single-author adds <code>20-fresh-titulars</code> so the author picks its own fresh topic. <code>authors</code> repeats for several.'})
       +el.card({wide:true,label:'institucional',tag:'unsigned',color:LANE.steel,sum:'Unsigned, house byline "Redaccion", provided image (not AI-generated), formal register.',extra:'<div class="row"><span class="lbl">route</span></div>'+el.chips(['10-institucional','30-research','50-draft-institucional','62-semantica-calidad','90-finalize','99-preview','publicar'],true)})
       +el.card({label:'daily / weekly / last-hour',tag:'batch',color:LANE.gold,sum:'A single <code>10-batch-plan</code> node that sweeps the day, groups items from the same story and dispatches one writer per topic.'})
-      +el.card({label:'maintenance',tag:'single-node',color:LANE.violet,sum:'Single-node modes.',extra:el.chips(['portal-review','normalize-topics','topic-cleanse','publicar'],true)})
+      +el.card({label:'maintenance',tag:'single-node',color:LANE.violet,sum:'Single-node modes.',extra:el.chips(['redactor','portal-review','normalize-topics','topic-cleanse','publicar'],true)})
       +'</div></div>';
   }
 
@@ -662,7 +662,7 @@ a.ocard{transition:transform .15s ease, border-color .15s ease, background .15s 
     ]
   };
   function maText(){
-    return '<p class="lede"><strong>It is a team, not an agent.</strong> An <code>editor</code> agent sweeps the day, groups what is the same story and assigns each topic to the author whose beat fits, then launches one writer agent per note. The writers run in parallel; when the batch finishes, a <code>portada</code> agent builds the front page.</p>'
+    return '<p class="lede"><strong>A batch runs as a team of agents.</strong> An <code>editor</code> agent sweeps the day, groups what is the same story and assigns each topic to the author whose beat fits, then launches one writer agent per note. The writers run in parallel; when the batch finishes, a <code>portada</code> agent builds the front page.</p>'
       +'<div class="doc-section"><div class="ds-head"><h3>The three roles</h3></div><div class="cardgrid">'
       +el.card({label:'editor',tag:'coordinates',color:LANE.steel,sum:'Sweeps the news, groups the same story, assigns each topic by beat and launches one writer per note.'})
       +el.card({label:'writer (xN)',tag:'author',color:LANE.red,sum:'They run <b>in parallel</b>, each embodies a different author and executes the full workflow independently, with self-review.'})
@@ -679,7 +679,7 @@ a.ocard{transition:transform .15s ease, border-color .15s ease, background .15s 
       {id:'agent',x:316,y:230,w:190,kind:'any model',lane:'red',label:'Agent / CLI',summary:'Any model in any CLI. It uses a single tool: the censurado verbs.',details:['<code>python3 cli/censurado.py &lt;verb&gt;</code> is its entire surface.','It does not run the model inside the stack; the stack gives it the verbs.']},
       {id:'publish',x:616,y:64,w:200,kind:'127.0.0.1:8082',lane:'steel',label:'publish',summary:'The backend: sqlite store + the ONLY writer + serves the admin panel.',details:['Append-only publish API, JSON read API and media store.','It is the only process that writes to the database.','Source: <a href="https://github.com/hec-ovi/censurado-web-brain/blob/main/docker-compose.yml" target="_blank" rel="noopener">docker-compose.yml</a>']},
       {id:'generate',x:616,y:154,w:200,kind:'watcher',lane:'steel',label:'generate',summary:'Watches the DB and rebuilds the static site incrementally.',details:['Content-addressed permalinks: <code>/a/&lt;slug&gt;-&lt;hash8&gt;/</code>.','JSON shards and a surgical CDN-purge manifest.']},
-      {id:'site',x:616,y:244,w:200,kind:'single port',lane:'steel',label:'site',summary:'Serves the local portal; the only exposed port of the group.',details:['What the human sees in the local preview comes from here.']},
+      {id:'site',x:616,y:244,w:200,kind:'single port',lane:'steel',label:'site',summary:'Serves the local portal; the only publicly exposed port (the rest bind 127.0.0.1).',details:['What the human sees in the local preview comes from here.']},
       {id:'comfyui',x:616,y:334,w:200,kind:'GPU opt-in',lane:'gold',label:'comfyui',summary:'The hero image line (FLUX.2); opt-in, needs a GPU.',details:['It feeds the 95-image node of the walk.']},
       {id:'cdn',x:952,y:230,w:200,kind:'production',lane:'green',label:'CDN / public',summary:'deploy pushes the built snapshot to Cloudflare Pages (elcensuradoweb.com).',details:['This jump is the only explicit human decision of the cycle.','Source: <a href="https://github.com/hec-ovi/censurado-web-brain/blob/main/deploy/deploy-cdn.sh" target="_blank" rel="noopener">deploy/deploy-cdn.sh</a>']},
       {id:'telegram',x:316,y:430,w:190,kind:'opt-in',lane:'faint',label:'bridge/telegram',summary:'The opt-in bot bridge runs in its own isolated container.',details:['It lets you give orders from Telegram without coupling the stack.']},
@@ -698,10 +698,10 @@ a.ocard{transition:transform .15s ease, border-color .15s ease, background .15s 
   };
   function arText(){
     return '<p class="lede"><strong>From the order to the portal.</strong> The human gives the order and optionally approves; the agent uses a single tool (the censurado verbs); a Docker group runs the brain and the backend 24/7; <code>deploy</code> pushes the snapshot to Cloudflare Pages.</p>'
-      +'<div class="doc-section"><div class="ds-head"><h3>The four compose services</h3></div><div class="cardgrid">'
+      +'<div class="doc-section"><div class="ds-head"><h3>The core compose services</h3></div><div class="cardgrid">'
       +el.card({label:'publish',tag:'backend',color:LANE.steel,sum:'The sqlite store + the <b>only</b> writer + serves the admin panel. <code>127.0.0.1:8082</code>.'})
       +el.card({label:'generate',tag:'watcher',color:LANE.steel,sum:'Watches the DB and rebuilds the site incrementally: permalinks <code>/a/&lt;slug&gt;-&lt;hash8&gt;/</code>, JSON shards and a CDN-purge manifest.'})
-      +el.card({label:'site',tag:'portal',color:LANE.steel,sum:'Serves the local portal; the <b>only</b> exposed port.'})
+      +el.card({label:'site',tag:'portal',color:LANE.steel,sum:'Serves the local portal; the <b>only</b> publicly exposed port.'})
       +el.card({label:'comfyui',tag:'image',color:LANE.gold,sum:'The hero image line; opt-in, needs a GPU.'})
       +'</div>'
       +'<div class="callout"><b>Isolated opt-ins.</b> The Telegram bridge and the official-source automation each run in their own isolated container. <b>deploy</b> to Cloudflare Pages (elcensuradoweb.com) is a separate human decision. Source: <a href="https://github.com/hec-ovi/censurado-web-brain/blob/main/docker-compose.yml" target="_blank" rel="noopener">docker-compose.yml</a>, <a href="https://github.com/hec-ovi/censurado-web-brain/blob/main/deploy/deploy-cdn.sh" target="_blank" rel="noopener">deploy/deploy-cdn.sh</a>.</div>'
@@ -725,7 +725,7 @@ a.ocard{transition:transform .15s ease, border-color .15s ease, background .15s 
       {from:'backend',to:'content-hash',type:'media'}
     ]
   };
-  var articleShape='{\n  "title": "El Senado sanciona la reforma en particular",\n  "body": "...markdown, sin enlaces en el cuerpo...",\n  "author": "marta-rios",\n  "section": "politica",\n  "topics": ["senado", "reforma", "congreso"],\n  "published_at": "2026-07-08T14:20:00Z",\n  "metadata": {\n    "description": "La camara alta aprobo el texto tras doce horas de debate y giro la ley a promulgacion.",\n    "image": "media/hero/a1b2c3d4.webp",\n    "image_alt": "Recinto del Senado durante la votacion",\n    "image_caption": "La votacion en particular, articulo por articulo.",\n    "image_credit": "Censurado / FLUX.2",\n    "card": { "type": "standard", "importante": false }\n  }\n}';
+  var articleShape='{\n  "title": "El Senado sanciona la reforma en particular",\n  "body": "...markdown, sin enlaces en el cuerpo...",\n  "author": "marta-rios",\n  "section": "politica",\n  "topics": ["senado", "reforma", "congreso"],\n  "published_at": "2026-07-08T14:20:00Z",\n  "metadata": {\n    "description": "La camara alta aprobo el texto tras doce horas de debate y giro la ley a promulgacion.",\n    "image": "media/<sha256>.webp",\n    "image_alt": "Recinto del Senado durante la votacion",\n    "image_caption": "La votacion en particular, articulo por articulo.",\n    "image_credit": "Censurado / FLUX.2",\n    "card": { "type": "standard", "importante": false }\n  }\n}';
   function coText(){
     return '<p class="lede"><strong>Two frozen seams</strong> keep the three repos in sync. <b>Seam A</b> is the Go data shape the generator imports. <b>Seam B</b> is the publish/read HTTP API. JSON-Schema contracts mirror the Go structs and the Pydantic models, and the drift tests keep them byte-equal.</p>'
       +'<div class="doc-section"><div class="ds-head"><h3>The schemas</h3></div>'

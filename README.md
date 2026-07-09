@@ -164,11 +164,12 @@ no committed tool for the rebuild; it is a manual pass. The overall process:
 2. **Pull the published content.** Everything on the live pages is fair game:
    - Enumerate every article URL from the child sitemaps (`/sitemaps/articles-YYYY-MM.xml`).
    - Read each article page: title, date, author handle, and section come from the
-     `NewsArticle` JSON-LD; the dek and lede are `.article-subtitle` / `.article-standfirst`;
+     `NewsArticle` JSON-LD; the standfirst is the `.article-standfirst` paragraph (the dek
+     renders only on listing cards as `.card-subtitle`, not on the article page);
      topics are the `topic-link` chips; the hero is the JSON-LD `image`. Convert the body HTML
      to markdown.
    - Reverse the embeds. The generator authors them as body markers (`{{video:<id>}}`,
-     `{{tweet:<url>}}`, `{{relacionado:<slug>}}`), and an HTML-to-markdown pass drops the
+     `{{tweet:<id>}}`, `{{relacionado:<slug>}}`), and an HTML-to-markdown pass drops the
      rendered iframe or card, so pull the YouTube id, the tweet snapshot (name, handle, avatar,
      text, url), and the related link back out of the rendered HTML and rewrite the markers. A
      tweet also needs its snapshot stored in the article's `metadata.tweets[]`; a related marker
@@ -230,7 +231,7 @@ All config lives in `.env` (see `.env.example`). The non-secret defaults target 
 ## What is left out, on purpose
 
 - The litestream backup sidecar that `censurado-web-backend` ships for production. Add it from that repo's own compose if you want off-site backups; this compose keeps to the running system.
-- TLS and auth in front of the operational ports. They bind `127.0.0.1` instead. Put a real auth layer in front before exposing any of them.
+- TLS and auth in front of the operational ports. They bind `127.0.0.1` instead. Put an auth layer in front before exposing any of them.
 
 ## Pending features (roadmap)
 
@@ -238,7 +239,7 @@ Not built yet, captured here so we can pick them up. Nothing below blocks the cu
 
 - **Analytics / BI dashboard** (backend panel). One surface for growth: a most-popular-topics chart (filtered totals, built to scale to thousands of topics), authors ranked by likes, authors with the fewest articles, and statistical/growth modeling. Note: author-likes needs a reactions data source the backend does not hold yet (reactions live in the downstream Cloudflare Pages reactions function).
 - **Rebel Forge integration.** Integrate the Rebel Forge functionality (a separate GitHub repo). Pending, scope defined when picked up.
-- **Batch scheduler (a few runs a day).** `automation/auto-batch.sh` already runs one unattended batch end to end (stack preflight, single-instance lock, headless agy agent) and is written to be fired by any scheduler. Missing is the scheduler itself: something that triggers it a few times a day on a cadence. Likely n8n, or a systemd timer or cron; the tool and the exact schedule get decided when we pick this up.
+- **Automation layer (a thin, lean trigger + scheduler).** `automation/auto-batch.sh` already runs one unattended batch end to end (stack preflight, single-instance lock, headless agent) and is written to be fired by any scheduler. The plan is a thin layer over it: a systemd timer (or cron) firing it on a cadence, plus a lightweight event trigger (a Cloudflare Email Worker posting to a small listener) for on-demand runs. A full node-based orchestrator (n8n and similar) is deferred: it is a heavy framework with multi-container overhead, and run inside a container its command node cannot reach the host's agent and docker without opening the sandbox, so it costs more than it saves for a cadence job. Revisit it only if the flow grows into a branching, multi-integration graph.
 
 ## Tests
 
@@ -269,6 +270,7 @@ run.sh                 the no-dependency stack runner (bash + docker): start/up/
 Makefile               optional `make` mirror of run.sh, plus the python lane (install/test/lint)
 nginx/site.conf        the public static-site server (root redirects to /latest/)
 functions/             the Cloudflare Pages Function for article reactions (like/dislike + D1)
+bridge/telegram/       opt-in Telegram bot bridge (behind the `bridge` compose profile), host or docker
 tests/                 the local suite (CLI, sweeps, prompt drift, contracts, compose wiring)
 ```
 For the seam between the repos (the operator token, the publish API, generate then serve, the newsroom recipe), see [AGENTS.md](AGENTS.md). To have a CLI agent write articles in a persona's voice and publish them, see [cli/SKILL.md](cli/SKILL.md). For a part's internals, read that repo's own README.

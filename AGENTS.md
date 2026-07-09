@@ -178,7 +178,7 @@ Publishing writes the db; it does **not** itself write the public site. A separa
   (the front page is the `latest` landing at `/latest/`), feeds (`feed.xml`,
   `atom.xml`, `feed.json`), `sitemap.xml`, JSON shards, and a purge manifest under
   `.generated/`. There is no root `/index.html`.
-- It runs continuously (`restart: unless-stopped`); `./run.sh site` forces a one-shot
+- It runs continuously (`restart: unless-stopped`); `./run.sh generate` forces a one-shot
   rebuild. The generate watcher owns regeneration; no operator surface triggers a rebuild.
 - `site` (nginx) serves `site-data` read-only. The config redirects `/`
   to `/latest/` so the origin works as the main page: `nginx/site.conf`.
@@ -222,12 +222,13 @@ context: `../comfyui-strix-docker/`.
 - `.env.example` every config field and which are secrets.
 - `bootstrap.sh` mints the operator key + panel login, seeds `keys.json`, fills `.env`,
   fixes the site volume perms.
-- `run.sh` the no-dependency stack runner (bash + docker, no make): start/up/up-gpu/comfyui/down/site/generate/deploy.
+- `run.sh` the no-dependency stack runner (bash + docker, no make): start/up/up-gpu/comfyui/down/generate/deploy.
 - `Makefile` the optional `make` mirror of `run.sh`, plus the python lane (install/test/lint).
 - `nginx/site.conf` the public static-site server (root redirect to `/latest/`).
 - `deploy/deploy-cdn.sh` + `deploy/CACHING.md` the Cloudflare Pages push + cache policy.
 - `functions/` the Cloudflare Pages Function for article reactions (like/dislike + D1).
 - `tests/` the local suite (CLI, sweeps, prompt drift, contracts, compose wiring).
+- `bridge/telegram/` the opt-in Telegram bot bridge (behind the `bridge` compose profile); see its README.
 
 **Data + API (`../censurado-web-backend`)**
 - Publish + read API and media store: `internal/publish/`, `cmd/censurado/publish/`
@@ -287,8 +288,8 @@ static files, so shipping elsewhere (a direct FTP push, another static host, an 
 store) just means swapping `deploy-cdn.sh` for that service's own CLI or skill. Nothing
 else in the stack depends on Cloudflare.
 
-`./run.sh` wraps these (`./run.sh up`, `./run.sh site`, `./run.sh generate`,
-`./run.sh init-perms`) and needs only bash + docker; the `Makefile` mirrors them for
+`./run.sh` wraps these (`./run.sh up`, `./run.sh generate`, `./run.sh init-perms`)
+and needs only bash + docker; the `Makefile` mirrors them for
 `make` users (and carries `make test`/`make install`); the raw `docker compose` commands
 above work without either. After deleting volumes (`docker compose down -v`), run `docker compose
 run --rm init-perms` once before the next generate so the site volume is writable.
