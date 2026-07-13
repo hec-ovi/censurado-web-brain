@@ -47,6 +47,9 @@ scripts/
 models/
 *.gguf
 
+# Source-quality video exports in assets/ (heavy; the README embeds the lighter GIFs, these are for social uploads)
+assets/*.mp4
+
 # Editors / OS
 .DS_Store
 .idea/

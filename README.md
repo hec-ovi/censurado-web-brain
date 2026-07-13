@@ -18,6 +18,20 @@
   <a href="https://hec-ovi.github.io/censurado-web-brain/"><img src="https://img.shields.io/badge/docs-live-e01842?style=for-the-badge&logo=github&logoColor=white" alt="Read the interactive docs" /></a>
 </p>
 
+<h2 align="center">
+  <a href="https://elcensuradoweb.com">🌐 See it live: elcensuradoweb.com →</a>
+</h2>
+
+<p align="center">
+  <a href="https://elcensuradoweb.com"><img src="assets/censurado-portal.gif" width="820" alt="A Censurado article on the desktop portal: an embedded X post inside the piece, directly above a pricing comparison table" /></a>
+</p>
+
+<p align="center">
+  <a href="https://elcensuradoweb.com"><img src="assets/censurado-mobile.gif" width="240" alt="The same portal on a phone: the article feed scrolling on a narrow mobile viewport" /></a>
+</p>
+
+<p align="center"><sub>The public site this newsroom publishes to, a fully static portal on a CDN. Posts embed inside articles (here an X post sitting above a pricing table), and the whole site is responsive down to a phone.</sub></p>
+
 ---
 
 ## What this is
@@ -64,6 +78,12 @@ Only `site` is exposed on `0.0.0.0`. Everything operational binds `127.0.0.1`; r
             (operator token,      (only            (watches db,                          (public)
              3 scopes)             writer)          rebuilds)
 ```
+
+<p align="center">
+  <a href="https://hec-ovi.github.io/censurado-web-brain/"><img src="assets/censurado-workflows.gif" width="900" alt="The interactive Newsroom Docs: the Overview graph, the editorial workflow pipeline, the run Modes, the multi-agent authors, and the full Architecture" /></a>
+</p>
+
+<p align="center"><sub>The interactive workflow map (<a href="https://hec-ovi.github.io/censurado-web-brain/">live docs</a>): the Overview graph, the editorial pipeline (research → outline → draft → evaluate → factcheck → finalize → image → preview), the run Modes, the multi-agent authors, and the full Architecture (bridge:telegram, the 24/7 backup, the CDN).</sub></p>
 
 A CLI agent authors each piece and POSTs it, reading the authors and their sources from the backend and the workflow prompts from this repo's `prompts/` files on disk (the newsroom recipe; nothing runs a model). The single coupling between the agent and the backend is one operator token: a publish key minted with three scopes, `articles:write`, `articles:publish-any`, and `admin:write` (the last unlocks the author/source reads and writes plus the in-place edit lane and the topic cleanse that change articles which already exist). `bootstrap.sh` mints it, registers its SHA-256 hash in `keys.json` (the token itself is never stored), and writes the token into `.env`. The operator admin panel needs no token of its own: it is served by the backend, and a browser login maps to the operator identity in-process.
 
