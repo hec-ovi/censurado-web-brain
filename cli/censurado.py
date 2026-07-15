@@ -1547,6 +1547,47 @@ def _probe(url, ok_set, timeout=5):
     return code in ok_set, code, f"HTTP {code}"
 
 
+def cmd_up(a):
+    """Bring the LOCAL stack up so the portal serves, by running the repo's own runner
+    (run.sh) FOR you. Two lanes:
+      - `up`     the fast lane every task needs: backend + generator + local site, no GPU.
+      - `up-gpu` the SAME plus ComfyUI (the image lane). Heavy; only when the task renders
+                 NEW hero images, and only on the GPU box.
+    Both are idempotent (an already-up stack is fine), create .env + secrets on first run,
+    and WAIT until the site actually serves, so a 0 exit means the stack is usable
+    (re-check anytime with `status`). Everything this starts is LOCAL (localhost): nothing
+    goes public until the separate `publicar --yes`.
+
+    This verb is the ONE sanctioned way for an agent to start the stack: you still never
+    run `./run.sh`, `docker`, or `make` yourself. If it fails, relay the exact last error
+    line to the human and STOP -- no retry loops, no chmod, no reading the scripts."""
+    script = _REPO / "run.sh"
+    if not script.is_file():
+        fail(f"stack runner not found at {script} (expected run.sh in the repo root).")
+    lane = "up-gpu" if a.gpu else "up"
+    sys.stdout.write(f"Bringing the local stack up (lane: {lane}); a first run can take a "
+                     "few minutes while it builds...\n")
+    sys.stdout.flush()
+    try:
+        proc = subprocess.run(["bash", str(script), lane], cwd=str(_REPO), check=False)
+    except Exception as exc:
+        fail(f"could not launch the stack runner ({exc}). Relay this to the human and stop; "
+             "do not run docker or ./run.sh yourself.")
+    if proc.returncode != 0:
+        sys.stderr.write(f"up FAILED (run.sh {lane} exited {proc.returncode}). Relay the last "
+                         "line above to the human and STOP. Do NOT retry in a loop, run docker "
+                         "commands, chmod, or read the scripts.\n")
+        return 1
+    sys.stdout.write("up OK. "
+                     + ("Whole stack incl. ComfyUI (image lane) is serving. "
+                        if a.gpu else
+                        "Core stack is serving (no image lane; `up-gpu` exists but only for "
+                        "rendering NEW hero images). ")
+                     + f"Local site {SITE} - API + panel {PUBLISH}. All LOCAL: going public "
+                       "is only ever the separate `publicar --yes`.\n")
+    return 0
+
+
 def cmd_status(a):
     """Is the portal ONLINE and serving? A read-only liveness report over the four services the
     operator asks about, each probed INDEPENDENTLY (one down service never hides another), with an
@@ -2154,6 +2195,16 @@ def build_parser():
     sfl.add_argument("--min-per-type", dest="min_per_type", type=int, default=None,
                      help="per-lean minimum, left/neutral/right (>= 0)")
     sfl.set_defaults(fn=cmd_set_floor)
+
+    up = sub.add_parser("up",
+                        help="bring the LOCAL stack up (backend + generator + site, no GPU) and wait "
+                             "until it serves; the ONE sanctioned way to start the stack")
+    up.set_defaults(fn=cmd_up, gpu=False)
+
+    ug = sub.add_parser("up-gpu",
+                        help="bring the WHOLE local stack up incl. ComfyUI (the image lane; heavy, "
+                             "GPU box only, needed only to render NEW hero images)")
+    ug.set_defaults(fn=cmd_up, gpu=True)
 
     st = sub.add_parser("status",
                         help="is the portal ONLINE? liveness of backend + local site + comfyui + the "

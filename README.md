@@ -91,7 +91,7 @@ The static site is not rebuilt inside the publish request: `generate` is a separ
 
 ### The newsroom (this repo)
 
-- `cli/censurado.py` is the agent-facing CLI: publish/edit an article, upload media, render a hero, capture a tweet/truth snapshot, read and curate authors and sources over the backend, and walk the editorial `step` gate. It is stdlib-only (no install), so a driver runs it directly.
+- `cli/censurado.py` is the agent-facing CLI: publish/edit an article, upload media, render a hero, capture a tweet/truth snapshot, read and curate authors and sources over the backend, walk the editorial `step` gate, and bring the local stack up itself (`up` for the fast lane, `up-gpu` to include ComfyUI). It is stdlib-only (no install), so a driver runs it directly.
 - `cli/SKILL.md` is the resolver skill that routes a CLI agent to the right fat sub-skill under `cli/skills/` (write-article, daily-batch, authors, sources, portada, prompts, media, publicar, websearch).
 - `prompts/` is the editorial recipe: the `workflow/*` step-gate nodes + `manifest.json`, the `persona/synthesize.md` author guide, and `editorial/style.md`. Plain files, git is their history, no server and no database.
 - `newsroom/` is the maintenance CLI (`censurado-brain`): a backend health probe (`status`), the `normalize` whole-corpus contract pass (subcommands `check` (default), `links`, `sections`), plus the `topics cleanse` and `embeds recheck` sweeps. It needs the package installed (httpx + the corpus helpers); the authoring CLI does not.

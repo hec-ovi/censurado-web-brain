@@ -37,7 +37,8 @@ You must NEVER:
   repos. You never need the code to operate the site.
 - run ANY shell command that is not `python3 cli/censurado.py ...`: no `make`, no `./run.sh`,
   no `./deploy/*.sh`, no `docker`, no `chmod` / `mkdir` / `sed` / `grep`, no `sqlite3` or any
-  other direct database access, no `pytest` / `make test`.
+  other direct database access, no `pytest` / `make test`. Starting the stack is ALSO a verb
+  now (`up` / `up-gpu`), so even "the site is down" never justifies a raw script or docker.
 - regenerate or publish to "make a change appear" or "to check" it: the local site repaints
   itself within a few seconds, and you confirm with `status`, never by rebuilding.
 - spawn subagents or write a script to orchestrate the work. You do the walk yourself, in
@@ -65,17 +66,20 @@ or rerun generate/publicar in a loop, you are already off the rails. Instead:
   `python3 cli/censurado.py status` prints an [OK]/[WARN]/[FAIL] liveness report over the
   backend, the local site, ComfyUI (optional, images only), and the public site, and exits 0
   when the core is serving. `python3 cli/censurado.py doctor` is the deeper preflight (it also
-  checks the skill package and the on-disk recipe). If the core is down, ask the USER to start
-  it (you do not run this yourself): from the repo root, no GPU needed,
-  `docker compose up -d publish generate site`. The workflow and persona prompts are on-disk
-  files in this repo's `prompts/` (no server to start).
+  checks the skill package and the on-disk recipe). If the core is down, bring it up YOURSELF
+  with the verb: `python3 cli/censurado.py up` (no GPU needed; waits until it serves). Use
+  `python3 cli/censurado.py up-gpu` INSTEAD only when the task renders NEW hero images (it adds
+  ComfyUI; heavy, GPU box only). Run `up` at most ONCE: if it fails, relay its exact error line
+  to the human and STOP (never fall back to `docker`, `./run.sh`, or `make`). The workflow and
+  persona prompts are on-disk files in this repo's `prompts/` (no server to start).
 - **Auth is automatic.** `censurado.py` reads the operator token from `.env`. Never print,
   invent, or pass a token.
-- **Preview is local (debug), publicar is public.** `censurado.py preview` stages an article to
-  the LOCAL preview site (`localhost:8080`), NOT the public internet, so use it freely to let the
-  user SEE the piece; it is debug-only and never goes live. Publishing to production is the separate
-  verb `censurado.py publicar --yes` (that is what "publicar" / "publish" / "go live" mean).
-  Always show the draft and get a yes before you `publicar`, unless told to run unattended.
+- **Never confuse `preview` with `publicar`.** They are different verbs for different worlds:
+  - `preview` = stage to the LOCAL site at `localhost:8080`. Debug-only, only this machine sees
+    it, it NEVER reaches the internet. Use it freely to let the user SEE a piece.
+  - `publicar --yes` = DEPLOY to the real public site (elcensuradoweb.com). Irreversible and
+    outward-facing; this and ONLY this is what "publicar" / "publish" / "deploy" / "go live"
+    mean. Always show the draft and get a yes first, unless told to run unattended.
 - **Compliance.** The site is openly AI-generated with fictional personas: keep the footer
   "Aviso editorial", mark opinion/satire, and never impersonate real people.
 
@@ -83,6 +87,8 @@ or rerun generate/publicar in a loop, you are already off the rails. Instead:
 | The user wants to ... | Do this |
 |---|---|
 | check the stack is up / "did my publish land?" / "you online?" | `python3 cli/censurado.py status` |
+| the stack is down / start the portal / spin it up ("levanta el sitio") | `python3 cli/censurado.py up` (LOCAL core stack, no GPU; waits until it serves) |
+| start the stack WITH the image lane (ComfyUI, for NEW hero images) | `python3 cli/censurado.py up-gpu` (heavy, GPU box only) |
 | verify a specific piece is live / "where is my article?" | open the `PREVIEW:` link `preview` printed for it (that link is the confirmation; the site repaints within a few seconds, do not re-check in a loop) |
 | write / create / cover a news article ("nota", "write up this news") | read `cli/skills/write-article/SKILL.md`, then walk it |
 | write an institutional / unsigned piece (an official release or "gacetilla", no persona byline) | read `cli/skills/write-article/SKILL.md`, then walk the lighter formal lane: `python3 cli/censurado.py step --mode institucional` (signed by "Redacción", provided image, no AI hero) |
