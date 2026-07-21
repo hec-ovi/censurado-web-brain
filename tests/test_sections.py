@@ -6,7 +6,7 @@ from newsroom.contracts.sections import SECTION_ENUM, is_valid_section
 
 
 def test_enum_is_exact():
-    assert SECTION_ENUM == ("tech", "world", "politics", "misterio-y-conspiracion", "literatura")
+    assert SECTION_ENUM == ("tech", "world", "politics", "misterio-y-conspiracion", "literatura", "ambiente")
 
 
 def test_valid_sections_pass():
