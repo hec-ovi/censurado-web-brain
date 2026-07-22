@@ -881,9 +881,11 @@ def cmd_unpublish(a):
 def cmd_portada(a):
     """Write or read the per-day front-page plan (the portada) in the publish backend
     (admin:write, Bearer-authenticated). With --set-json, POST the
-    day's ORDER to /portadas: the JSON object provides `entries` (a list of {"slug","role"}
-    where role is "" or "important") and an optional `recomendado` list of slugs; the
-    positional date is merged in and wins over any date in the JSON. Without --set-json, GET
+    day's ORDER to /portadas: the JSON object provides `entries` (a list of {"slug","role"})
+    and an optional `recomendado` list of slugs; the positional date is merged in and wins
+    over any date in the JSON. entries[0] is the day's lead (full width by position, role
+    ignored there); role "important" makes a non-lead card span the full row (a double card),
+    "" is a half-row single (singles pair up two per row on desktop). Without --set-json, GET
     /portadas and print the list (there is no single-date GET route; listing is fine)."""
     if a.set_json is not None:
         spec = _json(a.set_json, "--set-json", want=dict)

@@ -26,14 +26,18 @@ Do it one day at a time. For each day under review:
    exclusivity, freshness). The lead renders as a full-bleed hero across the top of the page,
    so when two stories are comparably important prefer the one with a strong image. Weight
    still wins: a text-only story that is clearly the day's biggest still leads, the image is
-   only a tiebreaker.
+   only a tiebreaker. The lead is the FIRST entry and is full width BY POSITION: leave its
+   role `""` (the renderer ignores `"important"` on it). The lead is the day's portada, one
+   per day, on top; it is not the same thing as a double card lower down.
 
 4. Order the rest for the DESKTOP grid. The front page is a two-column grid that fills in
-   YOUR order, left to right, two pieces per row. The lead and any `"important"` piece span
-   the FULL row on their own; every other piece takes half a row, so the rest pair up (the
-   2nd and 3rd entries share a row, the 4th and 5th share the next, and so on). On phones the
-   SAME order is one single column top to bottom, so you only ever arrange for desktop and
-   mobile follows for free (1, 2, 3, 4, 5 ... in index order is already fine there).
+   YOUR order (index order), left to right, two pieces per row. The lead and any `"important"`
+   piece span the FULL row on their own; every other piece takes half a row, so the rest pair
+   up (the 2nd and 3rd entries share a row, the 4th and 5th share the next, and so on). In the
+   editor's words: a full-row piece is a "double card" or "double column" (`role:"important"`),
+   a half-row piece is a "single" (`role:""`). On phones the SAME order is one single column
+   top to bottom, so you only ever arrange for desktop and mobile follows for free
+   (1, 2, 3, 4, 5 ... in index order is already fine there).
 
    Alternate MEDIA and TEXT like a checkerboard. Write `o` for a text piece and `x` for a
    media piece. Within each pair put one of each, and flip which side carries the media from
@@ -70,12 +74,18 @@ Do it one day at a time. For each day under review:
    stacked), and keep same-TOPIC pieces apart too, EXCEPT the deliberate opposing-takes pair
    above.
 
-5. Optionally choose a SHORT `recomendado` list (a handful of slugs) for the day's sidebar:
-   worthwhile pieces that are not in the lead run but deserve a second look.
+5. Optionally choose a SHORT `recomendado` list (a handful of slugs): worthwhile pieces that
+   are not in the lead run but deserve a second look. Know what you are writing: that rail is
+   GLOBAL, not the day's. It persists on the front page across days until changed, and setting
+   it here replaces the whole list.
 
-6. Write the plan with the CLI. The FIRST entry is the day's lead:
+6. Write the plan with the CLI. The FIRST entry is the day's lead (no role needed; position
+   alone makes it the hero), singles carry `""`, double cards carry `"important"`:
 
-       python3 cli/censurado.py portada <YYYY-MM-DD> --set-json '{"entries":[{"slug":"the-lead","role":"important"},{"slug":"second","role":""},{"slug":"third","role":""}],"recomendado":["extra-one","extra-two"]}'
+       python3 cli/censurado.py portada <YYYY-MM-DD> --set-json '{"entries":[{"slug":"the-lead","role":""},{"slug":"second","role":""},{"slug":"third","role":""},{"slug":"closer","role":"important"}],"recomendado":["extra-one","extra-two"]}'
+
+   That is: hero, then second+third paired on one row, then the closer as a full-row double
+   card. No gaps.
 
    Read it back any time with `python3 cli/censurado.py portada <YYYY-MM-DD>` (lists all).
 

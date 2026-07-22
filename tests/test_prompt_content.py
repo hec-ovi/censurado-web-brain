@@ -231,11 +231,33 @@ def test_portal_review_carries_the_day_loader_and_arrange_rules():
     # The no-gap rule: a lone trailing piece is promoted to a full single row (role important).
     assert "never leave a gap" in low
     assert "important" in low
+    # The editor's vocabulary is mapped: "double card" = role important, and the lead is the
+    # first entry by POSITION, never marked important (the write example must not either).
+    assert "double card" in low
+    assert "by position" in low
+    assert '{"slug":"the-lead","role":""}' in low
     # Content-first pairing overrides the media checkerboard for deliberately related pieces.
     assert "content first" in low
     assert "checkerboard" in low
     # The write shape stays.
     assert "--set-json" in low
+
+
+def test_portada_skill_maps_the_layout_vocabulary():
+    # An agent reading ONLY the portada skill must get the layout right: the lead is the
+    # first entry by position (distinct from a double card), "double card"/"double column"
+    # means role important (a full row), singles pair up two per row in index order, and a
+    # typo'd slug is silently dropped at render (it does not put an empty card on the page).
+    skill = " ".join(
+        (PROMPTS_DIR.parent / "cli" / "skills" / "portada" / "SKILL.md").read_text().lower().split()
+    )
+    assert "double card" in skill
+    assert "double column" in skill
+    assert "by position" in skill
+    assert '"important"' in skill
+    assert "index order" in skill
+    assert "never leave a gap" in skill
+    assert "dropped" in skill and "empty card" in skill
 
 
 def test_batch_plan_forward_points_to_the_portada_arrange():
