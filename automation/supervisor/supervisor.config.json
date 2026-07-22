@@ -29,8 +29,6 @@
   "lockFile": "../logs/.serve.lock",
   "stateFile": "../logs/.serve-state.json",
   "chain": [
-    { "name": "agy", "adapter": "agy", "canaryCmd": ["agy", "--print-timeout", "90s", "-p", "{prompt}"] },
-    { "name": "codex", "adapter": "codex", "canaryCmd": ["codex", "exec", "{prompt}"] },
     { "name": "claude", "adapter": "claude-code", "canaryCmd": ["claude", "-p", "{prompt}"] },
     { "name": "local", "adapter": "pi", "canaryCmd": ["pi", "-p", "{prompt}"] }
   ],

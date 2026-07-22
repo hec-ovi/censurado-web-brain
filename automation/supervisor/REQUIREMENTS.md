@@ -3,8 +3,9 @@
 Status: v1 SHIPPED 2026-07-09, in this directory. Run it with `./run.sh serve` (or the
 `censurado-serve.service` systemd unit here); config in `supervisor.config.json`; tests in
 `*.test.mjs` (`npm test`). Verified live: it raised the down docker stack, detected a real
-agy AUTH failure through the canary, and demoted to codex on real evidence. Still open
-against this spec: the codex/agy/local adapters upstream in telegram-bot-skill (R5 gap;
+AUTH failure on the then-primary CLI through the canary, and demoted to the next lane on
+real evidence. Still open against this spec: the remaining cloud-CLI adapters upstream in
+telegram-bot-skill (R5 gap;
 until then the bridge lane settles on `claude-code`), routing auto-batch through the chain
 (R7 phase 2), and the induced-failure soak (R8 gate, needs days of wall-clock). Running the
 supervisor itself inside docker was considered and deliberately dropped: the agent CLIs and
@@ -38,11 +39,12 @@ any layer that dies:
 supervisor (host process, systemd)
   |- docker stack        publish + generate + site (comfyui optional)
   |- telegram bridge     telegram-bot-skill, npm start
-  '- active agent        fallback chain: agy -> codex -> claude -> pi (local model)
+  '- active agent        fallback chain: cloud CLIs in config order -> pi (local model)
 ```
 
-If agy breaks (login expired, quota, hang), the supervisor kills that lane, promotes codex,
-and the in-flight work continues; codex breaks, claude takes it. From Telegram the worst a
+If the active CLI breaks (login expired, quota, hang), the supervisor kills that lane,
+promotes the next entry, and the in-flight work continues; that one breaks, the next takes
+it. From Telegram the worst a
 user ever sees is one reconnect-style status line and some extra latency.
 
 ## R1: serve loop, 24/7
@@ -60,7 +62,8 @@ user ever sees is one reconnect-style status line and some extra latency.
 
 ## R2: agent fallback chain
 
-- Ordered chain, config-driven, default `agy -> codex -> claude -> pi (local)`. Per entry:
+- Ordered chain, config-driven: whatever headless cloud CLIs the host has, in preference
+  order, ending in `pi (local)` (the shipped chain lives in `supervisor.config.json`). Per entry:
   binary, bridge adapter name, canary probe, failure patterns (see R3). Adding an agent is
   config plus an adapter, not supervisor code.
 - **The terminal fallback is a local model: pi + llama.cpp on the Strix box.** The cloud
@@ -81,8 +84,8 @@ user ever sees is one reconnect-style status line and some extra latency.
 
 ## R3: failure detection (the actual engineering problem)
 
-The challenge: know from one level above that agy is failing login or codex exceeded its
-usage limit, without a human reading the chat. Signals, in order of trust:
+The challenge: know from one level above that the active CLI is failing login or exceeded
+its usage limit, without a human reading the chat. Signals, in order of trust:
 
 1. **Process signals.** Spawn failure (binary missing), non-zero exit, wall-clock timeout,
    and a silence timeout (no stream events for N minutes; `auto-batch.sh` already does the
@@ -94,9 +97,9 @@ usage limit, without a human reading the chat. Signals, in order of trust:
 3. **Pattern classification.** Raw stderr / error reason is mapped to a class by a per-CLI
    pattern table that lives in a config file, not in code, so a new error string is a config
    edit, not a redeploy:
-   - `AUTH`: login or oauth expired (the agy case). Demote immediately; it never heals on
+   - `AUTH`: login or oauth expired. Demote immediately; it never heals on
      its own within minutes.
-   - `QUOTA`: usage or rate limit exceeded (the codex case, 429s). Demote immediately;
+   - `QUOTA`: usage or rate limit exceeded (429s). Demote immediately;
      record a cool-down before re-probing.
    - `TRANSIENT`: network, 5xx, overloaded. Retry the same agent with backoff; never fall
      back on the first hit.
@@ -117,7 +120,7 @@ be improved from real incidents.
   from the ledger and the `step` verb alone, with zero dependence on the dead agent's session
   memory.
 - On failover mid-piece the supervisor starts the successor with a standard resume prompt:
-  bind the repo (agy needs `--add-dir`), read the ledger, ask `step` for the current node,
+  bind the repo (some CLIs need an explicit `--add-dir`), read the ledger, ask `step` for the current node,
   continue the walk. Same operator-skill boundary as any run.
 - Prompt-side requirement: audit the workflow nodes so the ledger always records enough to
   resume (mode, chosen author, current node, sources gathered so far). If a node can pass its
@@ -131,7 +134,7 @@ be improved from real incidents.
 
 - telegram-bot-skill is the only Telegram code. It ships `claude-code` and `pi` adapters
   today (both with session resume), so the top and the bottom of the chain are covered;
-  **codex and agy adapters are the gap**. Preferred route: contribute them upstream in that
+  **adapters for the other cloud CLIs are the gap**. Preferred route: contribute them upstream in that
   repo (it is ours), keeping this repo adapter-free. Each adapter must pass the raw error
   text through its error events so R3 can classify.
 - Agent swap mechanism: restart the bridge with a different `AGENT_ADAPTER` (simple, uses
@@ -163,7 +166,7 @@ be improved from real incidents.
   against the service creeping back).
 - README prerequisites gain one line: telegram-bot-skill checked out as a sibling (or
   installed as a skill). That is it. DONE.
-- `automation/auto-batch.sh` keeps working unchanged (agy headless). Phase 2 (open): route
+- `automation/auto-batch.sh` keeps working (one headless CLI run, `AUTO_BATCH_AGENT_CMD`). Phase 2 (open): route
   it through the same supervisor chain so scheduled batches inherit the fallback for free.
 - Chain order, thresholds, and probe intervals live in `supervisor.config.json` here, not
   in `.env` (they are wiring, not machine secrets).

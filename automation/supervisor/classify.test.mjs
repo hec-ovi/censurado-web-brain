@@ -21,8 +21,8 @@ describe('classify', () => {
     ['fetch failed: ECONNRESET', 'TRANSIENT'],
     ['upstream returned 503 Service Unavailable', 'TRANSIENT'],
     ['the model is overloaded, retry shortly', 'TRANSIENT'],
-    ['Unknown AGENT_ADAPTER "agy". Use claude-code or pi.', 'UNSUPPORTED'],
-    ['bash: agy: command not found', 'UNSUPPORTED'],
+    ['Unknown AGENT_ADAPTER "acme". Use claude-code or pi.', 'UNSUPPORTED'],
+    ['bash: acme: command not found', 'UNSUPPORTED'],
   ])('%s -> %s', (text, cls) => {
     expect(classify(text, compiled).cls).toBe(cls)
   })

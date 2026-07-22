@@ -1,27 +1,31 @@
 #!/usr/bin/env bash
-# auto-batch.sh: drive the Censurado news batch UNATTENDED via the agy (Gemini) content agent.
+# auto-batch.sh: drive the Censurado news batch UNATTENDED via a headless agent CLI.
 #
-# It is the single entry point a scheduler (systemd timer, cron, n8n exec node) calls. It
-# preflights the stack, then runs agy HEADLESS (one prompt, auto-approved) bound to this repo so
-# the agent sees the censurado operator skill and walks the gated step workflow to preview. It
-# never deploys to production (going live stays a human-gated action).
+# It is the single entry point a scheduler (systemd timer, cron) calls. It preflights the
+# stack, then runs the configured agent CLI HEADLESS (one prompt, auto-approved) bound to this
+# repo so the agent sees the censurado operator skill and walks the gated step workflow to
+# preview. It never deploys to production (going live stays a human-gated action).
 #
 # Usage:  auto-batch.sh <mode> [max_articles]
 #   mode          daily | last-hour | weekly   (the freshness window the batch covers)
 #   max_articles  cap for THIS run; 0 = a normal sweep (3-6). Use 1 for a smoke/test run.
 #
 # Env overrides:
-#   AUTO_BATCH_TIMEOUT        hard wall-clock kill (default 40m)
-#   AUTO_BATCH_PRINT_TIMEOUT  agy --print-timeout (default 35m)
-#   AUTO_BATCH_MODEL          agy --model (default: agy's own default)
+#   AUTO_BATCH_TIMEOUT    hard wall-clock kill (default 40m)
+#   AUTO_BATCH_AGENT_CMD  the agent command as a space-split template; {prompt} is replaced
+#                         with the batch prompt. Any CLI with a headless one-prompt mode
+#                         slots in. Default: claude --dangerously-skip-permissions -p {prompt}
+#   AUTO_BATCH_LOG_DIR    where run logs and the lock live (default automation/logs)
 set -uo pipefail
 
 REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 MODE="${1:-daily}"
 MAX="${2:-0}"
 TIMEOUT="${AUTO_BATCH_TIMEOUT:-40m}"
-PRINT_TIMEOUT="${AUTO_BATCH_PRINT_TIMEOUT:-35m}"
-LOG_DIR="$REPO/automation/logs"
+# Default kept out of ${VAR:-...}: the braces in {prompt} break bash's expansion parsing.
+AGENT_CMD_TPL="${AUTO_BATCH_AGENT_CMD:-}"
+[ -n "$AGENT_CMD_TPL" ] || AGENT_CMD_TPL='claude --dangerously-skip-permissions -p {prompt}'
+LOG_DIR="${AUTO_BATCH_LOG_DIR:-$REPO/automation/logs}"
 LOCK="$LOG_DIR/.batch.lock"
 
 case "$MODE" in
@@ -47,7 +51,7 @@ if ! flock -n 9; then
 fi
 
 # Preflight with the VERB, not a raw curl: status exits 0 only when the core (backend + local
-# site) is serving. No point spending a Gemini run against a down stack.
+# site) is serving. No point spending an agent run against a down stack.
 if ! python3 "$REPO/cli/censurado.py" status >/dev/null 2>&1; then
   echo "SKIP: stack is not up (censurado.py status failed). Start it with"
   echo "      docker compose up -d publish generate site   (from $REPO), then it runs next tick."
@@ -71,22 +75,20 @@ spawn subagents, and do NOT deploy to production (stop at the local preview). Wh
 staged, report its PREVIEW link.
 EOF
 
-echo "-- launching agy headless (timeout $TIMEOUT, print-timeout $PRINT_TIMEOUT) --"
+echo "-- launching agent headless (timeout $TIMEOUT): $AGENT_CMD_TPL --"
 cd "$REPO"
-MODEL_ARG=()
-[ -n "${AUTO_BATCH_MODEL:-}" ] && MODEL_ARG=(--model "$AUTO_BATCH_MODEL")
+read -r -a TPL <<<"$AGENT_CMD_TPL"
+CMD=()
+for arg in "${TPL[@]}"; do
+  if [ "$arg" = "{prompt}" ]; then CMD+=("$PROMPT"); else CMD+=("$arg"); fi
+done
 
-timeout "$TIMEOUT" agy \
-  --add-dir "$REPO" \
-  --dangerously-skip-permissions \
-  --print-timeout "$PRINT_TIMEOUT" \
-  "${MODEL_ARG[@]}" \
-  -p "$PROMPT"
+timeout "$TIMEOUT" "${CMD[@]}"
 rc=$?
 
 if [ "$rc" -eq 124 ]; then
-  echo "== $(date -Is) TIMED OUT after $TIMEOUT (agy killed). Partial work may be staged; check the log. =="
+  echo "== $(date -Is) TIMED OUT after $TIMEOUT (agent killed). Partial work may be staged; check the log. =="
 else
-  echo "== $(date -Is) done (agy exit $rc) =="
+  echo "== $(date -Is) done (agent exit $rc) =="
 fi
 exit "$rc"

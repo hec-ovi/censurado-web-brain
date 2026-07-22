@@ -4,8 +4,8 @@
 #   sudo systemctl daemon-reload
 #   sudo systemctl enable --now censurado-serve
 #
-# Runs as your user, not root: docker access and the agent CLIs (agy, codex,
-# claude) live in your account. journalctl -u censurado-serve follows the log;
+# Runs as your user, not root: docker access and the chain's agent CLIs live
+# in your account. journalctl -u censurado-serve follows the log;
 # automation/logs/serve.log keeps a copy on disk.
 
 [Unit]
