@@ -217,4 +217,37 @@ sleep 300 & wait $!
     const canaryFailures = current.logs.filter((l) => l.startsWith('canary: alpha failed'))
     expect(canaryFailures.length).toBeGreaterThanOrEqual(3)
   })
+
+  it('falls back to the process env for notify credentials when no .env has them', async () => {
+    current = sandbox()
+    const { dir } = current
+    // No .env anywhere holds the token; only the supervisor's own process env
+    // (the systemd Environment= case). The owner notice must still go out.
+    rmSync(join(dir, '.env'))
+    const saved = { token: process.env.TELEGRAM_BOT_TOKEN, owner: process.env.OWNER_ID }
+    process.env.TELEGRAM_BOT_TOKEN = 'proc-env-tok'
+    process.env.OWNER_ID = '7'
+    try {
+      current.setCanary('alpha', 'auth')
+      await current.supervisor.start()
+      await until(() => current.notices.some((n) => n.includes('reconnected')))
+    } finally {
+      if (saved.token === undefined) delete process.env.TELEGRAM_BOT_TOKEN
+      else process.env.TELEGRAM_BOT_TOKEN = saved.token
+      if (saved.owner === undefined) delete process.env.OWNER_ID
+      else process.env.OWNER_ID = saved.owner
+    }
+  })
+
+  it('persists state atomically: valid JSON on disk and no tmp leftover', async () => {
+    current = sandbox()
+    const { dir } = current
+    current.setCanary('alpha', 'auth')
+    await current.supervisor.start()
+    await until(() => current.adapters().includes('adapter-beta'))
+    await until(() => existsSync(join(dir, '.serve-state.json')))
+    const state = JSON.parse(readFileSync(join(dir, '.serve-state.json'), 'utf8'))
+    expect(state).toHaveProperty('cooldownUntil')
+    expect(existsSync(join(dir, '.serve-state.json.tmp'))).toBe(false)
+  })
 })

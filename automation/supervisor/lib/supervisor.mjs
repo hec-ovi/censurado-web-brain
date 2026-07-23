@@ -4,7 +4,7 @@
 // breaks. All commands, patterns, and intervals come from the config file;
 // this module owns only the wiring.
 
-import { appendFileSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
+import { appendFileSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs'
 import { dirname, isAbsolute, resolve } from 'node:path'
 import { classify, compilePatterns } from './classify.mjs'
 import { Chain } from './chain.mjs'
@@ -298,13 +298,17 @@ export class Supervisor {
   // ---- env cascade ----------------------------------------------------------
 
   // A cascaded key reads from the bridge checkout's own .env first, then falls
-  // back to this repo's .env, so one main .env can hold the bot token for the
-  // whole product. Injected as real env, which the bridge gives precedence.
+  // back to this repo's .env, then to the supervisor's own process env (a systemd
+  // Environment= line), so one main .env can hold the bot token for the whole
+  // product. The bridge child inherits process.env anyway; without the last hop
+  // the supervisor's OWN notices would silently no-op on an env-only setup.
   #envValue(key) {
     const own = parseEnvFile(this.cfg.bridge.envFile)[key]
     if (own !== undefined && own !== '') return own
     const main = parseEnvFile(resolve(this.cfg.repoRoot, '.env'))[key]
-    return main === undefined || main === '' ? undefined : main
+    if (main !== undefined && main !== '') return main
+    const proc = process.env[key]
+    return proc === undefined || proc === '' ? undefined : proc
   }
 
   #cascadeEnv() {
@@ -335,9 +339,14 @@ export class Supervisor {
     await telegramNotify(token, chatId, text, this.fetchImpl)
   }
 
+  // Temp-file + rename so a crash mid-write can never leave a truncated state
+  // file (restore treats unparseable state as first boot, silently dropping every
+  // cooldown and the active-agent pointer).
   #persistState() {
     try {
-      writeFileSync(this.cfg.stateFile, JSON.stringify(this.chain.state(), null, 2))
+      const tmp = `${this.cfg.stateFile}.tmp`
+      writeFileSync(tmp, JSON.stringify(this.chain.state(), null, 2))
+      renameSync(tmp, this.cfg.stateFile)
     } catch (err) {
       this.log(`serve: cannot persist state: ${err.message}`)
     }

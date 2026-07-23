@@ -1,6 +1,11 @@
 # Official-source ingestion (design)
 
-Status: DESIGN ONLY (2026-07-08). No code yet. Research: `.research/official-source-ingestion/FINDINGS.md`.
+Status: STALE DRAFT (written 2026-07-08, revisited 2026-07-23). No code shipped. The n8n
+orchestrator this draft commits to was discarded a day later (containerized node-graph tools
+cannot reach the host CLIs; see the README roadmap), and the `--profile automation` compose
+profile described below was never added. The ingestion notes (sources, official-image rule,
+unsigned lane) are still the reference if this gets picked up; re-decide the orchestrator then.
+The cited research store (`.research/official-source-ingestion/`) is local-only and gitignored.
 
 ## What this is
 An opt-in, isolated automation that watches OFFICIAL government/institutional broadcasts (Argentine

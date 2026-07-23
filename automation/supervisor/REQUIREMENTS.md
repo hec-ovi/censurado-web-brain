@@ -38,7 +38,7 @@ any layer that dies:
 ```
 supervisor (host process, systemd)
   |- docker stack        publish + generate + site (comfyui optional)
-  |- telegram bridge     telegram-bot-skill, npm start
+  |- telegram bridge     telegram-bot-skill, node src/bot.ts
   '- active agent        fallback chain: cloud CLIs in config order -> pi (local model)
 ```
 
@@ -64,8 +64,9 @@ user ever sees is one reconnect-style status line and some extra latency.
 
 - Ordered chain, config-driven: whatever headless cloud CLIs the host has, in preference
   order, ending in `pi (local)` (the shipped chain lives in `supervisor.config.json`). Per entry:
-  binary, bridge adapter name, canary probe, failure patterns (see R3). Adding an agent is
-  config plus an adapter, not supervisor code.
+  binary, bridge adapter name, canary probe; the failure patterns (see R3) are one shared
+  table in the same config, not per entry. Adding an agent is config plus an adapter, not
+  supervisor code.
 - **The terminal fallback is a local model: pi + llama.cpp on the Strix box.** The cloud
   agents all share the failure modes this doc exists for (login request, credit exhausted,
   rate limit); a local model has none of them, it fails only with the machine itself. The
@@ -102,8 +103,9 @@ its usage limit, without a human reading the chat. Signals, in order of trust:
    - `QUOTA`: usage or rate limit exceeded (429s). Demote immediately;
      record a cool-down before re-probing.
    - `TRANSIENT`: network, 5xx, overloaded. Retry the same agent with backoff; never fall
-     back on the first hit.
-   - `UNKNOWN`/`FATAL`: crash, unclassified. Counts toward the demotion threshold: N
+     back on the first hit. Repeated transients inside the window count toward the same
+     N-in-M demotion threshold as `UNKNOWN`, so a lane that stays flaky does demote.
+   - `UNKNOWN`: crash, unclassified. Counts toward the demotion threshold: N
      failures within M minutes demote.
 4. **Canary probe.** A cheap fixed prompt ("reply OK") with a short timeout distinguishes
    "agent is broken" from "task is hard". Run it before demoting on ambiguous evidence and
@@ -156,8 +158,11 @@ be improved from real incidents.
   boundary holds on every agent in the chain.
 - Going live stays human-gated. No restart, fallback, or recovery path may trigger a deploy;
   `publicar`/deploy runs only from an explicit owner message.
-- One writer at a time: the `auto-batch.sh` flock pattern extends to the supervisor so two
-  agents never walk the same scratch workspace.
+- One writer per lane today: `auto-batch.sh` and the supervisor each hold their own flock,
+  so each lane is single-instance. The cross-lane guarantee (a scheduled batch and the
+  bridge agent never walking the same scratch workspace) is NOT enforced yet; it lands when
+  auto-batch routes through the chain (R7 phase 2). Until then, do not schedule auto-batch
+  while the serve loop is answering an owner walk.
 
 ## R7: repo changes when this ships
 

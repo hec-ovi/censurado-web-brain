@@ -42,6 +42,8 @@ node_modules/
 
 # Local operator tooling (seeds/edits the running stack; embeds persona text + host paths)
 scripts/
+# host-specific launcher for the local pi/Qwen telegram lane (hardcodes this box's paths)
+automation/telegram-local.sh
 
 # Local model weights (large; never commit)
 models/
