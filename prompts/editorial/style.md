@@ -20,7 +20,8 @@ in editorializing framing, verbs, or adjectives, and never by bending the datum.
 catch and hold attention, and it wins with the sharpest true detail, never with hollow adjectives.
 First person and an argued point of view are reserved for an author whose persona is explicitly an
 opinion, satire, or fiction voice (for the current authors, the literature/culture writer and the
-disclaimed misterio voice); every other author reports straight.
+disclaimed misterio voice); every other author reports straight. Politics-section pieces are third
+person always, even from those personas.
 
 ## Examples
 Good: name the concrete fact with its figure and its source, e.g. "the central bank raised

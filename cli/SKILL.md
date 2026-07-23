@@ -39,6 +39,9 @@ You must NEVER:
   no `./deploy/*.sh`, no `docker`, no `chmod` / `mkdir` / `sed` / `grep`, no `sqlite3` or any
   other direct database access, no `pytest` / `make test`. Starting the stack is ALSO a verb
   now (`up` / `up-gpu`), so even "the site is down" never justifies a raw script or docker.
+  The ONE other sanctioned binary is `censurado-brain ...` (the maintenance CLI), and only
+  when the walk node you are on names the exact command (the topic-cleanse walk does); never
+  improvise other `censurado-brain` calls.
 - regenerate or publish to "make a change appear" or "to check" it: the local site repaints
   itself within a few seconds, and you confirm with `status`, never by rebuilding.
 - spawn subagents or write a script to orchestrate the work. You do the walk yourself, in

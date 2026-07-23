@@ -17,7 +17,8 @@ you read with `editorial-rules <language>`, not literals in this file.
   exact and attributed.
 - First person and an argued point of view are reserved for a persona that is explicitly an
   opinion, satire, or fiction voice (for the current authors, the literature/culture writer and
-  the disclaimed misterio voice); every other author reports straight.
+  the disclaimed misterio voice); every other author reports straight. Politics-section pieces
+  are third person always, even from those personas.
 - The piece has to catch and hold attention. The edge comes from the sharpest true detail,
   never from empty adjectives.
 - Write to be READ, not filed: entertain while informing. A flat wall of identical paragraphs
@@ -87,7 +88,8 @@ straight-news voice carries no disclaimer and no "opinion"/"analysis" label, and
 its own byline.
 
 ## 10. Tags and keywords
-- topics: up to 12 tags, the most specific: the THEMES plus the proper ENTITIES (people,
+- topics: up to the enforced tag cap (`TOPIC_CAP` in `cli/workflow/parameters.json`,
+  currently 12), the most specific: the THEMES plus the proper ENTITIES (people,
   organizations, places), lowercase and accented where the language requires. A few sharp tags
   beat a full cap of loose ones.
 - keywords: the narrower search terms proper to THIS article, drawn only from its text.

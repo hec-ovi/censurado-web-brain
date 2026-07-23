@@ -55,7 +55,8 @@ Do it one entity or theme at a time:
    slug is the one the Temas tab shows), so the topic index matches the corpus. You can also do
    it by hand from the panel's Temas tab.
 
-8. **Regenerate.** The change reaches the site after a regenerate: the generate service
-   repaints on its own, or regenerate now. Going live is a separate, human-gated `publicar --yes`.
+8. **Let it repaint.** The change reaches the site after a rebuild: the generate service
+   watches the db and repaints on its own within seconds; there is no manual regenerate on
+   your surface, so just wait. Going live is a separate, human-gated `publicar --yes`.
    Then open a `/topic/<slug>/` page and confirm the variants collapsed into the one canonical
    tag.

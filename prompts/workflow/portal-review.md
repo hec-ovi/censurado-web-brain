@@ -89,8 +89,8 @@ Do it one day at a time. For each day under review:
 
    Read it back any time with `python3 cli/censurado.py portada <YYYY-MM-DD>` (lists all).
 
-The change shows up on the site only after a regenerate. In the running stack the generate
+The change shows up on the site only after a rebuild. In the running stack the generate
 service repaints the front pages on its own; the sealed pages are rewritten on the next full
-build. If you want it live now, regenerate (or, only when the human asks, publish with `publicar
---yes`). Then open the day's front page and confirm the lead, the order, and the
-recommended list are what you set.
+build. There is no manual regenerate on your surface, so wait for the watcher (going live is
+separate and human-gated: `publicar --yes` only when the human asks). Then open the day's
+front page and confirm the lead, the order, and the recommended list are what you set.
