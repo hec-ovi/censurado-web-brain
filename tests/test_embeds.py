@@ -1,14 +1,12 @@
 """Embed recheck: tweet (fxtwitter) and youtube (oEmbed) availability, plus the
-per-article recheck transform and the CLI verb. Every test injects a fake ``fetch`` so
-the logic runs without a network."""
+per-article recheck transform. The ``embeds recheck`` CLI verb is covered in
+``test_cli.py``. Every test injects a fake ``fetch`` so the logic runs without a
+network."""
 
 from __future__ import annotations
 
-import json
-
 import pytest
 
-from newsroom.cli import _embeds_main
 from newsroom.embeds import (
     check_youtube,
     parse_tweet_ref,
@@ -137,28 +135,3 @@ def test_recheck_metadata_no_change():
     assert new["media_checks"]["dQw4w9WgXcQ"]["available"] is True
 
 
-# ----- the CLI verb (seams injected; no network) -----
-
-def test_embeds_recheck_cli_dryrun(capsys):
-    rc = _embeds_main(["recheck"], list_slugs=lambda: ["a", "b"], apply=lambda slugs, do: (2, 0, []))
-    out = json.loads(capsys.readouterr().out)
-    assert rc == 0
-    assert out == {"scanned": 2, "changed": 2, "applied": 0, "failed": [], "dry_run": True}
-
-
-def test_embeds_recheck_cli_apply():
-    seen = {}
-
-    def apply(slugs, do):
-        seen["do"] = do
-        seen["slugs"] = slugs
-        return (1, 1, [])
-
-    rc = _embeds_main(["recheck", "--apply"], list_slugs=lambda: ["a"], apply=apply)
-    assert rc == 0
-    assert seen == {"do": True, "slugs": ["a"]}
-
-
-def test_embeds_usage_error():
-    rc = _embeds_main([])
-    assert rc == 1

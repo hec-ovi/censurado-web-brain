@@ -145,7 +145,7 @@ def test_cli_topics_cleanse_unknown_subverb_exits_1(capsys):
 
 def test_cli_embeds_recheck_dry_run_counts_without_applying(capsys):
     # Default is a dry-run: the apply seam runs with apply=False and the summary reports
-    # what WOULD change, writing nothing.
+    # the exact shape of what WOULD change, writing nothing.
     seen: dict = {}
 
     def fake_apply(slugs, do):
@@ -159,15 +159,18 @@ def test_cli_embeds_recheck_dry_run_counts_without_applying(capsys):
     )
     assert code == 0
     out = json.loads(capsys.readouterr().out)
-    assert out["dry_run"] is True and out["scanned"] == 3
-    assert out["changed"] == 2 and out["applied"] == 0
+    assert out == {"scanned": 3, "changed": 2, "applied": 0, "failed": [], "dry_run": True}
     assert seen["do"] is False
 
 
 def test_cli_embeds_recheck_apply_writes_back(capsys):
-    # With --apply the seam runs with apply=True and the summary reports the applied count.
+    # With --apply the seam runs with apply=True over the listed slugs and the summary
+    # reports the applied count.
+    seen: dict = {}
+
     def fake_apply(slugs, do):
-        assert do is True
+        seen["do"] = do
+        seen["slugs"] = slugs
         return (2, 2, [])
 
     code = _embeds_main(
@@ -176,6 +179,7 @@ def test_cli_embeds_recheck_apply_writes_back(capsys):
         apply=fake_apply,
     )
     assert code == 0
+    assert seen == {"do": True, "slugs": ["a", "b"]}
     out = json.loads(capsys.readouterr().out)
     assert out["dry_run"] is False and out["applied"] == 2 and out["failed"] == []
 
@@ -193,10 +197,11 @@ def test_cli_embeds_recheck_reports_partial_failure_with_code_2(capsys):
 
 
 def test_cli_embeds_unknown_subverb_exits_1(capsys):
-    # An unknown `embeds` sub-verb prints a JSON usage error and exits 1.
+    # An unknown `embeds` sub-verb (or none at all) prints a JSON usage error and exits 1.
     code = _embeds_main(["teleport"])
     assert code == 1
     assert "usage" in json.loads(capsys.readouterr().out)["error"]
+    assert _embeds_main([]) == 1
 
 
 def test_cli_top_level_usage_on_unknown_command(capsys):
