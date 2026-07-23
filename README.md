@@ -298,6 +298,7 @@ Makefile               optional `make` mirror of run.sh, plus the python lane (i
 nginx/site.conf        the public static-site server (root redirects to /latest/)
 functions/             the Cloudflare Pages Function for article reactions (like/dislike + D1)
 automation/            auto-batch.sh (one unattended batch) + supervisor/ (the 24/7 serve loop + REQUIREMENTS.md)
+                       + scheduler/ (standalone timed-prompt runner, contract-isolated, wired to nothing yet)
 tests/                 the local suite (CLI, sweeps, prompt drift, contracts, compose wiring)
 ```
 For the seam between the repos (the operator token, the publish API, generate then serve, the newsroom recipe), see [AGENTS.md](AGENTS.md). To have a CLI agent write articles in a persona's voice and publish them, see [cli/SKILL.md](cli/SKILL.md). For a part's internals, read that repo's own README.

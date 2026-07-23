@@ -1,0 +1,45 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "censurado-scheduler-config-v1",
+  "title": "Scheduler config: the timed prompts and the agent command that runs them",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["agent", "schedules"],
+  "properties": {
+    "contractVersion": { "type": "string", "pattern": "^1\\." },
+    "logDir": { "type": "string", "minLength": 1 },
+    "agent": { "$ref": "#/$defs/agent" },
+    "schedules": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["name", "prompt"],
+        "properties": {
+          "name": { "type": "string", "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$" },
+          "at": { "type": "string", "pattern": "^([01][0-9]|2[0-3]):[0-5][0-9]$" },
+          "every": { "type": "string", "pattern": "^[1-9][0-9]*(s|m|h)$" },
+          "prompt": { "type": "string", "minLength": 1 },
+          "agent": { "$ref": "#/$defs/agent" }
+        }
+      }
+    }
+  },
+  "$defs": {
+    "agent": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["cmd"],
+      "properties": {
+        "cmd": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "type": "string", "minLength": 1 }
+        },
+        "cwd": { "type": "string", "minLength": 1 },
+        "timeoutMs": { "type": "integer", "minimum": 1000 }
+      }
+    }
+  }
+}
