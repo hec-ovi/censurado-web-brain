@@ -59,7 +59,7 @@ services:
       # Internal tool, localhost-only like the other operational surfaces.
       - "127.0.0.1:${COMFYUI_PORT:-8188}:8188"
     volumes:
-      - ${COMFYUI_MODELS_PATH:-/home/hec/models/comfyui}:/app/ComfyUI/models
+      - ${COMFYUI_MODELS_PATH:-./models/comfyui}:/app/ComfyUI/models
       - comfyui-output:/app/ComfyUI/output
       - comfyui-user:/app/ComfyUI/user
       - comfyui-cache:/root/.cache

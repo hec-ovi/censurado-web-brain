@@ -1,7 +1,7 @@
 # The 24/7 supervisor loop: requirements
 
 Status: v1 SHIPPED 2026-07-09, in this directory. Run it with `./run.sh serve` (or the
-`censurado-serve.service` systemd unit here); config in `supervisor.config.json`; tests in
+`censurado-serve@.service` systemd template unit here); config in `supervisor.config.json`; tests in
 `*.test.mjs` (`npm test`). Verified live: it raised the down docker stack, detected a real
 AUTH failure on the then-primary CLI through the canary, and demoted to the next lane on
 real evidence. Still open against this spec: the remaining cloud-CLI adapters upstream in

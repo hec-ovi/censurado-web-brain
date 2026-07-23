@@ -251,7 +251,7 @@ The stack splits cleanly along the GPU line:
 
 ## Configuration
 
-All config lives in `.env` (see `.env.example`). The non-secret defaults target the reference Strix Halo box (`/home/hec/models/comfyui`, render GID 990, video GID 44); change them for your machine. The secret fields are filled by `bootstrap.sh` and should not be hand-edited. `.env` and `keys.json` are gitignored. The maintenance sweeps read a couple of optional `NEWSROOM_*` vars (the backend base URL and an edit key), both with working defaults; see `.env.example`.
+All config lives in `.env` (see `.env.example`). The non-secret defaults target the reference Strix Halo box (render GID 990, video GID 44); point `COMFYUI_MODELS_PATH` at your ComfyUI models directory and adjust the rest for your machine. The secret fields are filled by `bootstrap.sh` and should not be hand-edited. `.env` and `keys.json` are gitignored. The maintenance sweeps read a couple of optional `NEWSROOM_*` vars (the backend base URL and an edit key), both with working defaults; see `.env.example`.
 
 ## What is left out, on purpose
 

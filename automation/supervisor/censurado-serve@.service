@@ -1,0 +1,29 @@
+# systemd template unit for the 24/7 serve loop. The instance name is the login
+# user that owns the checkout, docker access, and the agent CLIs:
+#
+#   sudo cp automation/supervisor/censurado-serve@.service /etc/systemd/system/
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable --now censurado-serve@$USER
+#
+# Runs as that user, not root. Adjust WorkingDirectory if your checkout lives
+# somewhere other than ~/workspace/censurado-web-brain. journalctl -u
+# censurado-serve@<user> follows the log; automation/logs/serve.log keeps a
+# copy on disk.
+
+[Unit]
+Description=Censurado serve loop (docker stack + telegram bridge + agent fallback chain)
+After=network-online.target docker.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=%i
+WorkingDirectory=/home/%i/workspace/censurado-web-brain
+ExecStart=/usr/bin/env node automation/supervisor/serve.mjs
+Restart=always
+RestartSec=10
+# The agent CLIs live in the user's ~/.local/bin.
+Environment=PATH=/home/%i/.local/bin:/usr/local/bin:/usr/bin:/bin
+
+[Install]
+WantedBy=multi-user.target
