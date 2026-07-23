@@ -1,11 +1,9 @@
 # Official-source ingestion (design)
 
-Status: STALE DRAFT (written 2026-07-08, revisited 2026-07-23). No code shipped. The n8n
-orchestrator this draft commits to was discarded a day later (containerized node-graph tools
-cannot reach the host CLIs; see the README roadmap), and the `--profile automation` compose
-profile described below was never added. The ingestion notes (sources, official-image rule,
-unsigned lane) are still the reference if this gets picked up; re-decide the orchestrator then.
-The cited research store (`.research/official-source-ingestion/`) is local-only and gitignored.
+Status: stale draft (2026-07-08). No code shipped. The n8n orchestrator chosen below was
+discarded (containerized, it cannot reach the host CLIs; see the README roadmap) and the
+`--profile automation` compose profile was never added. The ingestion notes still apply;
+pick the orchestrator again if this gets built. The cited `.research/` store is local-only.
 
 ## What this is
 An opt-in, isolated automation that watches OFFICIAL government/institutional broadcasts (Argentine
@@ -32,7 +30,7 @@ gitignored `.env` and are never handed to any agent.
 ## Orchestrator: n8n (chosen direction)
 Chosen direction (operator, 2026-07-08): plug this into **n8n** as the orchestrator. n8n owns the
 triggers and routing (its Email/IMAP trigger, Telegram trigger, and Webhook), running in its own
-opt-in container. The one caveat from the research: the trust gate (sender allowlist + DKIM/DMARC
+opt-in container. One open issue from the research: the trust gate (sender allowlist + DKIM/DMARC
 verification, the crux since we publish "official" content) is awkward to express robustly inside n8n
 Function nodes, so keep it as a small dedicated verify step, an HTTP call from n8n to a tiny
 "is-this-really-official?" endpoint (or the newsroom's ingest endpoint) that does the DKIM/allowlist
