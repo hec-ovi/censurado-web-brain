@@ -17,8 +17,8 @@ character, is dropped by the ``[^a-z0-9]+`` pass, exactly like Go.
 
 The brain reproduces this byte-for-byte so a caller can predict the final slug the
 platform will assign (e.g. to de-collide a within-batch duplicate-slug rejection that
-would 422 the whole atomic batch), and so it is the ONE canonical slugify the persona
-store and the test fake reuse. The table below mirrors ``domain.slugTranslit``.
+would 422 the whole atomic batch); the contract tests pin it against the platform's
+behavior. The table below mirrors ``domain.slugTranslit``.
 """
 
 from __future__ import annotations

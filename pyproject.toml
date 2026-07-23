@@ -16,9 +16,6 @@ dependencies = [
 dev = [
     "pytest>=8.0",
     "ruff>=0.5",
-    # The schema-drift guard validates the vendored article.schema.json (test-only;
-    # previously pulled in transitively, now declared explicitly).
-    "jsonschema>=4.0",
 ]
 
 [project.scripts]

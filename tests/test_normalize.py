@@ -70,6 +70,23 @@ def test_validate_flags_only_nonconforming_records():
     assert validate_author(_author(handle="")) != []                 # empty handle
 
 
+def test_validate_article_enforces_the_platform_topic_cap():
+    # article.schema.json caps each topic at 120 chars; a longer tag would 422 at
+    # PUT /articles/{slug}, so the conformance pass must flag it, not green-light it.
+    assert validate_article(_article(topics=["x" * 120])) == []
+    assert validate_article(_article(topics=["x" * 121])) != []
+
+
+def test_validate_article_enforces_rfc3339_published_at():
+    # article.schema.json declares published_at as format:date-time; junk here would
+    # be rejected on a re-publish, so the pass must catch it.
+    assert validate_article(_article(published_at="2026-01-01T00:00:00+00:00")) == []
+    assert validate_article(_article(published_at=None)) == []
+    assert validate_article(_article(published_at="yesterday")) != []
+    assert validate_article(_article(published_at="2026-01-01")) != []          # date only, no time
+    assert validate_article(_article(published_at="2026-01-01T00:00:00")) != [] # no timezone offset
+
+
 # ---------------------------------------------------------------- the whole-DB pass
 def test_normalize_corpus_reports_every_violation_in_one_pass():
     authors = [_author(), _author(handle="")]

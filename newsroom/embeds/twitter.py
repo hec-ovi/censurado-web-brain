@@ -1,25 +1,23 @@
-"""Tweet (X) capture + erased detection (no API key).
+"""Tweet (X) erased detection (no API key).
 
-The official X API has no real free read tier, so a single cited tweet is captured
-over FixTweet (``api.fxtwitter.com``), a public keyless JSON mirror that reads the
-guest API. ``capture_tweet`` turns a tweet URL into a self-contained snapshot
-(author, handle, avatar, text, date, canonical url) that the pipeline stores under
-``metadata.tweets[]``; the generator renders an X-style card from that snapshot, so
-the quote SURVIVES the original being deleted. ``recheck_tweet`` re-queries the same
-endpoint later: a 404 means the post is gone, so it flips ``erased`` to True while
-KEEPING the captured text, and the card then shows the "publicación eliminada" note
-plus the retained original link.
+The official X API has no real free read tier, so tweets are read over FixTweet
+(``api.fxtwitter.com``), a public keyless JSON mirror that reads the guest API.
+The authoring-time capture (URL -> the self-contained snapshot the pipeline stores
+under ``metadata.tweets[]``) lives in the stdlib-only CLI, ``cli/censurado.py
+tweet``; this module keeps the sweep side: ``recheck_tweet`` re-queries the same
+endpoint later, and a 404 means the post is gone, so it flips ``erased`` to True
+while KEEPING the captured text, and the generator's card then shows the
+"publicación eliminada" note plus the retained original link.
 """
 
 from __future__ import annotations
 
 import re
-from datetime import datetime, timezone
 from urllib.parse import urlparse
 
 from .fetch import Fetch, default_fetch
 
-__all__ = ["parse_tweet_ref", "capture_tweet", "recheck_tweet", "FX_BASE"]
+__all__ = ["parse_tweet_ref", "recheck_tweet", "FX_BASE"]
 
 FX_BASE = "https://api.fxtwitter.com"
 
@@ -57,68 +55,6 @@ def parse_tweet_ref(url: str) -> tuple[str | None, str] | None:
 
 def _fx_url(handle: str | None, tweet_id: str, base: str) -> str:
     return f"{base.rstrip('/')}/{handle or 'i'}/status/{tweet_id}"
-
-
-def _display_date(tweet: dict) -> str:
-    """A locale-neutral ISO date (YYYY-MM-DD) from the tweet's unix timestamp, falling
-    back to the raw ``created_at`` string when no timestamp is present."""
-    ts = tweet.get("created_timestamp")
-    if isinstance(ts, (int, float)) and ts > 0:
-        return datetime.fromtimestamp(ts, tz=timezone.utc).date().isoformat()
-    raw = tweet.get("created_at")
-    return str(raw) if raw else ""
-
-
-def _ts(tweet: dict) -> int:
-    """The tweet's unix creation timestamp (the generator formats the X-style date from
-    it), or 0 when absent."""
-    ts = tweet.get("created_timestamp")
-    return int(ts) if isinstance(ts, (int, float)) and ts > 0 else 0
-
-
-def _count(tweet: dict, key: str) -> int:
-    """A non-negative public engagement count (replies/retweets/likes/views/bookmarks),
-    or 0 when absent."""
-    v = tweet.get(key)
-    return int(v) if isinstance(v, (int, float)) and v >= 0 else 0
-
-
-def capture_tweet(url: str, *, fetch: Fetch | None = None, base: str = FX_BASE) -> dict | None:
-    """Capture a single tweet into a self-contained snapshot, or None when the URL is
-    not a tweet or the post cannot be read. The snapshot's keys match exactly what the
-    generator's tweet card reads: ``id, handle, name, text, url, avatar, created_at,
-    created_timestamp, verified, replies, retweets, likes, views, bookmarks, erased``.
-    The engagement counts and the verified flag are public (fxtwitter returns them with
-    no key); the generator shows the X-style date, the view count, and the stat row."""
-    fetch = fetch or default_fetch
-    ref = parse_tweet_ref(url)
-    if not ref:
-        return None
-    handle, tweet_id = ref
-    res = fetch(_fx_url(handle, tweet_id, base))
-    if not res.ok or not isinstance(res.json, dict):
-        return None
-    tweet = res.json.get("tweet")
-    if not isinstance(tweet, dict):
-        return None
-    author = tweet.get("author") if isinstance(tweet.get("author"), dict) else {}
-    return {
-        "id": str(tweet.get("id") or tweet_id),
-        "handle": str(author.get("screen_name") or (handle or "")),
-        "name": str(author.get("name") or ""),
-        "text": str(tweet.get("text") or ""),
-        "url": str(tweet.get("url") or url),
-        "avatar": str(author.get("avatar_url") or ""),
-        "created_at": _display_date(tweet),
-        "created_timestamp": _ts(tweet),
-        "verified": bool((author.get("verification") or {}).get("verified", False)),
-        "replies": _count(tweet, "replies"),
-        "retweets": _count(tweet, "retweets"),
-        "likes": _count(tweet, "likes"),
-        "views": _count(tweet, "views"),
-        "bookmarks": _count(tweet, "bookmarks"),
-        "erased": False,
-    }
 
 
 def recheck_tweet(snapshot: dict, *, fetch: Fetch | None = None, base: str = FX_BASE) -> dict:
