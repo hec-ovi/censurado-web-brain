@@ -226,3 +226,22 @@ def test_truth_from_json_non_string_fields_do_not_crash(tmp_path, capsys):
     rc, out, err = run(["truth", "1", "--from-json", str(fix)], capsys)
     assert rc == 0 and "Traceback" not in err
     assert json.loads(out)["id"] == "1"
+
+
+def test_token_tolerates_quoted_commented_indented_env_lines(tmp_path, monkeypatch):
+    # An operator hand-edits .env: quotes the value, appends an inline comment, or indents the
+    # line. token() must still return the bare secret (a quoted token would 401 every call).
+    monkeypatch.delenv("NEWSROOM_OPERATOR_TOKEN", raising=False)
+    env = tmp_path / ".env"
+    env.write_text('  NEWSROOM_OPERATOR_TOKEN="cwb_secret.tok"  # minted 2026-07\n')
+    monkeypatch.setattr(cz, "ENV_FILE", env)
+    assert cz.token() == "cwb_secret.tok"
+
+
+def test_token_missing_everywhere_is_fatal(tmp_path, monkeypatch):
+    monkeypatch.delenv("NEWSROOM_OPERATOR_TOKEN", raising=False)
+    env = tmp_path / ".env"
+    env.write_text("OTHER=1\n")
+    monkeypatch.setattr(cz, "ENV_FILE", env)
+    with pytest.raises(SystemExit):
+        cz.token()

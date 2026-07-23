@@ -60,9 +60,9 @@ _N_POS, _N_NOISE, _N_LATENT, _N_SCHED = "4", "9", "6", "7"
 
 def _env_value(key, default=""):
     """Read a plain scalar from the environment, falling back to a `KEY=value` line in .env,
-    then to `default`. Same .env scan as token(), but for a non-secret operational value (the
-    public origin) and without token()'s FATAL-on-missing. A trailing inline `# comment` and
-    surrounding quotes are stripped so a `.env.example`-style annotated line still parses."""
+    then to `default`. A trailing inline `# comment` and surrounding quotes are stripped so a
+    `.env.example`-style annotated line still parses. token() reuses this scan for the
+    operator secret, adding its FATAL-on-missing."""
     v = os.environ.get(key, "").strip()
     if v:
         return v
@@ -84,13 +84,10 @@ PUBLIC_URL = (os.environ.get("CENSURADO_PUBLIC_URL", "").strip()
 
 
 def token():
-    """Operator token from $NEWSROOM_OPERATOR_TOKEN or .env. Never printed."""
-    t = os.environ.get("NEWSROOM_OPERATOR_TOKEN", "")
-    if not t and ENV_FILE.exists():
-        for line in ENV_FILE.read_text().splitlines():
-            if line.startswith("NEWSROOM_OPERATOR_TOKEN="):
-                t = line.split("=", 1)[1].strip()
-                break
+    """Operator token from $NEWSROOM_OPERATOR_TOKEN or .env (the same tolerant scan as
+    _env_value, so a quoted, indented, or `# comment`-annotated line still parses). Never
+    printed."""
+    t = _env_value("NEWSROOM_OPERATOR_TOKEN")
     if not t:
         sys.exit("FATAL: no NEWSROOM_OPERATOR_TOKEN (set it in the env or .env)")
     return t
@@ -259,11 +256,6 @@ def _frontmatter_map(text):
 
 
 # ---- snapshot capture (the fiddly, generalistic part) -----------------------
-
-def _digits(ref):
-    m = re.search(r"(\d{6,})", str(ref))
-    return m.group(1) if m else str(ref)
-
 
 def _status_id(ref, kind="post"):
     """The numeric status id from a raw id or an x.com / truthsocial.com status URL, or a clean
@@ -2234,7 +2226,7 @@ def build_parser():
     stp.add_argument("--mode", default="",
                      help="workflow mode (run `step --list` to see all): single-article, single-author, "
                           "authors, institucional (a lighter formal lane for an unsigned/official piece), "
-                          "daily, weekly, last-hour, publicar, normalize-topics, portal-review, "
+                          "daily, weekly, last-hour, redactor, publicar, normalize-topics, portal-review, "
                           "topic-cleanse")
     stp.add_argument("--list", action="store_true",
                      help="print the node sequence for the mode (or all modes), without serving a body")
