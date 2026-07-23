@@ -31,6 +31,22 @@ def test_deploy_generates_the_d1_binding_wrangler_toml():
     assert "REACTIONS_SALT" in text
 
 
+def test_deploy_wires_the_optional_per_voter_cap():
+    # The function reads env.REACTIONS_MAX_PER_IP; without this emission the cap
+    # would be stuck at the 500 default in production with no way to tune it.
+    text = DEPLOY.read_text()
+    assert "REACTIONS_MAX_PER_IP" in text
+    assert "must be a plain integer" in text, "a non-numeric cap must hard-stop the deploy"
+
+
+def test_deploy_copies_every_media_type_not_just_png():
+    # The media store keys by sha with any image extension (jpg/webp land via
+    # POST /media); a png-only glob silently 404s those on the live site.
+    text = DEPLOY.read_text()
+    assert "cp /srcmedia/* /out/media/" in text
+    assert "/srcmedia/*.png" not in text
+
+
 def test_deploy_refuses_a_d1_binding_without_a_salt():
     # Bare sha256(IP) keys would de-anonymize voters; the script must hard-stop.
     text = DEPLOY.read_text()
@@ -43,7 +59,8 @@ def test_env_example_documents_the_reactions_parameters():
         m = re.match(r"\s*#?\s*([A-Z][A-Z0-9_]*)=", line)
         if m:
             keys.add(m.group(1))
-    assert {"D1_REACTIONS_ID", "D1_REACTIONS_NAME", "REACTIONS_SALT"} <= keys
+    assert {"D1_REACTIONS_ID", "D1_REACTIONS_NAME", "REACTIONS_SALT",
+            "REACTIONS_MAX_PER_IP"} <= keys
 
 
 def test_generated_wrangler_toml_is_gitignored():

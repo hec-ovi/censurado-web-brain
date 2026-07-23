@@ -71,11 +71,15 @@ import sys, json
 path, entry = sys.argv[1], sys.argv[2]
 raw = open(path).read().strip()
 arr = json.loads(raw) if raw else []
-arr.append(json.loads(entry))
+new = json.loads(entry)
+# True rotation: drop prior keys minted for the same author, so a re-run revokes the
+# old operator token instead of leaving every previously-minted one authorized forever.
+arr = [e for e in arr if e.get("author") != new.get("author")]
+arr.append(new)
 open(path, "w").write(json.dumps(arr, indent=2) + "\n")
 PY
 set_env NEWSROOM_OPERATOR_TOKEN "$TOKEN"
-echo "[bootstrap] operator key registered in keys.json and written to .env"
+echo "[bootstrap] operator key rotated in keys.json and written to .env"
 
 # 4. configure the operator panel login (served by publish at 127.0.0.1:8082). The clear token is
 # stored for localhost login prefill; PANEL_LOGIN_TOKEN_HASH gates access and

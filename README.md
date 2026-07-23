@@ -156,7 +156,9 @@ Open the operator panel at http://localhost:8082 (log in with the panel token fr
 
 **8. Tear down.** `docker compose down` stops everything but keeps the data (the db and media are host bind mounts under `${CENSURADO_DATA_DIR:-./data}`, at `data/db` and `data/media` inside this repo, gitignored). To wipe the named volumes too: `docker compose down -v`, then `docker compose run --rm init-perms` before the next `up` so the site volume is writable again.
 
-`bootstrap.sh` is safe to re-run; it mints a fresh operator key and panel login each time.
+`bootstrap.sh` is safe to re-run: it rotates the operator key (the prior operator entry is
+dropped from `keys.json`, so the old token stops working) and keeps the existing panel login
+(rotate that one with `./mint-panel-login.sh`).
 
 ## Deploy to the live site
 

@@ -1,12 +1,15 @@
 # tools
 
-Standalone operator utilities. Each is no-dependency Python (stdlib only) and reads
-its config from the environment, so nothing here hardcodes a host path or a secret.
+Standalone operator utilities, no-dependency Python (stdlib only), run by hand (nothing
+in the repo invokes them).
 
 - **`agent_tokens.py`**: per-article token accounting for the CLI publishing lane.
-  Reads a subagent's transcript (`~/.claude/projects/<project>/<session>/subagents/agent-<id>.jsonl`)
-  and records the real input / output / cache token breakdown, so you accumulate the
-  cost per published article and an average instead of eyeballing the CLI meter.
+  Reads a subagent's transcript from the default Claude Code location
+  (`~/.claude/projects/<project>/<session>/subagents/agent-<id>.jsonl`; pass a full
+  path instead if yours live elsewhere) and appends to the gitignored
+  `metrics/token-usage.jsonl` in this repo, recording the real input / output / cache
+  token breakdown, so you accumulate the cost per published article and an average
+  instead of eyeballing the CLI meter.
   `agent_tokens.py extract <agentId|path>`, `... record <agentId> --kind article --author <id> --title "..." --cli-tokens <n>`, `... summary`, `... cost` (Opus 4.8 prefill-vs-generated cost, by kind).
 
 This lives outside `scripts/` (which stays gitignored, host-local seed data) because it

@@ -37,9 +37,9 @@ docker compose run --rm -v "$PWD/dist:/out" generate \
   go run ./cmd/censurado/generate -db /data/censurado.db -out /out \
   -base-url "$BASE_URL" -page-size "$PAGE_SIZE"
 
-echo "[3/6] copy media (/media/<sha>.png)"
+echo "[3/6] copy media (/media/<sha>.<ext>; the store keys by sha, any image type)"
 docker run --rm -v "$PWD/dist:/out" -v "$PWD/data/media:/srcmedia:ro" busybox \
-  sh -c "mkdir -p /out/media && cp /srcmedia/*.png /out/media/ 2>/dev/null || true"
+  sh -c "mkdir -p /out/media && cp /srcmedia/* /out/media/ 2>/dev/null || true"
 
 echo "[4/6] _redirects + _headers (root index; cache policy = deploy/CACHING.md)"
 printf '/    /latest/    302\n' > dist/_redirects
@@ -87,6 +87,16 @@ compatibility_date = "2026-01-01"
 
 [vars]
 REACTIONS_SALT = "${REACTIONS_SALT:-}"
+EOF
+  # Optional per-voter row cap (the function defaults to 500 when unset).
+  if [ -n "${REACTIONS_MAX_PER_IP:-}" ]; then
+    case "$REACTIONS_MAX_PER_IP" in *[!0-9]*)
+      echo "FATAL: REACTIONS_MAX_PER_IP must be a plain integer." >&2
+      exit 1;;
+    esac
+    printf 'REACTIONS_MAX_PER_IP = "%s"\n' "$REACTIONS_MAX_PER_IP" >> wrangler.toml
+  fi
+  cat >> wrangler.toml <<EOF
 
 [[d1_databases]]
 binding = "DB"
