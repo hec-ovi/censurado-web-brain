@@ -92,7 +92,7 @@ The static site is not rebuilt inside the publish request: `generate` is a separ
 ### The newsroom (this repo)
 
 - `cli/censurado.py` is the agent-facing CLI: publish/edit an article, upload media, render a hero, capture a tweet/truth snapshot, read and curate authors and sources over the backend, walk the editorial `step` gate, and bring the local stack up itself (`up` for the fast lane, `up-gpu` to include ComfyUI). It is stdlib-only (no install), so a driver runs it directly.
-- `cli/SKILL.md` is the resolver skill that routes a CLI agent to the right fat sub-skill under `cli/skills/` (write-article, daily-batch, authors, sources, portada, prompts, media, publicar, websearch).
+- `cli/SKILL.md` is the resolver skill that routes a CLI agent to the right fat sub-skill under `cli/skills/` (write-article, daily-batch, redactor, authors, sources, portada, prompts, media, publicar, translate, websearch).
 - `prompts/` is the editorial recipe: the `workflow/*` step-gate nodes + `manifest.json`, the `persona/synthesize.md` author guide, and `editorial/style.md`. Plain files, git is their history, no server and no database.
 - `newsroom/` is the maintenance CLI (`censurado-brain`): a backend health probe (`status`), the `normalize` whole-corpus contract pass (subcommands `check` (default), `links`, `sections`), plus the `topics cleanse` and `embeds recheck` sweeps. It needs the package installed (httpx + the corpus helpers); the authoring CLI does not.
 - `automation/supervisor/` is the 24/7 serve loop: `./run.sh serve` (or the shipped systemd unit) brings up the docker stack, starts the [telegram-bot-skill](https://github.com/hec-ovi/telegram-bot-skill) bridge from the sibling checkout, and keeps both alive. The agent behind the bot walks a config-driven fallback chain of headless agent CLIs (cloud lanes first, a local model last; the shipped chain lives in `automation/supervisor/supervisor.config.json`): failures are classified from exit output and canary probes (auth, quota, transient), auth/quota demote immediately, and a healed agent is promoted back at a quiet moment. A mid-article walk survives the swap because all state lives in the scratch ledger plus the `step` gate, not in the agent's session. Needs node >= 22; the bot credentials (`TELEGRAM_BOT_TOKEN`, `OWNER_ID`) cascade from this repo's `.env` into the bridge, and the bridge's own `.env` wins if it has them. Spec: [automation/supervisor/REQUIREMENTS.md](automation/supervisor/REQUIREMENTS.md).
@@ -182,7 +182,7 @@ videos) lives in `censurado-web`, not the db, so it always comes back with the c
 no committed tool for the rebuild; it is a manual pass. The overall process:
 
 1. **Bring the stack up.** `./run.sh up` (fast lane; `comfyui` stays off unless you add
-   `up-gpu`). The db starts empty and the portal 403s until the first article exists.
+   `up-gpu`). The db starts empty and the portal 404s until the first article exists.
 
 2. **Pull the published content.** Everything on the live pages is fair game:
    - Enumerate every article URL from the child sitemaps (`/sitemaps/articles-YYYY-MM.xml`).
@@ -263,10 +263,6 @@ Not built yet, captured here so we can pick them up. Nothing below blocks the cu
 - **Analytics / BI dashboard** (backend panel). One surface for growth: a most-popular-topics chart (filtered totals, built to scale to thousands of topics), authors ranked by likes, authors with the fewest articles, and statistical/growth modeling. Note: author-likes needs a reactions data source the backend does not hold yet (reactions live in the downstream Cloudflare Pages reactions function).
 - **Rebel Forge integration.** Integrate the Rebel Forge functionality (a separate GitHub repo). Pending, scope defined when picked up.
 - **Serve-loop follow-ups.** The 24/7 loop itself shipped (`./run.sh serve`, see below). Still open: the remaining CLI adapters contributed upstream in [telegram-bot-skill](https://github.com/hec-ovi/telegram-bot-skill) (until they land, the bridge lane settles on `claude-code` while the chain logic already walks whatever the config lists), routing `automation/auto-batch.sh` through the same fallback chain, the multi-day induced-failure soak before calling it 24/7-proven, and a lightweight email trigger (a Cloudflare Email Worker posting to a small listener) for on-demand runs. n8n and similar node-graph orchestrators stay discarded: too heavy, and containerized they cannot reach the host CLIs.
-
-## Pending list
-
-1. **Bajada renders under the image instead of as the subtitle.** On cards (and wherever this pattern repeats), the dek text shows up as a caption underneath the image. It should render as the subtitle, not caption text. Remove the under-image text completely, everywhere it appears on the site.
 
 ## Tests
 
