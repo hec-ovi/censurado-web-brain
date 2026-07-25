@@ -135,6 +135,42 @@ def test_article_delete_passes_yes_when_confirmed(server):
         ["unpublish", "el-apagon", "--yes"]
 
 
+def test_article_delete_reports_where_the_slug_is_still_referenced(server, stub_repo):
+    # A removed article stays listed in the rail and in a day's plan; both drop it silently at
+    # render, so the rail shrinks and the day's order shifts with nothing to explain why.
+    (stub_repo / "cli" / "censurado.py").write_text(
+        "import json, sys\n"
+        "argv = sys.argv[1:]\n"
+        "if argv[:1] == ['recomendado']:\n"
+        "    print(json.dumps({'slugs': ['el-apagon', 'otra-nota']}))\n"
+        "elif argv[:1] == ['portada']:\n"
+        "    print(json.dumps({'portadas': [{'date': '2026-07-25', 'deleted': False,\n"
+        "        'entries': [{'slug': 'el-apagon', 'role': ''},\n"
+        "                    {'slug': 'otra-nota', 'role': ''}]}]}))\n"
+        "else:\n"
+        "    print(json.dumps({'argv': argv, 'files': {}, 'work': ''}))\n",
+        encoding="utf-8")
+    result = call(server, "article_delete", {"slug": "el-apagon", "confirm": True})
+    err = result["structuredContent"]["stderr"]
+    assert "Recomendado rail" in err and "recomendado_set" in err and "'otra-nota'" in err
+    assert "plan for 2026-07-25" in err and "portada_set" in err
+
+
+def test_article_delete_is_quiet_when_nothing_references_the_slug(server, stub_repo):
+    (stub_repo / "cli" / "censurado.py").write_text(
+        "import json, sys\n"
+        "argv = sys.argv[1:]\n"
+        "if argv[:1] == ['recomendado']:\n"
+        "    print(json.dumps({'slugs': ['otra-nota']}))\n"
+        "elif argv[:1] == ['portada']:\n"
+        "    print(json.dumps({'portadas': []}))\n"
+        "else:\n"
+        "    print(json.dumps({'argv': argv, 'files': {}, 'work': ''}))\n",
+        encoding="utf-8")
+    result = call(server, "article_delete", {"slug": "el-apagon", "confirm": True})
+    assert "STILL REFERENCED" not in result["structuredContent"]["stderr"]
+
+
 def test_article_list_and_get_map_to_the_read_verbs(server):
     assert argv_of(call(server, "article_list", {"author": "ana", "limit": 5})) == \
         ["archive", "ana", "--limit", "5"]
@@ -144,13 +180,79 @@ def test_article_list_and_get_map_to_the_read_verbs(server):
 # ----- layout -----
 
 
-def test_portada_set_builds_the_plan_and_keeps_the_order(server):
+def test_portada_set_builds_the_plan_and_keeps_the_order(server, stub_repo):
+    _portada_stub(stub_repo, ["lead", "a", "b"])
     argv = argv_of(call(server, "portada_set", {"date": "2026-07-01", "entries": [
         {"slug": "lead"}, {"slug": "a", "role": ""}, {"slug": "b", "role": "important"}]}))
     assert argv[:2] == ["portada", "2026-07-01"] and argv[2] == "--set-json"
     plan = json.loads(argv[3])
     assert [e["slug"] for e in plan["entries"]] == ["lead", "a", "b"]
     assert plan["entries"][0]["role"] == "" and plan["entries"][2]["role"] == "important"
+
+
+def _portada_stub(repo, day_slugs, rail=()):
+    """A stub CLI that knows which articles published on a day, and what the rail holds."""
+    (repo / "cli" / "censurado.py").write_text(
+        "import json, os, sys\n"
+        "from pathlib import Path\n"
+        "argv = sys.argv[1:]\n"
+        f"day = {list(day_slugs)!r}\n"
+        f"rail = {list(rail)!r}\n"
+        "if argv[:2] == ['archive', '--day']:\n"
+        "    print(json.dumps({'total': len(day),\n"
+        "                      'articles': [{'slug': s, 'title': s} for s in day]}))\n"
+        "    raise SystemExit(0)\n"
+        "if argv[:1] == ['recomendado']:\n"
+        "    print(json.dumps({'slugs': rail}))\n"
+        "    raise SystemExit(0)\n"
+        "print(json.dumps({'argv': argv, 'files': {}, 'work': ''}))\n",
+        encoding="utf-8")
+
+
+def test_portada_set_refuses_slugs_that_did_not_publish_that_day(server, stub_repo):
+    # A slug from another day is dropped at render with no error and everything shifts up, so
+    # the intended lead silently becomes a different story.
+    _portada_stub(stub_repo, ["hoy-uno", "hoy-dos"])
+    result = call(server, "portada_set", {"date": "2026-07-25", "entries": [
+        {"slug": "hoy-uno"}, {"slug": "de-ayer"}]})
+    assert result["isError"] is True
+    err = result["structuredContent"]["stderr"]
+    assert "de-ayer" in err and "hoy-uno" in err
+    assert "recomendado_set" in err          # the right tool for an older piece
+
+
+def test_portada_set_clears_the_role_on_the_lead(server, stub_repo):
+    _portada_stub(stub_repo, ["a", "b", "c"])
+    result = call(server, "portada_set", {"date": "2026-07-25", "entries": [
+        {"slug": "a", "role": "important"}, {"slug": "b"}, {"slug": "c"}]})
+    plan = json.loads(argv_of(result)[3])
+    assert plan["entries"][0]["role"] == ""
+    assert "full width by position" in result["structuredContent"]["stderr"]
+
+
+def test_portada_set_warns_about_a_gap_in_the_grid(server, stub_repo):
+    # lead, one single, then a double: the lone single sits beside an empty cell.
+    _portada_stub(stub_repo, ["a", "b", "c"])
+    result = call(server, "portada_set", {"date": "2026-07-25", "entries": [
+        {"slug": "a"}, {"slug": "b"}, {"slug": "c", "role": "important"}]})
+    assert "LAYOUT:" in result["structuredContent"]["stderr"]
+    assert "empty cell" in result["structuredContent"]["stderr"]
+
+
+def test_portada_set_is_quiet_when_the_grid_comes_out_even(server, stub_repo):
+    _portada_stub(stub_repo, ["a", "b", "c", "d"])
+    result = call(server, "portada_set", {"date": "2026-07-25", "entries": [
+        {"slug": "a"}, {"slug": "b"}, {"slug": "c"}, {"slug": "d", "role": "important"}]})
+    assert "LAYOUT:" not in result["structuredContent"]["stderr"]
+
+
+def test_portada_set_reminds_that_the_rail_is_separate(server, stub_repo):
+    # The rail is the surface operators forget; every arrangement says where it stands.
+    _portada_stub(stub_repo, ["a", "b"], rail=["viejo-uno", "viejo-dos"])
+    result = call(server, "portada_set", {"date": "2026-07-25",
+                                          "entries": [{"slug": "a"}, {"slug": "b"}]})
+    err = result["structuredContent"]["stderr"]
+    assert "RECOMENDADO" in err and "2 slug(s)" in err and "recomendado_set" in err
 
 
 def test_portada_set_refuses_an_invented_role(server):

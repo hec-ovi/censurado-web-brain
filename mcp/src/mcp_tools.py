@@ -299,12 +299,46 @@ def h_article_update(args, runner):
             body_file.unlink(missing_ok=True)
 
 
+def _dangling_references(slug, runner):
+    """Where else does this slug live? A removed article stays listed in the recommended rail
+    and in any day's front-page plan. Both drop it silently at render, so the rail quietly
+    shrinks and a plan's order shifts, with nothing to tell the operator why."""
+    notes = []
+    rail = runner.run(["recomendado"])
+    data = rail.get("data")
+    if isinstance(data, dict) and slug in (data.get("slugs") or []):
+        rest = [s for s in data["slugs"] if s != slug]
+        notes.append(f"STILL REFERENCED: the front-page Recomendado rail lists this slug. It "
+                     f"will be dropped at render, leaving {len(rest)} item(s). Fix it with "
+                     f"recomendado_set(slugs={rest!r}).")
+    plans = runner.run(["portada", "1970-01-01"])
+    data = plans.get("data")
+    if isinstance(data, dict):
+        for plan in data.get("portadas") or []:
+            if not isinstance(plan, dict) or plan.get("deleted"):
+                continue
+            entries = [e for e in (plan.get("entries") or []) if isinstance(e, dict)]
+            if any(e.get("slug") == slug for e in entries):
+                keep = [e for e in entries if e.get("slug") != slug]
+                notes.append(f"STILL REFERENCED: the front-page plan for {plan.get('date')} "
+                             f"lists this slug, so that day's order shifts up when it is "
+                             f"dropped. Re-arrange it with portada_set(date="
+                             f"\"{plan.get('date')}\", entries=...) using the "
+                             f"{len(keep)} remaining entr(y/ies).")
+    return notes
+
+
 def h_article_delete(args, runner):
     if args.get("confirm") is not True:
         return _refused("unpublish", "removing an article takes it off the site. Confirm with "
                                      "the human, then call again with confirm=true (the delete "
                                      "is soft and restorable).")
-    return runner.run(["unpublish", str(args["slug"]), "--yes"])
+    result = runner.run(["unpublish", str(args["slug"]), "--yes"])
+    if result.get("ok"):
+        notes = _dangling_references(str(args["slug"]), runner)
+        if notes:
+            result["stderr"] = (result.get("stderr", "") + "\n" + "\n".join(notes)).strip()
+    return result
 
 
 def h_sections_list(args, runner):
@@ -323,12 +357,35 @@ def h_portada_get(args, runner):
     return runner.run(["portada", str(args.get("date") or "1970-01-01")])
 
 
+def _gap_warning(entries):
+    """The grid fills two columns in index order, so a full-row card after an ODD number of
+    singles leaves the last single sitting beside an empty cell. Advice, not a refusal: the
+    operator may know something the count does not."""
+    run = 0
+    for i, entry in enumerate(entries):
+        if i == 0:                       # the lead is its own full-width row
+            continue
+        if entry["role"] == "important":
+            if run % 2:
+                return (f"entry {i} is a double card, but the {run} single(s) before it are an "
+                        f"odd count, so the last one will sit beside an empty cell. Promote it "
+                        f'to role "important" or add one more single.')
+            run = 0
+        else:
+            run += 1
+    if run % 2:
+        return (f"the plan ends on an odd run of {run} single(s), so the last card sits alone "
+                f"unless another same-day article fills the slot (leftovers do append after "
+                f'your entries). Promote it to role "important" if you want the row closed.')
+    return ""
+
+
 def h_portada_set(args, runner):
     entries = args.get("entries")
     if not isinstance(entries, list) or not entries:
         return _refused("portada", "entries must be a non-empty ordered list of "
                                    '{"slug": "...", "role": ""} objects.')
-    plan = {"entries": []}
+    plan, notes = {"entries": []}, []
     for item in entries:
         if not isinstance(item, dict) or not item.get("slug"):
             return _refused("portada", f"each entry needs a slug: got {item!r}.")
@@ -337,8 +394,44 @@ def h_portada_set(args, runner):
             return _refused("portada", f'role must be "" (single, half row) or "important" '
                                        f'(double, full row); got {role!r}.')
         plan["entries"].append({"slug": str(item["slug"]), "role": role})
-    return runner.run(["portada", str(args["date"]), "--set-json",
-                       json.dumps(plan, ensure_ascii=False)])
+
+    date = str(args["date"])
+    # A slug that did not publish THAT day is dropped at render with no error, and everything
+    # below it shifts up: the lead silently becomes a different story. Catch it here, where it
+    # can still be corrected, rather than let a wrong front page ship quietly.
+    day = runner.run(["archive", "--day", date])
+    data = day.get("data")
+    if day.get("ok") and isinstance(data, dict) and isinstance(data.get("articles"), list):
+        known = {a.get("slug") for a in data.get("articles", []) if isinstance(a, dict)}
+        unknown = [e["slug"] for e in plan["entries"] if e["slug"] not in known]
+        if unknown:
+            listed = ", ".join(sorted(known)) or "(no articles published that day)"
+            return _refused("portada",
+                            f"these slugs did not publish on {date}, so the front page would "
+                            f"drop them silently and promote whatever follows: "
+                            f"{', '.join(unknown)}. The day holds: {listed}. Pull slugs from "
+                            f"article_list(day=\"{date}\"), or feature an older piece through "
+                            f"recomendado_set instead, which is not tied to a day.")
+    if plan["entries"][0]["role"]:
+        plan["entries"][0]["role"] = ""      # the lead is full width by position, role unused
+        notes.append("note: cleared the role on the lead; entry 0 is full width by position.")
+    gap = _gap_warning(plan["entries"])
+    if gap:
+        notes.append("LAYOUT: " + gap)
+
+    result = runner.run(["portada", date, "--set-json", json.dumps(plan, ensure_ascii=False)])
+    if result.get("ok"):
+        # The rail is a different surface people forget exists, so say where it stands after
+        # every arrangement rather than leave the operator to remember it.
+        rail = runner.run(["recomendado"])
+        slugs = (rail.get("data") or {}).get("slugs") if isinstance(rail.get("data"), dict) else None
+        if isinstance(slugs, list):
+            notes.append(f"RECOMENDADO: the front-page rail is separate from this plan and still "
+                         f"holds {len(slugs)} slug(s). Ask the human whether it should change too "
+                         f"(recomendado_set).")
+    if notes:
+        result["stderr"] = (result.get("stderr", "") + "\n" + "\n".join(notes)).strip()
+    return result
 
 
 def h_recomendado_get(args, runner):
