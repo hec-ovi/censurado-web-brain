@@ -55,20 +55,25 @@ personas are fictional, so their pictures must not read as photographs of a real
 carries the image is the light, not the features:
 
 - head and shoulders, centered, filling the frame, on a black studio void
-- the face lost in deep shadow: either a rim light tracing only the edge of the head and
-  shoulders (a thin neon line, any single color) or a hard backlight glowing through the hair
-  so the front of the face stays dark
+- brief it as a SILHOUETTE LIT FROM BEHIND, never as a portrait lit from the front: the front
+  of the face is a black shape with no readable eyes, nose or mouth, and the only light is a
+  thin rim tracing the contour of the head and shoulders (a neon line in any single color, or
+  a hard backlight glowing through the hair)
 - dark clothing, low key, high contrast, cinematic, a single light source
 - PORTRAIT orientation, not landscape: pass `--width 768 --height 1024`
+- LOOK at what came back. If the features are legible the brief was too front-lit: darken it
+  and render again. A face that reads as a real person's photo is the one outcome to avoid,
+  since the personas are openly fictional.
 
 Vary the light color, the hair, the clothing, the age read and the posture per author so the
 roster does not look cloned, but keep the black void, the hidden face, and the aspect. Example:
 
     python3 cli/censurado.py image \
-      --prompt "head and shoulders portrait of a figure on a pure black background, face entirely
-      lost in shadow, a thin amber neon rim light tracing the edge of the head and the shoulders,
-      short dark hair, dark collared shirt, single light source, low key, high contrast, cinematic
-      studio photography" \
+      --prompt "backlit silhouette of a figure from the chest up on a pure black background, the
+      front of the face in complete darkness with no visible features, a thin amber neon rim light
+      tracing only the contour of the head and the shoulders, short dark hair, dark collared shirt,
+      one light source behind the subject, low key, very high contrast, cinematic studio
+      photography" \
       --alt "Retrato en penumbra de la autora" --width 768 --height 1024
 
 Then attach it to the author (the render is NOT auto-attached to an author, only to an article):

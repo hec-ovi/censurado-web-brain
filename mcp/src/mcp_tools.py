@@ -605,7 +605,16 @@ def h_image_generate(args, runner):
             argv += [flag, str(int(args[key]))]
     if args.get("dry_run"):
         argv.append("--dry-run")
-    return runner.run(argv, timeout=SLOW_TIMEOUT)
+    result = runner.run(argv, timeout=SLOW_TIMEOUT)
+    # A render is remembered so the next article_create can attach it as that piece's hero.
+    # An author PORTRAIT must not sit in that slot: the next article staged without its own
+    # image would silently take the author's face as its lead picture.
+    if args.get("purpose") == "portrait":
+        (runner.work_dir / "image.json").unlink(missing_ok=True)
+        if result.get("ok"):
+            _with_notes(result, ["PORTRAIT: not held as an article hero. Attach it with "
+                                 "author_update(avatar=<the image path above>)."])
+    return result
 
 
 # ---- handlers: the editorial recipe ----------------------------------------
@@ -1052,15 +1061,8 @@ TOOLS = [
                        "is stylized art, not a staged news photo. The render is remembered, so "
                        "the next article_create attaches it as that piece's hero automatically.\n"
                        "2. An AUTHOR PORTRAIT follows one house recipe every author on this site "
-                       "uses: head and shoulders on a pure black background, the FACE NEVER "
-                       "READABLE (lost in shadow, with a thin neon rim light tracing only the "
-                       "edge of the head and shoulders, or a hard backlight glowing through the "
-                       "hair), dark clothing, single light source, low key, high contrast, "
-                       "cinematic studio photography. Render it PORTRAIT shaped: width 768, "
-                       "height 1024. Vary the light color, hair, clothing and age per author so "
-                       "the roster is not cloned. A portrait is NOT auto-attached: pass the media "
-                       "path it returns to author_update(avatar=...) or author_create"
-                       "(avatar_path=...).\n"
+                       "uses, and the whole point of it is that the FACE IS NEVER LEGIBLE: "
+                       "these people are fictional, so a picture that reads as a photograph of a real face is wrong. Brief it as a SILHOUETTE lit from BEHIND, not a portrait lit from the front: the front of the face is a black shape with no visible eyes, nose or mouth, and the only light is a thin rim tracing the contour of the head and shoulders (a neon line, or a hard backlight glowing through the hair). Then: pure black background, dark clothing, one light source, low key, high contrast, cinematic studio photography. Render it PORTRAIT shaped (width 768, height 1024) and pass purpose='portrait'. Vary the rim colour, hair, clothing and build per author so the roster is not cloned. Check the result: if you can make out the features, the brief was too front-lit, so render it again darker.\n"
                        "Needs the image lane up (stack_up with gpu=true).",
         "inputSchema": _obj({
             "prompt": _s("The art-directed image brief."),
@@ -1069,6 +1071,9 @@ TOOLS = [
             "width": _i("Pixel width; heroes read wide (default 1344).", minimum=64),
             "height": _i("Pixel height (default 768).", minimum=64),
             "steps": _i("Sampler steps (default 4).", minimum=1),
+            "purpose": _s("What the image is for. 'portrait' keeps it out of the article hero "
+                          "slot, so a piece staged afterwards does not take the author's face "
+                          "as its lead picture.", enum=["hero", "portrait"]),
             "dry_run": _b("Return the render graph without rendering."),
         }, required=["prompt"]),
         "handler": h_image_generate,

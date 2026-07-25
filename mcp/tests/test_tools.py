@@ -413,6 +413,23 @@ def test_media_upload_needs_exactly_one_source(server):
     assert both["isError"] is True
 
 
+def test_a_portrait_is_not_left_in_the_article_hero_slot(server, runner):
+    # A render is remembered so the next article picks it up as its hero. An author portrait in
+    # that slot means the next piece staged without art silently gets the author's face.
+    runner.work_dir.mkdir(parents=True, exist_ok=True)
+    (runner.work_dir / "image.json").write_text('{"image": "/media/old.png"}', encoding="utf-8")
+    result = call(server, "image_generate", {"prompt": "backlit silhouette", "purpose": "portrait"})
+    assert not (runner.work_dir / "image.json").exists()
+    assert "author_update(avatar=" in result["structuredContent"]["stderr"]
+
+
+def test_a_hero_render_stays_in_the_handoff(server, runner):
+    runner.work_dir.mkdir(parents=True, exist_ok=True)
+    (runner.work_dir / "image.json").write_text('{"image": "/media/hero.png"}', encoding="utf-8")
+    call(server, "image_generate", {"prompt": "una torre al amanecer"})
+    assert (runner.work_dir / "image.json").exists()
+
+
 def test_image_generate_passes_the_brief_and_the_geometry(server):
     argv = argv_of(call(server, "image_generate", {
         "prompt": "una torre de alta tension al amanecer", "alt": "torre", "width": 1344,
