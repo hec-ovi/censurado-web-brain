@@ -61,9 +61,11 @@ carries the image is the light, not the features:
   a hard backlight glowing through the hair)
 - dark clothing, low key, high contrast, cinematic, a single light source
 - PORTRAIT orientation, not landscape: pass `--width 768 --height 1024`
-- LOOK at what came back. If the features are legible the brief was too front-lit: darken it
-  and render again. A face that reads as a real person's photo is the one outcome to avoid,
-  since the personas are openly fictional.
+- LOOK at what came back if you can (a terminal operator can open the file; an agent driving
+  the MCP cannot see images at all, so it must brief dark enough that a legible face is
+  impossible and have the human confirm the first portrait of a new author). A face that reads
+  as a real person's photo is the one outcome to avoid, since the personas are openly
+  fictional.
 
 Vary the light color, the hair, the clothing, the age read and the posture per author so the
 roster does not look cloned, but keep the black void, the hidden face, and the aspect. Example:
