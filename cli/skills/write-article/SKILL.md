@@ -129,7 +129,7 @@ only to pin a since-deleted X post, or any Truth Social post, with
 Social). The keyless path is the default, so a normal run needs no token.
 
 ## Show the user, then preview (never publish to production)
-`preview` only stages the piece to the LOCAL site (`localhost:8080`), not the public
+`preview` only stages the piece to the LOCAL site (it prints the link), not the public
 internet. At the final node, show the user the full draft (title, description,
 body, section, topics, and any widgets), then `preview` it so they can see it live-rendered.
 The command prints a `PREVIEW: <url>  [live now]` line on success: that URL is your result,

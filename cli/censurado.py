@@ -2163,7 +2163,7 @@ def build_parser():
     se.set_defaults(fn=cmd_sections)
 
     pub = sub.add_parser("preview", aliases=["previsualizar"],
-                         help="stage an article to your LOCAL preview site (localhost:8080, debug-only, "
+                         help="stage an article to your LOCAL preview site (the link is printed; debug-only, "
                               "NOT public); going live is the separate `publicar --yes` verb")
     pub.add_argument("--author", required=True, help="persona slug; byline+section auto-filled from it")
     pub.add_argument("--title", required=True)

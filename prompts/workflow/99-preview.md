@@ -1,6 +1,6 @@
 # Preview: stage it locally (debug), still the last gate
 
-`preview` stages the finished piece to your LOCAL site (`localhost:8080`), so the user can
+`preview` stages the finished piece to your LOCAL site, whose link it prints, so the user can
 see it exactly as it will render. It is LOCAL and DEBUG-only: it never touches the public
 internet. Going live is the SEPARATE `publicar --yes` step (that is what "publicar" / "publish"
 means), never done here. This is still the last editorial gate: do NOT preview a piece while
@@ -26,8 +26,8 @@ snapshots, and where the article lands on the portada) is in the write-article s
 
 On success the command prints the live link for you, so you do not build the URL yourself:
 
-    PREVIEW: http://localhost:8080/a/<slug>-<hash>/  [live now]
-    NEWEST:  http://localhost:8080/latest/
+    PREVIEW: http://<local site>/a/<slug>-<hash>/  [live now]
+    NEWEST:  http://<local site>/latest/
 
 Copy that `PREVIEW:` link back to the user; it is where the piece is live-rendered (the tag
 reads `still rendering` for a beat if the generate watcher has not rebuilt yet, then the page

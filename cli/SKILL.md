@@ -78,7 +78,8 @@ or rerun generate/publicar in a loop, you are already off the rails. Instead:
 - **Auth is automatic.** `censurado.py` reads the operator token from `.env`. Never print,
   invent, or pass a token.
 - **Never confuse `preview` with `publicar`.** They are different verbs for different worlds:
-  - `preview` = stage to the LOCAL site at `localhost:8080`. Debug-only, only this machine sees
+  - `preview` = stage to the LOCAL site (it prints the exact link; the port comes from the
+    host's `SITE_PORT`, 8080 by default). Debug-only, only this machine sees
     it, it NEVER reaches the internet. Use it freely to let the user SEE a piece.
   - `publicar --yes` = DEPLOY to the real public site (elcensuradoweb.com). Irreversible and
     outward-facing; this and ONLY this is what "publicar" / "publish" / "deploy" / "go live"

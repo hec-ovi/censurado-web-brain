@@ -33,7 +33,7 @@ four or five pieces), do it in chunks: finish a chunk, hand the human the links,
 Slower and correct beats fast and scrambled.
 
 ## Verifying a piece is the PREVIEW link, not a rebuild or a re-check
-The `preview` step prints the live `PREVIEW:` and `NEWEST: http://localhost:8080/latest/` links
+The `preview` step prints the live `PREVIEW:` and `NEWEST:` links (its own host and port)
 for each piece; hand those to the human, that IS how they verify it, and it is the ONLY
 confirmation you need. A successful `preview` already staged the piece; the generate watcher
 repaints the local site on its own within a couple of seconds, so just open the `PREVIEW:` link.

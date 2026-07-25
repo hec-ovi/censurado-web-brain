@@ -312,7 +312,7 @@ run --rm init-perms` once before the next generate so the site volume is writabl
 
 - Operator panel: http://localhost:8082 (the human entry point, served by `publish`;
   localhost login defaults to `admin` and is prefilled by the panel).
-- Public portal: http://localhost:8080 (redirects to the latest landing).
+- Public portal: http://localhost:8080 (the `SITE_PORT` in `.env`; redirects to the latest landing).
 - Write API: http://localhost:8082. ComfyUI: http://localhost:8188.
 
 Articles are authored by a CLI agent following `cli/SKILL.md`, then published to the

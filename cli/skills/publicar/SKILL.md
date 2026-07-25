@@ -10,7 +10,7 @@ description: >-
 
 # Publicar (go live to production)
 
-`preview` stages a piece to the LOCAL site at `localhost:8080`, which only you and the user can
+`preview` stages a piece to the LOCAL site, whose link it prints, and which only you and the user can
 see, and it is DEBUG-only: it never touches the public internet. `publicar` is the DIFFERENT,
 public action: it publishes to the open internet at `elcensuradoweb.com`. Treat the two as
 separate steps with different stakes. When the user says "publicá" / "publish" / "go live",

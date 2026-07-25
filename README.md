@@ -147,11 +147,11 @@ So you get the full CLI publishing lane (write, review, edit, serve) with no GPU
 curl -s http://localhost:8082/healthz          # publish API -> ok
 ```
 
-Open the operator panel at http://localhost:8082 (log in with the panel token from step 2). The backend serves it, and it manages the backend's content directly, so it works with only the backend up. The public portal at http://localhost:8080 is empty until the first article exists.
+Open the operator panel at http://localhost:8082 (log in with the panel token from step 2). The backend serves it, and it manages the backend's content directly, so it works with only the backend up. The public portal (http://localhost:8080 by default, `SITE_PORT` in `.env`) is empty until the first article exists.
 
 **5. Get articles in.** A CLI agent writes and publishes through the publish API, quota-free. Point a CLI agent (Claude, Codex, Hermes, OpenClaw, or any equivalent) at **[cli/SKILL.md](cli/SKILL.md)** and it walks the newsroom workflow one step at a time (`python3 cli/censurado.py step`): pick a mode, load the author's voice from the backend, research and cross-source, draft, clear the editorial gates, then show you the draft and ask before publishing. The step gate serves one node at a time, so the agent cannot skip a gate or one-shot the piece; the node text and the step order live in this repo's git-tracked `prompts/workflow/` files. It POSTs once, on approval. No model budget, nothing infers in-process. A piece can also be edited in place after it is live (the operator token carries `admin:write`), and an empty author database is filled by the same agent first.
 
-**6. See it on the portal.** The `generate` service watches the db and rebuilds the static site within ~2s of a publish, so just refresh http://localhost:8080. To force a one-shot rebuild: `make generate`.
+**6. See it on the portal.** The `generate` service watches the db and rebuilds the static site within ~2s of a publish, so just refresh the portal. To force a one-shot rebuild: `make generate`.
 
 **7. Operate.** The panel (served by the backend on 8082) is the single operator surface: it lists and edits articles, curates the portada, creates and edits authors (name, voice/style, gender, topics, attached sources), derives topics, and manages sources, all against the backend behind one login. It talks to the backend directly and binds `127.0.0.1`.
 

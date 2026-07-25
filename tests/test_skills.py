@@ -91,7 +91,10 @@ def test_publicar_skill_carries_its_safety_rails():
     # the whole file: the frontmatter description alone must not satisfy these, or a gutted body
     # would pass. The verb is `publicar`; the word "deploy" no longer names it on any skill surface.
     body = _body(SKILLS_DIR / "publicar" / "SKILL.md").lower()
-    assert "localhost:8080" in body, "publicar body must contrast the local preview"
+    # The contrast is what matters, not the port: the local site's port comes from the host's
+    # SITE_PORT, so a doc that hardcodes 8080 is wrong on any box that moved it.
+    assert "local site" in body, "publicar body must contrast the local preview"
+    assert "localhost:8080" not in body, "the local site's port is host config, do not hardcode it"
     assert "censurado.py publicar --yes" in body, "publicar body must name the real command (the verb)"
     assert "elcensuradoweb.com" in body, "publicar body must name the public target"
     assert "explicit yes" in body, "publicar body must require an explicit yes"
@@ -105,7 +108,8 @@ def test_resolver_carries_the_public_publish_rail():
     # cli/SKILL.md is always loaded; an agent can go live from the resolver row alone, so the
     # preview-is-local + get-a-yes-before-going-public rail must live on the always-loaded surface.
     low = RESOLVER.read_text(encoding="utf-8").lower()
-    assert "localhost:8080" in low, "resolver must say preview is local"
+    assert "local site" in low, "resolver must say preview is local"
+    assert "site_port" in low, "resolver must point at SITE_PORT rather than hardcode a port"
     assert "publicar" in low and any(p in low for p in ("get a yes", "confirm", "explicit yes")), \
         "resolver must carry the confirm-before-public-publish rail"
 
