@@ -163,6 +163,21 @@ def tool_speak(text: str, work_dir) -> str:
     return out
 
 
+# Every content change lands on the LOCAL site first. An agent that forgets this tells the
+# human a piece is "live" and names the public origin, which is how something gets believed
+# to be published when it is not (and how a removed piece is believed gone when the public
+# site still serves it). Say it on every mutation, not only in the manual.
+LOCAL_ONLY = ("LOCAL ONLY: this changed the local site. The public site is untouched until "
+              "site_publish(confirm=true).")
+
+
+def _with_notes(result: dict, notes: list) -> dict:
+    """Append this layer's own notes to the verb's stderr, where an agent already looks."""
+    if notes:
+        result["stderr"] = (result.get("stderr", "") + "\n" + "\n".join(notes)).strip()
+    return result
+
+
 # ---- handlers: health and lifecycle ----------------------------------------
 
 
@@ -293,7 +308,10 @@ def h_article_update(args, runner):
             argv += ["--meta-json", json.dumps(metadata, ensure_ascii=False)]
         if args.get("dry_run"):
             argv.append("--dry-run")
-        return runner.run(argv)
+        result = runner.run(argv)
+        if result.get("ok") and not args.get("dry_run"):
+            _with_notes(result, [LOCAL_ONLY])
+        return result
     finally:
         if body_file is not None:
             body_file.unlink(missing_ok=True)
@@ -336,8 +354,9 @@ def h_article_delete(args, runner):
     result = runner.run(["unpublish", str(args["slug"]), "--yes"])
     if result.get("ok"):
         notes = _dangling_references(str(args["slug"]), runner)
-        if notes:
-            result["stderr"] = (result.get("stderr", "") + "\n" + "\n".join(notes)).strip()
+        notes.append("LOCAL ONLY: it leaves the local site now, but the PUBLIC site keeps "
+                     "serving it until site_publish(confirm=true).")
+        _with_notes(result, notes)
     return result
 
 
@@ -429,9 +448,8 @@ def h_portada_set(args, runner):
             notes.append(f"RECOMENDADO: the front-page rail is separate from this plan and still "
                          f"holds {len(slugs)} slug(s). Ask the human whether it should change too "
                          f"(recomendado_set).")
-    if notes:
-        result["stderr"] = (result.get("stderr", "") + "\n" + "\n".join(notes)).strip()
-    return result
+        notes.append(LOCAL_ONLY)
+    return _with_notes(result, notes)
 
 
 def h_recomendado_get(args, runner):
@@ -444,9 +462,9 @@ def h_recomendado_set(args, runner):
         return _refused("recomendado", "slugs must be an array (an empty array clears the rail).")
     if len(slugs) > 10:
         return _refused("recomendado", f"the rail holds at most 10 slugs, got {len(slugs)}.")
-    if not slugs:
-        return runner.run(["recomendado", "--clear"])
-    return runner.run(["recomendado", "--set", _csv(slugs)])
+    result = (runner.run(["recomendado", "--clear"]) if not slugs
+              else runner.run(["recomendado", "--set", _csv(slugs)]))
+    return _with_notes(result, [LOCAL_ONLY] if result.get("ok") else [])
 
 
 # ---- handlers: authors ------------------------------------------------------

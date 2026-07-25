@@ -156,6 +156,32 @@ def test_article_delete_reports_where_the_slug_is_still_referenced(server, stub_
     assert "plan for 2026-07-25" in err and "portada_set" in err
 
 
+def test_every_mutation_says_it_is_local_only(server, stub_repo):
+    # An agent that forgets this tells the human a piece is live and names the public origin.
+    # Seen for real, after a front-page change that never went past the local site.
+    _portada_stub(stub_repo, ["a", "b"])
+    for tool, args in (("portada_set", {"date": "2026-07-25", "entries": [{"slug": "a"}]}),
+                       ("recomendado_set", {"slugs": ["a"]})):
+        err = call(server, tool, args)["structuredContent"]["stderr"]
+        assert "LOCAL ONLY" in err and "site_publish" in err, tool
+    err = call(server, "article_update", {"slug": "a", "title": "T"})["structuredContent"]["stderr"]
+    assert "LOCAL ONLY" in err
+
+
+def test_a_dry_run_does_not_claim_anything_changed(server):
+    err = call(server, "article_update",
+               {"slug": "a", "title": "T", "dry_run": True})["structuredContent"]["stderr"]
+    assert "LOCAL ONLY" not in err
+
+
+def test_deleting_says_the_public_site_still_serves_it(server, stub_repo):
+    # The trap: a piece removed locally is believed gone while the public site still has it.
+    _portada_stub(stub_repo, [])
+    err = call(server, "article_delete",
+               {"slug": "el-apagon", "confirm": True})["structuredContent"]["stderr"]
+    assert "PUBLIC site keeps" in err and "site_publish" in err
+
+
 def test_article_delete_is_quiet_when_nothing_references_the_slug(server, stub_repo):
     (stub_repo / "cli" / "censurado.py").write_text(
         "import json, sys\n"
