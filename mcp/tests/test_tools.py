@@ -288,8 +288,19 @@ def test_portada_set_refuses_an_invented_role(server):
     assert "important" in result["structuredContent"]["stderr"]
 
 
-def test_portada_set_refuses_an_empty_plan(server):
+def test_portada_set_clears_the_day_with_an_empty_plan(server, stub_repo):
+    # The way out of an arrangement (and the cleanup after the last article of a day is
+    # deleted). Refusing it left an agent with a plan it could not undo.
+    _portada_stub(stub_repo, [])
     result = call(server, "portada_set", {"date": "2026-07-01", "entries": []})
+    assert result.get("isError") is None
+    plan = json.loads(argv_of(result)[3])
+    assert plan["entries"] == []
+    assert "default order" in result["structuredContent"]["stderr"]
+
+
+def test_portada_set_still_refuses_a_non_list(server):
+    result = call(server, "portada_set", {"date": "2026-07-01", "entries": "lead,a,b"})
     assert result["isError"] is True
 
 

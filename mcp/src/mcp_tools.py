@@ -401,9 +401,9 @@ def _gap_warning(entries):
 
 def h_portada_set(args, runner):
     entries = args.get("entries")
-    if not isinstance(entries, list) or not entries:
-        return _refused("portada", "entries must be a non-empty ordered list of "
-                                   '{"slug": "...", "role": ""} objects.')
+    if not isinstance(entries, list):
+        return _refused("portada", 'entries must be an ordered list of {"slug": "...", '
+                                   '"role": ""} objects (an empty list clears the day\'s plan).')
     plan, notes = {"entries": []}, []
     for item in entries:
         if not isinstance(item, dict) or not item.get("slug"):
@@ -415,6 +415,11 @@ def h_portada_set(args, runner):
         plan["entries"].append({"slug": str(item["slug"]), "role": role})
 
     date = str(args["date"])
+    if not plan["entries"]:                  # clearing: the day falls back to default order
+        result = runner.run(["portada", date, "--set-json", json.dumps(plan, ensure_ascii=False)])
+        return _with_notes(result, ["Cleared the plan for " + date + ": that day now renders in "
+                                    "default order (newest first). " + LOCAL_ONLY]
+                           if result.get("ok") else [])
     # A slug that did not publish THAT day is dropped at render with no error, and everything
     # below it shifts up: the lead silently becomes a different story. Catch it here, where it
     # can still be corrected, rather than let a wrong front page ship quietly.
@@ -838,7 +843,9 @@ TOOLS = [
                        "intended lead changes.",
         "inputSchema": _obj({
             "date": _s("The day to arrange (YYYY-MM-DD)."),
-            "entries": _list("Ordered entries, one per card.", items={
+            "entries": _list("Ordered entries, one per card. An EMPTY list clears the day's "
+                             "plan, which is how you undo an arrangement or drop a plan whose "
+                             "articles are gone: the day then renders in default order.", items={
                 "type": "object",
                 "properties": {"slug": _s("An article published that day."),
                                "role": _s("'' for a single (half row), 'important' for a double "
