@@ -1527,7 +1527,7 @@ def cmd_translate(a):
 
 def cmd_remove_author(a):
     """Tombstone an author in the backend (DELETE /authors/<handle>). It is a SOFT delete:
-    the author drops off the public roster, but its record and article bylines are kept, and
+    the author drops off the public author list, but its record and article bylines are kept, and
     it is restorable (POST /authors/<handle>/restore, or by re-creating it). Guarded by
     --yes. Response: 204 removed; 404 no such author."""
     if not a.yes:

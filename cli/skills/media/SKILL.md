@@ -67,8 +67,9 @@ carries the image is the light, not the features:
   as a real person's photo is the one outcome to avoid, since the personas are openly
   fictional.
 
-Vary the light color, the hair, the clothing, the age read and the posture per author so the
-roster does not look cloned, but keep the black void, the hidden face, and the aspect. Example:
+Vary the light color, the hair, the clothing, the age read and the posture per author so no
+two authors look like the same picture, but keep the black void, the hidden face, and the
+aspect. Example:
 
     python3 cli/censurado.py image \
       --prompt "backlit silhouette of a figure from the chest up on a pure black background, the

@@ -66,7 +66,7 @@ The code repositories, all under [github.com/hec-ovi](https://github.com/hec-ovi
 |-------------|-----------------------------|-----------------------------------------------------|-----------|
 | `publish`   | [censurado-web-backend](https://github.com/hec-ovi/censurado-web-backend) | Write + read API, media store, the only sqlite writer, owns all content data (authors, sources, articles, layout), AND serves the operator admin panel (gated SPA over Articles, Portada, Autores, Temas, Sources, Status) | 127.0.0.1:8082 |
 | `generate`  | [censurado-web](https://github.com/hec-ovi/censurado-web) | Static-site builder, watches the db and rebuilds    | none |
-| `site`      | nginx                       | Serves the generated static portal                  | **8080** |
+| `site`      | nginx                       | Serves the generated static portal                  | **8080** (`SITE_PORT`) |
 | `comfyui`   | [comfyui-strix-docker](https://github.com/hec-ovi/comfyui-strix-docker) | Image generation, the art director's render backend | 127.0.0.1:8188 |
 
 Only `site` is exposed on `0.0.0.0`. Everything operational binds `127.0.0.1`; reach it on the host or over an SSH tunnel. The `publish` image builds from `censurado-web-backend`; `generate` runs the pinned `golang` image over both `censurado-web` (the generator) and `censurado-web-backend` (the shared `domain`/`store` libraries it imports), mounted read-only.
@@ -227,7 +227,7 @@ no committed tool for the rebuild; it is a manual pass. The overall process:
      text, url), and the related link back out of the rendered HTML and rewrite the markers. A
      tweet also needs its snapshot stored in the article's `metadata.tweets[]`; a related marker
      stores the target's local slug, which differs from the live one.
-   - Authors come from `/author/<handle>/` and the `/about/` roster: name, bio, avatar, gender,
+   - Authors come from `/author/<handle>/` and the `/about/` page: name, bio, avatar, gender,
      and beat.
    - Images: re-upload each `/media/<sha>` by its bytes. The store keys by sha256, so the URL
      is stable and every body, hero, and avatar reference keeps resolving.

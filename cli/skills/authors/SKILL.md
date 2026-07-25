@@ -3,8 +3,8 @@ name: authors
 description: >-
   Create, inspect, and remove the personas that write Censurado articles: list authors, read
   one author's private voice and public bio, synthesize a new author from a seed brief, and
-  delete one. Use when the user wants to add a writer, change who covers a beat, audit the
-  roster, or retire an author. Authors live in the backend (the single content store), never in code.
+  delete one. Use when the user wants to add a writer, change who covers a beat, audit who
+  writes for the site, or retire an author. Authors live in the backend (the single content store), never in code.
 ---
 
 # Manage authors (the personas)
@@ -14,14 +14,14 @@ are the newsroom's DATA: they live in the backend (via these `censurado.py` verb
 the publish backend over HTTP), and these verbs are the whole surface. Never edit code to
 change an author.
 
-## Read the roster
+## Read the author list
 - List author ids: `python3 cli/censurado.py personas`
 - Read ONE author in full (voice + beat + outlets): `python3 cli/censurado.py persona <id>`
 
 The record has two halves. PRIVATE (the drafting voice, never shown to readers): `who_i_am`,
 `style`, `few_shots_pos`, `few_shots_neg`. PUBLIC (the byline + "Nosotros" page): `about`,
 `display_name`, `avatar_path`. Plus `beat` (the author's default `section`), `language` (the
-body language, Spanish for the current roster), and `sources` (the outlets it reads, see the
+body language, Spanish for every current author), and `sources` (the outlets it reads, see the
 `sources` sub-skill).
 
 `beat` fills an article's `section` when `preview` gets no explicit `--section`, so it must be
