@@ -827,6 +827,11 @@ def cmd_edit(a):
     for kv in a.meta or []:
         k, _, v = kv.partition("=")
         meta[k] = v
+    if getattr(a, "meta_json", ""):
+        # --meta merges STRINGS only (k=v), so the structured metadata surfaces (the front-page
+        # `card` object, `keywords`, `tweets`) were unreachable from an edit. This merges a JSON
+        # object into metadata at the top level: {"card": {...}} replaces the whole card.
+        meta.update(_json(a.meta_json, "--meta-json", want=dict))
     if a.tweets_file:
         meta["tweets"] = _json(_read_file(a.tweets_file, "--tweets-file"), "--tweets-file", want=list)
     if a.published_at:
@@ -1077,6 +1082,67 @@ def cmd_create_author(a):
     st, rb = api("POST", "/authors", body)
     sys.stdout.write(rb.decode("utf-8", "replace") + "\n")
     sys.stderr.write(f"create-author {handle} -> HTTP {st}\n")
+    return 0 if st in (200, 201) else 1
+
+
+_AUTHOR_PUBLIC = ("name", "bio", "about", "avatar", "gender", "style")
+_AUTHOR_META = ("beat", "who_i_am", "language", "few_shots_pos", "few_shots_neg")
+
+
+def cmd_edit_author(a):
+    """Modify an EXISTING author in place: the public byline fields (display name, bio/about,
+    avatar picture, gender, style), the private tail the walk reads (beat, who_i_am, language,
+    few_shots), and the curated profile topics. The backend has no partial update (POST /authors
+    replaces every column), so this is a READ-MODIFY-WRITE: it reads the author's full record,
+    applies only the fields you name, and re-sends the complete row, so nothing you leave out is
+    blanked. `--set about=...` fills BOTH bio and about, the way the platform renders the public
+    bio. Source outlets are a separate join: change them with `sources <id> --set`."""
+    rec = _author(a.id)
+    if not rec:
+        fail(f"author {a.id!r} is not in the registry (list them with `personas`). To add a new "
+             f"one use `create-author --file <persona.json>`.")
+    body = _author_json_to_input(rec)
+    meta = dict(body.get("metadata") or {})
+    for kv in a.set or []:
+        k, _, v = kv.partition("=")
+        if k not in _AUTHOR_PUBLIC:
+            fail(f"--set {k!r} is not an author field. Public fields: {', '.join(_AUTHOR_PUBLIC)}. "
+                 f"The private tail ({', '.join(_AUTHOR_META)}) goes through --meta/--meta-json, "
+                 f"topics through --profile-topics, outlets through `sources --set`.")
+        body[k] = v
+        if k == "about":                 # about IS the public bio on the site; keep them in step
+            body["bio"] = v
+    for kv in a.meta or []:
+        k, _, v = kv.partition("=")
+        if k not in _AUTHOR_META:
+            fail(f"--meta {k!r} is not part of the author's private tail "
+                 f"({', '.join(_AUTHOR_META)}). Public fields go through --set.")
+        meta[k] = v
+    if getattr(a, "meta_json", ""):      # few_shots_* are arrays of objects, unreachable via k=v
+        patch = _json(a.meta_json, "--meta-json", want=dict)
+        bad = [k for k in patch if k not in _AUTHOR_META]
+        if bad:
+            fail(f"--meta-json carries non-author key(s): {', '.join(sorted(bad))}. Allowed: "
+                 f"{', '.join(_AUTHOR_META)}.")
+        meta.update(patch)
+    if a.profile_topics is not None:
+        topics = _split(a.profile_topics)
+        if topics:
+            body["topics"] = topics
+            meta["profile_topics"] = topics
+        else:
+            body.pop("topics", None)
+            meta.pop("profile_topics", None)
+    if meta:
+        body["metadata"] = meta
+    else:
+        body.pop("metadata", None)
+    if a.dry_run:
+        print(json.dumps(body, ensure_ascii=False, indent=2))
+        return 0
+    st, rb = api("POST", "/authors", body)
+    sys.stdout.write(rb.decode("utf-8", "replace") + "\n")
+    sys.stderr.write(f"edit-author {a.id} -> HTTP {st}\n")
     return 0 if st in (200, 201) else 1
 
 
@@ -2045,6 +2111,10 @@ def build_parser():
     e.add_argument("slug")
     e.add_argument("--set", action="append", help="top-level field, e.g. --set title='...'")
     e.add_argument("--meta", action="append", help="metadata field, e.g. --meta subtitle='...'")
+    e.add_argument("--meta-json", dest="meta_json", default="",
+                   help="merge a JSON object into metadata, for the values --meta cannot express "
+                        "as a string: the front-page card, e.g. "
+                        "--meta-json '{\"card\":{\"type\":\"image\",\"src\":\"/media/x.png\"}}'")
     e.add_argument("--body-file", dest="body_file", default="", help="replace the body from a file")
     e.add_argument("--tweets-file", dest="tweets_file", default="", help="set metadata.tweets from a JSON array")
     e.add_argument("--published-at", dest="published_at", default="")
@@ -2095,6 +2165,24 @@ def build_parser():
     ca.add_argument("--file", default="",
                     help="persona JSON path (display_name/beat/who_i_am/style required), or '-' to read stdin; required (omitting it errors)")
     ca.set_defaults(fn=cmd_create_author)
+
+    ea = sub.add_parser("edit-author",
+                        help="modify an EXISTING author in place (read-modify-write): voice, bio, "
+                             "avatar picture, beat, language, few-shots, profile topics")
+    ea.add_argument("id", help="author id/handle")
+    ea.add_argument("--set", action="append",
+                    help=f"public field, one of {'|'.join(_AUTHOR_PUBLIC)}, e.g. "
+                         "--set avatar=/media/<hash>.png (upload it first with `media`)")
+    ea.add_argument("--meta", action="append",
+                    help=f"private tail field, one of {'|'.join(_AUTHOR_META)}, e.g. "
+                         "--meta beat=politics")
+    ea.add_argument("--meta-json", dest="meta_json", default="",
+                    help="merge a JSON object into the private tail (the only way to set the "
+                         "few_shots_pos / few_shots_neg arrays)")
+    ea.add_argument("--profile-topics", dest="profile_topics", default=None,
+                    help='comma-separated profile topics (replaces the set); "" clears them')
+    ea.add_argument("--dry-run", action="store_true", help="print the author row, do not POST")
+    ea.set_defaults(fn=cmd_edit_author)
 
     rma = sub.add_parser("remove-author", help="tombstone an author in the backend (needs --yes; soft, restorable)")
     rma.add_argument("id", help="author id/slug")

@@ -54,11 +54,22 @@ drafter collapsing into generic "helpful assistant" prose, so write real, beat-s
 exemplars, not placeholders.
 
 ## Edit an existing author
-The whole record is patchable in place (nothing is code):
+The whole record is patchable in place (nothing is code). `edit-author` changes only the
+fields you name and re-sends the rest untouched, so you never blank a voice by forgetting it:
+
+    python3 cli/censurado.py edit-author <id> --set about="..." --set style="..."
+    python3 cli/censurado.py edit-author <id> --meta beat=economia --meta language=es
+    python3 cli/censurado.py edit-author <id> --meta-json '{"few_shots_pos": [{"prompt": "...", "good": "..."}]}'
+    python3 cli/censurado.py edit-author <id> --profile-topics "milei,fmi"
+
+- `--set` takes the public fields: `name`, `bio`, `about`, `avatar`, `gender`, `style`
+  (`about` fills the public bio too). `--meta` takes the private tail: `beat`, `who_i_am`,
+  `language`. The few-shot arrays are objects, so they go through `--meta-json`.
+- Change the PICTURE: upload it first (`media <file>`, or render one with `image`), then
+  `edit-author <id> --set avatar=/media/<hash>.png` with the path it printed.
 - Replace the outlets it reads: use the `sources` sub-skill (`sources <id> --set ...`).
-- Replace its public profile topics: `python3 cli/censurado.py profile-topics <id> --set a,b,c`.
-- Rewrite a field of the voice: `python3 cli/censurado.py prompt persona/synthesize.md` to
-  re-read the schema, then re-`create-author` the full JSON for that id (create-author upserts).
+- Profile topics also have their own verb (`profile-topics <id> --set a,b,c`); either works.
+- Add `--dry-run` to see the row that would be written before writing it.
 
 ## Remove an author (destructive)
 `python3 cli/censurado.py remove-author <id> --yes`

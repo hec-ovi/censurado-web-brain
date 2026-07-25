@@ -99,6 +99,7 @@ or rerun generate/publicar in a loop, you are already off the rails. Instead:
 | run the daily / weekly batch, sweep the day, refresh the portal | read `cli/skills/daily-batch/SKILL.md` |
 | assign the freshest news to authors ("who covers what right now", triage the last-hour news, the editor-in-chief sweep) | read `cli/skills/redactor/SKILL.md`, then `python3 cli/censurado.py step --mode redactor` |
 | add / remove / inspect an author (create a writer, retire one, read a voice) | read `cli/skills/authors/SKILL.md` |
+| change an existing author (rewrite the voice/bio, swap the profile picture, move the beat) | read `cli/skills/authors/SKILL.md`, then `python3 cli/censurado.py edit-author <id> ...` |
 | change which outlets an author reads, or the sourcing floor (how many sources per article) | read `cli/skills/sources/SKILL.md` |
 | reorder the front page, change the day's lead, make a card double / full row / single (portada) | read `cli/skills/portada/SKILL.md` |
 | set the front-page "Recomendado" rail (a global fixed list of up to 10, persists across days) | `python3 cli/censurado.py recomendado [--set "slug-a,slug-b,..."] [--clear]` (see `cli/skills/portada/SKILL.md`) |

@@ -683,6 +683,154 @@ def test_profile_topics_show_reads_the_persona(monkeypatch, capsys):
     assert json.loads(capsys.readouterr().out) == ["ia", "cripto"]
 
 
+def _author_row():
+    return {"handle": "author-a", "name": "Autor A", "bio": "bio previa", "avatar": "/media/old.png",
+            "gender": "f", "about": "sobre previa", "style": "estilo previo",
+            "topics": ["viejo"],
+            "metadata": {"beat": "politics", "who_i_am": "quien soy", "language": "es",
+                         "few_shots_pos": [{"prompt": "p", "good": "g"}],
+                         "profile_topics": ["viejo"]}}
+
+
+def _author_edit(monkeypatch, **kwargs):
+    """Drive edit-author against a stubbed backend; return the POSTed row."""
+    monkeypatch.setenv("NEWSROOM_OPERATOR_TOKEN", "op.tok")
+    calls = []
+
+    def fake_req(method, url, data=None, headers=None, timeout=60):
+        calls.append((method, url, data))
+        if method == "GET":
+            return 200, json.dumps({"authors": [_author_row()]}).encode()
+        return 200, b"{}"
+
+    monkeypatch.setattr(cz, "_req", fake_req)
+    args = SimpleNamespace(id="author-a", set=None, meta=None, meta_json="",
+                           profile_topics=None, dry_run=False)
+    for key, value in kwargs.items():
+        setattr(args, key, value)
+    code = cz.cmd_edit_author(args)
+    return code, calls
+
+
+def test_edit_author_changes_only_the_named_fields(monkeypatch):
+    # The backend has no partial update, so an edit must re-send the WHOLE row. Everything the
+    # caller did not name has to survive: this is the guard against blanking a voice by editing
+    # a bio.
+    code, calls = _author_edit(monkeypatch, set=["about=sobre nueva", "avatar=/media/new.png"])
+    assert code == 0
+    method, url, data = calls[-1]
+    assert method == "POST" and url.endswith("/authors")
+    sent = json.loads(data)
+    assert sent["about"] == "sobre nueva"
+    assert sent["bio"] == "sobre nueva"          # about IS the public bio; kept in step
+    assert sent["avatar"] == "/media/new.png"    # the picture swap
+    assert sent["style"] == "estilo previo"      # untouched fields survive
+    assert sent["metadata"]["who_i_am"] == "quien soy"
+    assert sent["metadata"]["few_shots_pos"] == [{"prompt": "p", "good": "g"}]
+    assert sent["topics"] == ["viejo"]
+
+
+def test_edit_author_writes_the_private_tail(monkeypatch):
+    code, calls = _author_edit(monkeypatch, meta=["beat=economia", "language=en"])
+    assert code == 0
+    sent = json.loads(calls[-1][2])
+    assert sent["metadata"]["beat"] == "economia" and sent["metadata"]["language"] == "en"
+    assert sent["name"] == "Autor A"
+
+
+def test_edit_author_meta_json_sets_the_few_shot_arrays(monkeypatch):
+    # few_shots_* are arrays of objects, so k=v cannot express them.
+    shots = {"few_shots_neg": [{"prompt": "un veto", "bad": "prosa generica"}]}
+    code, calls = _author_edit(monkeypatch, meta_json=json.dumps(shots))
+    assert code == 0
+    sent = json.loads(calls[-1][2])
+    assert sent["metadata"]["few_shots_neg"][0]["bad"] == "prosa generica"
+    assert sent["metadata"]["few_shots_pos"] == [{"prompt": "p", "good": "g"}]
+
+
+def test_edit_author_replaces_and_clears_profile_topics(monkeypatch):
+    _code, calls = _author_edit(monkeypatch, profile_topics="milei, fmi")
+    sent = json.loads(calls[-1][2])
+    assert sent["topics"] == ["milei", "fmi"]
+    assert sent["metadata"]["profile_topics"] == ["milei", "fmi"]
+    _code, calls = _author_edit(monkeypatch, profile_topics="")
+    sent = json.loads(calls[-1][2])
+    assert "topics" not in sent and "profile_topics" not in sent["metadata"]
+    assert sent["metadata"]["beat"] == "politics"
+
+
+def test_edit_author_rejects_a_field_that_is_not_an_author_field(monkeypatch):
+    with pytest.raises(cz.ToolError) as err:
+        _author_edit(monkeypatch, set=["salary=100"])
+    assert "not an author field" in str(err.value)
+    with pytest.raises(cz.ToolError) as err:
+        _author_edit(monkeypatch, meta=["beat_secret=x"])
+    assert "private tail" in str(err.value)
+    with pytest.raises(cz.ToolError) as err:
+        _author_edit(monkeypatch, meta_json='{"handle": "otro"}')
+    assert "non-author key" in str(err.value)
+
+
+def test_edit_author_on_an_unknown_handle_says_how_to_create_one(monkeypatch):
+    monkeypatch.setenv("NEWSROOM_OPERATOR_TOKEN", "op.tok")
+    monkeypatch.setattr(cz, "_req",
+                        lambda m, u, data=None, headers=None, timeout=60:
+                        (200, json.dumps({"authors": []}).encode()))
+    with pytest.raises(cz.ToolError) as err:
+        cz.cmd_edit_author(SimpleNamespace(id="fantasma", set=["name=X"], meta=None,
+                                           meta_json="", profile_topics=None, dry_run=False))
+    assert "create-author" in str(err.value)
+
+
+def test_edit_author_dry_run_writes_nothing(monkeypatch, capsys):
+    code, calls = _author_edit(monkeypatch, set=["name=Otro"], dry_run=True)
+    assert code == 0
+    assert [c[0] for c in calls] == ["GET"]          # nothing was POSTed
+    assert json.loads(capsys.readouterr().out)["name"] == "Otro"
+
+
+def test_cli_parses_edit_author_verb():
+    parsed = cz.build_parser().parse_args(["edit-author", "author-a", "--set", "name=X"])
+    assert parsed.fn is cz.cmd_edit_author and parsed.set == ["name=X"]
+
+
+def test_edit_meta_json_merges_structured_metadata(monkeypatch):
+    # --meta takes strings only, so the front-page card (an object) needed its own door.
+    monkeypatch.setenv("NEWSROOM_OPERATOR_TOKEN", "op.tok")
+    article = {"title": "T", "body": "cuerpo", "author": "author-a", "section": "politics",
+               "metadata": {"subtitle": "vieja", "image": "/media/a.png"}}
+    calls = []
+
+    def fake_req(method, url, data=None, headers=None, timeout=60):
+        calls.append((method, url, data))
+        if method == "GET":
+            return 200, json.dumps(article).encode()
+        return 200, b"{}"
+
+    monkeypatch.setattr(cz, "_req", fake_req)
+    cz.cmd_edit(SimpleNamespace(
+        slug="una-nota", set=None, meta=["subtitle=nueva"],
+        meta_json='{"card": {"type": "image", "src": "/media/b.png"}}',
+        body_file="", tweets_file="", published_at="", dry_run=False))
+    method, url, data = calls[-1]
+    assert method == "PUT" and url.endswith("/articles/una-nota")
+    meta = json.loads(data)["metadata"]
+    assert meta["card"] == {"type": "image", "src": "/media/b.png"}
+    assert meta["subtitle"] == "nueva"          # the string flag still applies
+    assert meta["image"] == "/media/a.png"      # untouched keys survive
+
+
+def test_edit_meta_json_rejects_a_non_object(monkeypatch):
+    monkeypatch.setenv("NEWSROOM_OPERATOR_TOKEN", "op.tok")
+    monkeypatch.setattr(cz, "_req",
+                        lambda m, u, data=None, headers=None, timeout=60:
+                        (200, json.dumps({"title": "T", "body": "b", "author": "a",
+                                          "section": "s"}).encode()))
+    with pytest.raises(cz.ToolError):
+        cz.cmd_edit(SimpleNamespace(slug="s", set=None, meta=None, meta_json='["card"]',
+                                    body_file="", tweets_file="", published_at="", dry_run=False))
+
+
 def test_cli_parses_portada_verb():
     assert cz.build_parser().parse_args(["portada", "2026-06-10"]).fn is cz.cmd_portada
 
