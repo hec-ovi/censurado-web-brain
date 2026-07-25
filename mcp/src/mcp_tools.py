@@ -467,9 +467,22 @@ def h_recomendado_set(args, runner):
         return _refused("recomendado", "slugs must be an array (an empty array clears the rail).")
     if len(slugs) > 10:
         return _refused("recomendado", f"the rail holds at most 10 slugs, got {len(slugs)}.")
+    before = runner.run(["recomendado"])
+    old_slugs = (before.get("data") or {}).get("slugs") or [] \
+        if isinstance(before.get("data"), dict) else []
     result = (runner.run(["recomendado", "--clear"]) if not slugs
               else runner.run(["recomendado", "--set", _csv(slugs)]))
-    return _with_notes(result, [LOCAL_ONLY] if result.get("ok") else [])
+    notes = []
+    if result.get("ok"):
+        # The rail replaces, it does not append: prepending one slug to a full rail evicts the
+        # last, which is invisible unless somebody compares the lists. Say what left.
+        dropped = [s for s in old_slugs if s not in slugs]
+        if dropped and slugs:
+            notes.append("DROPPED from the rail: " + ", ".join(dropped) +
+                         ". This tool replaces the whole list, so anything you left out is gone "
+                         "from the rail (the articles themselves are untouched).")
+        notes.append(LOCAL_ONLY)
+    return _with_notes(result, notes)
 
 
 # ---- handlers: authors ------------------------------------------------------
@@ -866,8 +879,12 @@ TOOLS = [
         "name": "recomendado_set",
         "title": "Set the recommended rail",
         "description": "Replace the global recommended rail, in order, up to 10 slugs from any "
-                       "day. An empty array clears it (the widget stays, with no items). This is "
-                       "not part of a day's portada: it is one list for the whole site.",
+                       "day. It REPLACES the whole list rather than appending, so read "
+                       "recomendado_get first and send the full list you want: to add one "
+                       "piece to a full rail you must choose which one leaves. An empty "
+                       "array clears it (the widget stays, with no items). This is not part "
+                       "of a day's portada: it is one list for the whole site, and it is the "
+                       "right way to feature a piece from an earlier day.",
         "inputSchema": _obj({"slugs": _list("Article slugs, in the order they should appear.")},
                             required=["slugs"]),
         "handler": h_recomendado_set,

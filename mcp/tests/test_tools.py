@@ -310,6 +310,21 @@ def test_recomendado_set_replaces_or_clears_the_rail(server):
     assert argv_of(call(server, "recomendado_set", {"slugs": []})) == ["recomendado", "--clear"]
 
 
+def test_recomendado_set_says_what_fell_off_the_rail(server, stub_repo):
+    # Seen for real: prepending one slug to a full rail evicted the last one, invisibly.
+    _portada_stub(stub_repo, [], rail=["uno", "dos", "tres"])
+    err = call(server, "recomendado_set",
+               {"slugs": ["nuevo", "uno", "dos"]})["structuredContent"]["stderr"]
+    assert "DROPPED from the rail: tres" in err
+    assert "articles themselves are untouched" in err
+
+
+def test_recomendado_set_is_quiet_when_nothing_was_evicted(server, stub_repo):
+    _portada_stub(stub_repo, [], rail=["uno", "dos"])
+    err = call(server, "recomendado_set", {"slugs": ["uno", "dos", "tres"]})["structuredContent"]["stderr"]
+    assert "DROPPED" not in err
+
+
 def test_recomendado_set_refuses_more_than_ten(server):
     result = call(server, "recomendado_set", {"slugs": [f"s{i}" for i in range(11)]})
     assert result["isError"] is True

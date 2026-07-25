@@ -35,8 +35,12 @@ Protocol errors (JSON-RPC `error`):
 
 Tool errors (a result with `isError: true`, which the agent can correct and retry):
 - an argument that fails validation, reported with what the tool does accept
-- a refusal: a destructive or public action called without `confirm: true`, or an argument combination the tool will not run (`exit_code` 2)
+- a refusal (`exit_code` 2): a destructive or public action called without `confirm: true`; an argument combination the tool will not run; a re-stage of a piece the author already published (`article_create`, override with `allow_similar`); or a front-page plan naming slugs that did not publish that day (`portada_set`)
 - a verb that exited non-zero, with the CLI's own actionable line in `stderr` (`exit_code` 124 means the verb hit its timeout)
+
+## Advisories
+
+Some tools append notes to `stderr` on success. They never change the outcome; they carry what the caller cannot see from its own arguments: that a change is local until `site_publish`, which slugs a rail replacement evicted, where a deleted article is still referenced, how the rail stands after a day is arranged, and when a plan's singles would leave a card beside an empty cell.
 
 ## Dependencies
 
@@ -51,6 +55,7 @@ Tool errors (a result with `isError: true`, which the agent can correct and retr
 - **Public action is double-gated.** `site_publish` needs `confirm: true` here and `--yes` at the CLI. Nothing else in the surface is outward-facing.
 - **Nothing is truncated.** Article bodies and verb output cross whole.
 - **The manual travels with the connection.** An agent with no repo learns the two-world rule, the layout model, the writing path, and the compliance line from `initialize.instructions` and the tool descriptions.
+- **Nothing here speaks CLI.** Text that reaches the agent names tools and arguments, never shell commands or file paths: `workflow_step` translates the walk's operator-facing nodes and gate messages before they cross the boundary.
 
 ## How to modify this blackbox safely
 

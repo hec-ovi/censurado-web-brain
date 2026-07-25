@@ -63,6 +63,28 @@ Every tool returns the same envelope: `{ok, verb, exit_code, stdout, stderr, dat
 whole. A failed verb comes back as a tool error carrying the CLI's own actionable line, which
 is what lets a model correct itself instead of looping.
 
+## What the tools refuse, and what they say out loud
+
+These came out of driving the server with a small model that had nothing but these tools. Each
+one is a mistake it actually made:
+
+- Re-staging a piece to change its title. `article_create` refuses when the author already has
+  a piece with nearly the same title or standfirst, and points at `article_update`. Without it
+  the site carries the story twice under two permalinks.
+- Front-page slugs from another day. `portada_set` checks the day's real slugs and refuses,
+  because a wrong slug is dropped at render and everything below it shifts up, silently
+  changing the lead.
+- Forgetting the recommended rail. Arranging a day reports where the rail stands and asks
+  whether it should change too; replacing the rail says which slugs fell off it.
+- Deleting and leaving the wreckage. A delete reports every place that still references the
+  slug (the rail, any day's plan) with the call that fixes each one.
+- Believing a local change is public. Every mutation ends with a line saying the public site is
+  untouched until `site_publish`, and a delete says the reverse trap out loud: gone locally,
+  still served publicly.
+- Stalling at the walk's artifact gate. The workflow's nodes are written for an operator at a
+  terminal, so `workflow_step` translates them: verbs become tool names, and the file the gate
+  wants becomes a `workflow_save` call.
+
 ## What the agent knows
 
 An agent wired to this server has nothing else to read, so the operating knowledge travels
