@@ -477,6 +477,16 @@ def test_workflow_text_is_translated_into_tool_calls(runner):
     assert "censurado.py" not in out and str(work) not in out
 
 
+def test_workflow_text_does_not_swallow_a_sentence_final_period(runner):
+    # From a real loop-shield message: "...do it and save <dir>/ledger.md." The filename must
+    # come out as ledger.md, not ledger.md., which no gate would accept.
+    from mcp_tools import tool_speak
+    out = tool_speak(f"If its job is not done, do it and save {runner.work_dir}/ledger.md.",
+                     runner.work_dir)
+    assert 'workflow_save(artifact="ledger.md", content=...)' in out
+    assert "ledger.md." not in out.replace('artifact="ledger.md"', "")
+
+
 def test_workflow_text_maps_every_verb_a_node_names(runner):
     from mcp_tools import tool_speak
     work = runner.work_dir

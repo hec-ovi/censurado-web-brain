@@ -158,7 +158,9 @@ def tool_speak(text: str, work_dir) -> str:
                  "WORK DIR: this walk keeps its artifacts for you. Save each file an ARTIFACT "
                  "line names with the workflow_save tool; you need no filesystem access.", out)
     # Any remaining path into the scratch dir names a file the gate wants saved.
-    out = re.sub(re.escape(work) + r"/([\w.-]+)",
+    # The filename must not swallow a sentence-final period: a node that ends "...save it to
+    # <dir>/ledger.md." would otherwise become artifact="ledger.md.", which no gate accepts.
+    out = re.sub(re.escape(work) + r"/([\w-]+(?:\.[\w-]+)*)",
                  lambda m: f'workflow_save(artifact="{m.group(1)}", content=...)', out)
     return out
 
