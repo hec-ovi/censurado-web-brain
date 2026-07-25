@@ -42,6 +42,66 @@ def test_article_create_cleans_up_the_body_file(server, runner):
     assert list((runner.work_dir / ".tmp").glob("*.md")) == []
 
 
+def _publishing_stub(repo, existing):
+    """A stub CLI that answers `archive` with a corpus and echoes everything else."""
+    (repo / "cli" / "censurado.py").write_text(
+        "import json, os, sys\n"
+        "from pathlib import Path\n"
+        "argv = sys.argv[1:]\n"
+        f"corpus = {existing!r}\n"
+        "if argv and argv[0] == 'archive':\n"
+        "    print(json.dumps({'total': len(corpus), 'articles': corpus}))\n"
+        "    raise SystemExit(0)\n"
+        "files = {p.name: p.read_text(errors='replace') for p in map(Path, argv) if p.is_file()}\n"
+        "print(json.dumps({'argv': argv, 'files': files,\n"
+        "                  'work': os.environ.get('CENSURADO_WORK', '')}))\n",
+        encoding="utf-8")
+
+
+def test_article_create_refuses_to_republish_the_same_piece(server, stub_repo):
+    # The failure this catches, seen for real: asked to change a title, an agent called the
+    # tool it used last time and staged a SECOND copy of the story under a new permalink.
+    _publishing_stub(stub_repo, [{"slug": "el-teatro-que-sobrevive",
+                                  "title": "El teatro que sobrevive",
+                                  "description": "Directores reportan caidas de ingresos del 50 "
+                                                 "por ciento mientras el decreto paralizo al INT.",
+                                  "published_at": "2026-07-25T10:00:00Z"}])
+    result = call(server, "article_create", {
+        "author": "mora", "title": "Teatro independiente bajo presion",
+        "description": "Directores reportan caidas de ingresos del 50 por ciento mientras el "
+                       "decreto paralizo al INT.",
+        "body": "el mismo cuerpo"})
+    assert result["isError"] is True
+    err = result["structuredContent"]["stderr"]
+    assert "article_update" in err and "el-teatro-que-sobrevive" in err
+    assert "second copy" in err
+
+
+def test_article_create_stages_a_genuinely_different_piece(server, stub_repo):
+    _publishing_stub(stub_repo, [{"slug": "el-teatro-que-sobrevive",
+                                  "title": "El teatro que sobrevive",
+                                  "description": "La escena independiente resiste la crisis.",
+                                  "published_at": "2026-07-25T10:00:00Z"}])
+    result = call(server, "article_create", {
+        "author": "mora", "title": "El subte que nunca llego",
+        "description": "La obra de la linea F acumula tres anos de retraso y sobrecostos.",
+        "body": "otro cuerpo"})
+    assert result.get("isError") is None
+    assert argv_of(result)[0] == "preview"
+
+
+def test_article_create_can_be_overridden_for_a_real_second_piece(server, stub_repo):
+    _publishing_stub(stub_repo, [{"slug": "cronica-uno", "title": "Cronica del ensayo abierto",
+                                  "description": "Primera entrega de la cobertura del festival.",
+                                  "published_at": "2026-07-25T10:00:00Z"}])
+    result = call(server, "article_create", {
+        "author": "mora", "title": "Cronica del ensayo abierto",
+        "description": "Primera entrega de la cobertura del festival.",
+        "body": "segunda entrega", "allow_similar": True})
+    assert result.get("isError") is None
+    assert argv_of(result)[0] == "preview"
+
+
 def test_article_update_sends_only_the_named_fields(server):
     argv = argv_of(call(server, "article_update", {
         "slug": "el-apagon", "title": "Titulo nuevo",
@@ -228,6 +288,63 @@ def test_workflow_step_serves_one_node(server):
     assert argv_of(call(server, "workflow_step", {"mode": "daily", "node": "30-research"})) == \
         ["step", "30-research", "--mode", "daily"]
     assert argv_of(call(server, "workflow_step", {"list": True})) == ["step", "--list"]
+
+
+def test_workflow_text_is_translated_into_tool_calls(runner):
+    """The walk's nodes and gate messages are written for a terminal operator. An agent here
+    has no shell and no filesystem, so verbatim text sends it hunting for tools it does not
+    have. This is the exact BLOCKED message the artifact gate emits."""
+    from mcp_tools import tool_speak
+    work = runner.work_dir
+    blocked = (f"BLOCKED: you cannot start 40-outline yet. The previous step 30-research must "
+               f"first do its work and save it to {work}/ledger.md. Go back: run `python3 "
+               f"cli/censurado.py step 30-research --mode single-article`, complete it, write "
+               f"{work}/ledger.md, then advance to 40-outline.")
+    out = tool_speak(blocked, work)
+    assert 'the workflow_step tool (node="30-research", mode="single-article")' in out
+    assert 'workflow_save(artifact="ledger.md", content=...)' in out
+    assert "censurado.py" not in out and str(work) not in out
+
+
+def test_workflow_text_maps_every_verb_a_node_names(runner):
+    from mcp_tools import tool_speak
+    work = runner.work_dir
+    node = ('List what this author published with `python3 cli/censurado.py archive <author-id> '
+            '--q "<theme>"`, read the voice with `censurado.py persona <id>`, render art with '
+            '`python3 cli/censurado.py image --prompt "..."`, then publish with '
+            '`python3 cli/censurado.py preview --author <id>`.')
+    out = tool_speak(node, work)
+    assert "the article_list tool" in out and "the author_get tool" in out
+    assert "the image_generate tool" in out and "the article_create tool" in out
+    assert "censurado.py" not in out
+
+
+def test_workflow_text_says_a_maintenance_sweep_is_not_reachable(runner):
+    from mcp_tools import tool_speak
+    out = tool_speak("run `censurado-brain topics cleanse --map-file map.json` to apply it",
+                     runner.work_dir)
+    assert "censurado-brain" not in out and "ask the human" in out
+
+
+def test_workflow_text_rewrites_the_scratch_dir_line(runner):
+    from mcp_tools import tool_speak
+    out = tool_speak(f"WORK DIR: {runner.work_dir}  (your scratch for this piece; save the file "
+                     f"each ARTIFACT line names here, nothing else on disk is yours to touch)\n"
+                     f"body text stays", runner.work_dir)
+    assert "workflow_save" in out and "no filesystem access" in out
+    assert "body text stays" in out
+
+
+def test_workflow_step_translates_what_it_serves(server, monkeypatch, runner):
+    """End to end through the tool: the stub prints a node body full of CLI commands."""
+    node = (f"WORK DIR: {runner.work_dir}\\nrun `python3 cli/censurado.py step 40-outline "
+            f"--mode daily`\\nARTIFACT: save this step's output to {runner.work_dir}/draft.md")
+    stub = (runner.repo / "cli" / "censurado.py")
+    stub.write_text("import sys\nprint(\"\"\"%s\"\"\")\n" % node, encoding="utf-8")
+    result = call(server, "workflow_step", {"mode": "daily"})
+    text = result["structuredContent"]["stdout"]
+    assert 'the workflow_step tool (node="40-outline", mode="daily")' in text
+    assert 'workflow_save(artifact="draft.md", content=...)' in text
 
 
 def test_workflow_save_lands_the_artifact_in_the_gate_dir(server, runner):

@@ -21,6 +21,11 @@ date, figure, and name stays exact, and nothing is invented to fit a position.
 Build it in the layers you outlined: open with the self-contained summary, develop the
 detail, close with the full context. Each layer new and dense; never restate an earlier one.
 
+**The body does NOT carry the headline.** The site prints the title from the title field, so a
+`# Titulo` line at the top of the body renders the headline twice on the page. Open with the
+first line of the piece itself (the dateline plus the lead, the way the rest of the corpus
+does). Inside the body, section headers are `##`, never `#`.
+
 **Say each idea once.** A caveat, a disclaimer, or a framing note is stated ONE time, in a
 single short compact line, and never repeated. Do not stack three, four, or five synonyms
 for the same hedge, and do not let the caveat reappear in every paragraph. Reflexive

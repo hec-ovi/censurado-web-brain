@@ -56,6 +56,9 @@ Writing an article
   and save each artifact it names with `workflow_save`. The walk enforces the sourcing floor,
   the accurate-headline gate, and the respin loop. Do not draft a whole piece from memory.
 - Headlines must be accurate to the body. Attribute claims to named sources in plain text.
+- Sourcing needs REAL web search, which this server does not provide. If you have no search
+  tool of your own, say so and stop rather than writing from memory. Never invent a source, a
+  statistic, or a quote.
 - The newest article leads the front page. To publish without taking the lead, backdate
   `published_at`.
 

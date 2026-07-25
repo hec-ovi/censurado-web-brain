@@ -8,6 +8,8 @@ repo, no shell, and no skill files: what it reads here is all it knows.
 from __future__ import annotations
 
 import json
+import re
+from difflib import SequenceMatcher
 
 from mcp_doctor import Doctor, report_text
 from mcp_runner import SLOW_TIMEOUT, RunnerError, envelope
@@ -101,6 +103,66 @@ def _refused(verb: str, message: str) -> dict:
     return envelope([verb], 2, "", "REFUSED: " + message)
 
 
+# ---- speaking the agent's language ------------------------------------------
+
+# Which tool does each CLI verb become? The walk's node text names verbs; an agent here has
+# tools. Anything not listed has no tool (it is an operator-only or maintenance action).
+VERB_TO_TOOL = {
+    "archive": "article_list", "get": "article_get", "preview": "article_create",
+    "previsualizar": "article_create", "edit": "article_update", "unpublish": "article_delete",
+    "sections": "sections_list", "topics": "topics_inventory", "remove-topic": "topic_remove",
+    "portada": "portada_set", "recomendado": "recomendado_set", "personas": "author_list",
+    "persona": "author_get", "create-author": "author_create", "edit-author": "author_update",
+    "remove-author": "author_delete", "sources": "author_sources_get",
+    "profile-topics": "author_update", "portals": "source_catalog", "media": "media_upload",
+    "image": "image_generate", "style": "editorial_style", "editorial-rules": "editorial_rules",
+    "prompt": "prompt_get", "set-prompt": "prompt_set", "status": "stack_status",
+    "doctor": "doctor", "publicar": "site_publish", "publish": "site_publish",
+    "deploy": "site_publish", "up": "stack_up", "up-gpu": "stack_up", "step": "workflow_step",
+}
+
+_CMD = r"(?:python3\s+)?(?:cli/)?censurado\.py\s+"
+_STEP_CALL = re.compile(_CMD + r"step(?:\s+([\w-]+))?(?:\s+--mode\s+([\w-]+))?")
+_VERB_CALL = re.compile(_CMD + r"([\w-]+)")
+_BRAIN_CALL = re.compile(r"(?:`)?censurado-brain[^`\n]*(?:`)?")
+
+
+def tool_speak(text: str, work_dir) -> str:
+    """Rewrite operator instructions as tool calls: shell commands become tool names, and the
+    artifact gate's file paths become workflow_save calls. Everything else is left alone, so
+    the editorial substance of a node reaches the agent unchanged."""
+    if not text:
+        return text
+    out = text
+
+    def step_call(m):
+        node, mode = m.group(1), m.group(2)
+        parts = []
+        if node:
+            parts.append(f'node="{node}"')
+        if mode:
+            parts.append(f'mode="{mode}"')
+        return "the workflow_step tool (" + ", ".join(parts) + ")" if parts \
+            else "the workflow_step tool"
+
+    out = _STEP_CALL.sub(step_call, out)
+    out = _VERB_CALL.sub(
+        lambda m: f"the {VERB_TO_TOOL[m.group(1)]} tool" if m.group(1) in VERB_TO_TOOL
+        else f"the {m.group(1)} action (ask the human; it is not exposed here)", out)
+    out = _BRAIN_CALL.sub("(a maintenance sweep that is not exposed here: ask the human to run it)",
+                          out)
+
+    # The scratch dir: an agent here saves through a tool, and has nothing else on disk.
+    work = str(work_dir)
+    out = re.sub(r"WORK DIR: " + re.escape(work) + r"[^\n]*",
+                 "WORK DIR: this walk keeps its artifacts for you. Save each file an ARTIFACT "
+                 "line names with the workflow_save tool; you need no filesystem access.", out)
+    # Any remaining path into the scratch dir names a file the gate wants saved.
+    out = re.sub(re.escape(work) + r"/([\w.-]+)",
+                 lambda m: f'workflow_save(artifact="{m.group(1)}", content=...)', out)
+    return out
+
+
 # ---- handlers: health and lifecycle ----------------------------------------
 
 
@@ -144,7 +206,49 @@ def h_article_get(args, runner):
     return runner.run(["get", str(args["slug"])])
 
 
+def _norm(text):
+    return " ".join(str(text or "").lower().split())
+
+
+def _looks_like_a_repost(args, runner):
+    """Is this the same piece the author already published? A tiny agent asked to change a
+    title reaches for the tool it used last time, which stages a SECOND copy under a new
+    permalink instead of editing the first. The site then carries the piece twice, and only a
+    human notices. Cheap read (no bodies), advisory: if the check itself fails, publishing
+    proceeds."""
+    if args.get("allow_similar"):
+        return None
+    try:
+        env = runner.run(["archive", str(args["author"]), "--limit", "20"])
+    except RunnerError:
+        return None
+    data = env.get("data")
+    if not env.get("ok") or not isinstance(data, dict):
+        return None
+    for field in ("title", "description"):
+        mine = _norm(args.get(field))
+        if len(mine) < 12:
+            continue
+        for art in data.get("articles", []):
+            if not isinstance(art, dict):
+                continue
+            theirs = _norm(art.get(field))
+            if theirs and SequenceMatcher(None, mine, theirs).ratio() >= 0.85:
+                return {"slug": art.get("slug", ""), "title": art.get("title", ""),
+                        "published_at": art.get("published_at", ""), "field": field}
+    return None
+
+
 def h_article_create(args, runner):
+    twin = _looks_like_a_repost(args, runner)
+    if twin:
+        return _refused("preview",
+                        f"this author already has a piece with nearly the same {twin['field']}: "
+                        f"\"{twin['title']}\" (slug {twin['slug']}, published "
+                        f"{twin['published_at']}). To CHANGE that piece, call article_update"
+                        f"(slug=\"{twin['slug']}\", ...): it edits in place and keeps the "
+                        f"permalink. Staging again would put a second copy of the same story on "
+                        f"the site. If this really is a different piece, pass allow_similar=true.")
     body_file = runner.write_temp(str(args["body"]), suffix=".md")
     try:
         argv = ["preview", "--author", str(args["author"]), "--title", str(args["title"]),
@@ -406,7 +510,14 @@ def h_workflow_step(args, runner):
         argv += ["--mode", str(args["mode"])]
     if args.get("list"):
         argv.append("--list")
-    return runner.run(argv)
+    result = runner.run(argv)
+    # The walk's nodes and its gate messages are written for an operator at a terminal: they
+    # say "run python3 cli/censurado.py ..." and "save this file to <path>". An agent on this
+    # server has neither a shell nor a filesystem, so verbatim text sends it hunting for tools
+    # it does not have and it stalls at the first artifact gate. Translate before handing over.
+    for stream in ("stdout", "stderr"):
+        result[stream] = tool_speak(result[stream], runner.work_dir)
+    return result
 
 
 def h_workflow_save(args, runner):
@@ -503,8 +614,11 @@ TOOLS = [
     {
         "name": "article_create",
         "title": "Create an article",
-        "description": "Write a new article and stage it to the LOCAL site (it is NOT public "
-                       "until site_publish). You write the body yourself, in markdown, in the "
+        "description": "Write a NEW article and stage it to the LOCAL site (it is NOT public "
+                       "until site_publish). This tool only ever creates: to change a piece "
+                       "that already exists, even just its title, use article_update, because "
+                       "calling this again publishes a second copy under a different "
+                       "permalink. You write the body yourself, in markdown, in the "
                        "author's voice: read editorial_style and editorial_rules for the "
                        "author's language, and author_get for the persona, BEFORE drafting. The "
                        "byline and section come from the author unless you override them. If you "
@@ -515,7 +629,7 @@ TOOLS = [
             "author": _s("Author handle (from author_list); sets the byline and the section."),
             "title": _s("The headline. It must be accurate to the body, not a tease."),
             "description": _s("The one-line standfirst under the headline (required)."),
-            "body": _s("The article body, in markdown."),
+            "body": _s("The article body, in markdown. Do NOT start it with a `# Title` heading: the site prints the headline from the title field, so a heading there shows it twice. Open with the piece itself (dateline plus lead) and use `##` for any section header."),
             "section": _s("Override the author's beat as the section."),
             "subtitle": _s("Optional dek shown under the headline."),
             "topics": _list("Tags: themes plus named entities."),
@@ -533,20 +647,23 @@ TOOLS = [
             "card_alt": _s("Alt text for the card image."),
             "youtube": _s("YouTube id or URL for a video piece."),
             "dry_run": _b("Print the payload without staging anything."),
+            "allow_similar": _b("Stage even though the author already has a piece with nearly the same title or standfirst. Only for a genuinely different story."),
         }, required=["author", "title", "description", "body"]),
         "handler": h_article_create,
     },
     {
         "name": "article_update",
         "title": "Edit an article in place",
-        "description": "Change a live article, keeping its permalink. Only the fields you pass "
+        "description": "Change an article that already exists, in place. This is the ONLY way to "
+                       "edit: use it for a new title, a fixed fact, a different card, a new "
+                       "hero. The article keeps its identity and its slug, but its public URL carries a content hash, so ANY edit changes that URL and a link shared earlier stops working: get a piece right before you hand out its link. Only the fields you pass "
                        "change; everything else is preserved. metadata is merged key by key, so "
                        "you can retitle the card or fix the standfirst without resending the "
                        "rest. Read the article first with article_get.",
         "inputSchema": _obj({
             "slug": _s("The article to edit."),
             "title": _s("New headline."),
-            "body": _s("Replacement body, in markdown."),
+            "body": _s("Replacement body, in markdown. No `# Title` heading at the top (the site prints the headline from the title field); `##` for section headers."),
             "section": _s("New section."),
             "author": _s("New author handle."),
             "topics": _list("Replacement tag list."),
@@ -659,11 +776,15 @@ TOOLS = [
         "description": "Persist a new fictional persona. You write the persona yourself: read "
                        "prompt_get(key='persona/synthesize.md') first, which is the recipe for "
                        "what a good persona carries. Personas are openly fictional and must "
-                       "never impersonate a real person. Attach the author's outlets afterwards "
-                       "with author_sources_set.",
+                       "never impersonate a real person.\n"
+                       "TWO STEPS AFTER THIS ONE, or the author is half-made: attach their "
+                       "outlets with author_sources_set (an author with no outlets may name no "
+                       "media in their articles, which strips the sourcing out of every piece "
+                       "they sign), and give them a portrait with image_generate (see its "
+                       "portrait recipe) passed to author_update(avatar=...).",
         "inputSchema": _obj({
             "display_name": _s("The byline name."),
-            "beat": _s("The author's default section (their beat)."),
+            "beat": _s("The author's default section, which becomes the section of every article they sign. It must be a section slug that ALREADY exists: call sections_list first and reuse one, because a new value silently creates a new, near-empty section page."),
             "who_i_am": _s("First person, private: background, what they cover, what they refuse."),
             "style": _s("Concrete voice notes a drafting model can follow."),
             "about": _s("First-person PUBLIC bio for the byline and the about page."),
@@ -697,7 +818,7 @@ TOOLS = [
             "avatar": _s("The author portrait: a /media path from image_generate (see its portrait recipe) or media_upload. This is how you change an author picture."),
             "gender": _s("Grammatical gender for the byline."),
             "style": _s("New voice notes."),
-            "beat": _s("New default section."),
+            "beat": _s("New default section. Reuse a slug from sections_list; a new value creates a new section page."),
             "who_i_am": _s("New private self-description."),
             "language": _s("New language code."),
             "few_shots_pos": _list("Replacement positive exemplars.", items={"type": "object"}),
@@ -860,9 +981,14 @@ TOOLS = [
                        "next step. This is the quality path for writing: it enforces the "
                        "sourcing floor, the accurate-headline gate, and the evaluate and respin "
                        "loop. Start with mode alone to get the first node, then pass the node it "
-                       "names. When a node asks you to save an artifact, save it with "
-                       "workflow_save under the exact filename it names, or the gate will not "
-                       "let you advance.",
+                       "names.\n"
+                       "THE GATE: a node that prints an ARTIFACT line will not let you advance "
+                       "until you save that file with workflow_save, under the exact filename it "
+                       "names. You need no filesystem access; workflow_save is the filesystem.\n"
+                       "SOURCES: the research node needs REAL sources found with your own web "
+                       "search. This server has no search tool. If you have none either, stop and "
+                       "tell the human the piece cannot be sourced. Never invent a source, a "
+                       "statistic, or a quote, and never name an outlet you did not read.",
         "inputSchema": _obj({
             "mode": _s("Workflow mode, e.g. single-article, institucional, daily, redactor, "
                        "portal-review, topic-cleanse. Call with list=true to see them all."),
@@ -875,9 +1001,9 @@ TOOLS = [
         "name": "workflow_save",
         "title": "Save a walk artifact",
         "description": "Save the file a workflow node asked for (ledger.md, draft.md, and the "
-                       "like) into the walk's scratch dir. Use the exact filename the node named. "
-                       "This is the only file this server writes, and it never touches anything "
-                       "outside that dir.",
+                       "like). This is how you clear the walk's artifact gate when you have no "
+                       "filesystem: pass the exact filename the ARTIFACT line named and the full "
+                       "content. It writes only inside the walk's scratch dir, nowhere else.",
         "inputSchema": _obj({"artifact": _s("Plain filename the node named, e.g. draft.md."),
                              "content": _s("The file's full contents.")},
                             required=["artifact", "content"]),
