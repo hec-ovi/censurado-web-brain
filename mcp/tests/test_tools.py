@@ -372,6 +372,24 @@ def test_author_update_splits_public_private_and_topics(server):
     assert argv[argv.index("--profile-topics") + 1] == "milei,fmi"
 
 
+def test_changing_a_picture_or_bio_points_at_the_byline_copies(server):
+    # The bug this prevents, seen live: a new portrait showed on the author page while every
+    # article they had already published kept the old one in its own copy of the byline.
+    err = call(server, "author_update",
+               {"id": "ana", "avatar": "/media/nuevo.png"})["structuredContent"]["stderr"]
+    assert "BYLINE COPIES" in err and 'author_sync_byline(id="ana")' in err
+    # A private-field edit does not carry the warning, since no article copies those.
+    quiet = call(server, "author_update",
+                 {"id": "ana", "beat": "economia"})["structuredContent"]["stderr"]
+    assert "BYLINE COPIES" not in quiet
+
+
+def test_author_sync_byline_maps_to_the_verb(server):
+    assert argv_of(call(server, "author_sync_byline", {"id": "ana"})) == ["sync-byline", "ana"]
+    assert argv_of(call(server, "author_sync_byline", {"id": "ana", "dry_run": True})) == \
+        ["sync-byline", "ana", "--dry-run"]
+
+
 def test_author_update_refuses_a_call_that_changes_nothing(server):
     result = call(server, "author_update", {"id": "ana"})
     assert result["isError"] is True

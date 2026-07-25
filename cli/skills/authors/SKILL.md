@@ -71,6 +71,16 @@ fields you name and re-sends the rest untouched, so you never blank a voice by f
 - Profile topics also have their own verb (`profile-topics <id> --set a,b,c`); either works.
 - Add `--dry-run` to see the row that would be written before writing it.
 
+**After changing the name, the bio or the picture, run `sync-byline`.** Every article stores
+its OWN copy of those three fields, taken when it was staged, so the author page shows the new
+picture while every earlier piece still carries the old one:
+
+    python3 cli/censurado.py sync-byline <id> --dry-run   # what would change
+    python3 cli/censurado.py sync-byline <id>             # push the current byline onto them
+
+It rewrites only the articles whose copy differs, leaves the article text alone, and does not
+move anything in the front-page order (the permalink covers the title and body, not the byline).
+
 ## Remove an author (destructive)
 `python3 cli/censurado.py remove-author <id> --yes`
 

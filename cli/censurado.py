@@ -1105,6 +1105,80 @@ _AUTHOR_PUBLIC = ("name", "bio", "about", "avatar", "gender", "style")
 _AUTHOR_META = ("beat", "who_i_am", "language", "few_shots_pos", "few_shots_neg")
 
 
+def _byline_of(rec):
+    """The three public byline fields an article stores its own copy of."""
+    return {"author_name": rec.get("name", ""),
+            "author_bio": rec.get("bio", "") or rec.get("about", ""),
+            "author_avatar": rec.get("avatar", "")}
+
+
+def cmd_sync_byline(a):
+    """Push an author's CURRENT byline (display name, public bio, picture) onto the articles
+    they already published. Every article stores its OWN copy of those three fields, taken at
+    publish time, so the piece keeps its byline even if the author is later retired. The cost of
+    that copy is drift: change the picture or rewrite the bio and every earlier article still
+    shows the old one, which is why an author's small byline photo can differ from the one on
+    their profile page. This re-syncs them.
+
+    It reads the author record, lists their articles, and re-publishes in place only the ones
+    whose copy differs (each is a GET -> modify -> PUT, body and everything else untouched).
+    `--dry-run` reports what would change without writing. Prints a JSON summary."""
+    rec = _author(a.id)
+    if not rec:
+        fail(f"author {a.id!r} is not in the registry (list them with `personas`).")
+    want = _byline_of(rec)
+    limit = a.limit or 500
+    st, body = api("GET", "/articles?" + urllib.parse.urlencode({"author": a.id, "limit": str(limit)}))
+    if st != 200:
+        fail(f"cannot list the author's articles (GET /articles HTTP {st}). Is the backend up "
+             f"at {PUBLISH} and the operator token valid?")
+    listing = _json(body, "the archive response", want=dict)
+    out = {"author": a.id, "byline": want, "scanned": 0, "changed": [], "failed": [],
+           "dry_run": bool(a.dry_run)}
+    for item in listing.get("articles", []):
+        slug = item.get("slug", "") if isinstance(item, dict) else ""
+        if not slug:
+            continue
+        out["scanned"] += 1
+        st, body = api("GET", "/articles/" + slug)
+        if st != 200:
+            out["failed"].append(slug)
+            continue
+        art = _json(body, f"the article {slug!r}", want=dict)
+        meta = art.get("metadata") or {}
+        if not isinstance(meta, dict):
+            meta = {}
+        stale = {k: v for k, v in want.items() if (meta.get(k, "") or "") != (v or "")}
+        if not stale:
+            continue
+        out["changed"].append({"slug": slug, "fields": sorted(stale)})
+        if a.dry_run:
+            continue
+        for key, value in want.items():
+            if value:
+                meta[key] = value
+            else:
+                meta.pop(key, None)
+        payload = {"title": art.get("title", ""), "body": art.get("body", ""),
+                   "author": art.get("author", ""), "section": art.get("section", "")}
+        if art.get("topics"): payload["topics"] = art["topics"]
+        if art.get("published_at"): payload["published_at"] = art["published_at"]
+        payload["metadata"] = meta
+        st, _b = api("PUT", "/articles/" + slug, payload)
+        if st != 200:
+            out["failed"].append(slug)
+            out["changed"].pop()
+    print(json.dumps(out, ensure_ascii=False, indent=2))
+    if out["failed"]:
+        sys.stderr.write(f"sync-byline {a.id}: {len(out['failed'])} article(s) could not be "
+                         f"updated: {', '.join(out['failed'])}\n")
+        return 1
+    verb = "would update" if a.dry_run else "updated"
+    sys.stderr.write(f"sync-byline {a.id}: {verb} {len(out['changed'])} of {out['scanned']} "
+                     f"article(s).\n")
+    return 0
+
+
 def cmd_edit_author(a):
     """Modify an EXISTING author in place: the public byline fields (display name, bio/about,
     avatar picture, gender, style), the private tail the walk reads (beat, who_i_am, language,
@@ -2201,6 +2275,15 @@ def build_parser():
                     help='comma-separated profile topics (replaces the set); "" clears them')
     ea.add_argument("--dry-run", action="store_true", help="print the author row, do not POST")
     ea.set_defaults(fn=cmd_edit_author)
+
+    sb = sub.add_parser("sync-byline",
+                        help="push an author's current name/bio/picture onto the articles they "
+                             "already published (each stores its own copy, so an edit leaves the "
+                             "old byline behind)")
+    sb.add_argument("id", help="author id/handle")
+    sb.add_argument("--limit", type=int, default=0, help="cap the articles scanned (0 = 500)")
+    sb.add_argument("--dry-run", action="store_true", help="report what would change, write nothing")
+    sb.set_defaults(fn=cmd_sync_byline)
 
     rma = sub.add_parser("remove-author", help="tombstone an author in the backend (needs --yes; soft, restorable)")
     rma.add_argument("id", help="author id/slug")

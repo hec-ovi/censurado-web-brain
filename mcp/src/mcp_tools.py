@@ -530,7 +530,30 @@ def h_author_update(args, runner):
     if len(argv) == 2:
         return _refused("edit-author", "name at least one field to change (or call author_get "
                                        "first to see what the author currently carries).")
-    return runner.run(argv)
+    result = runner.run(argv)
+    public = [k for k in ("name", "about", "bio", "avatar") if args.get(k) is not None]
+    if result.get("ok") and public and not args.get("dry_run"):
+        # Each article keeps its OWN copy of the byline from publish time, so a new picture or
+        # bio shows on the author page while every earlier piece still carries the old one.
+        _with_notes(result, [f"BYLINE COPIES: you changed {', '.join(public)}, and every article "
+                             f"this author already published carries its own copy of the byline "
+                             f"from when it was staged. Call author_sync_byline(id="
+                             f"\"{args['id']}\") to push the new one onto them.", LOCAL_ONLY])
+    elif result.get("ok") and not args.get("dry_run"):
+        _with_notes(result, [LOCAL_ONLY])
+    return result
+
+
+def h_author_sync_byline(args, runner):
+    argv = ["sync-byline", str(args["id"])]
+    if args.get("limit"):
+        argv += ["--limit", str(int(args["limit"]))]
+    if args.get("dry_run"):
+        argv.append("--dry-run")
+    result = runner.run(argv, timeout=SLOW_TIMEOUT)
+    if result.get("ok") and not args.get("dry_run"):
+        _with_notes(result, [LOCAL_ONLY])
+    return result
 
 
 def h_author_delete(args, runner):
@@ -976,6 +999,22 @@ TOOLS = [
             "dry_run": _b("Print the resulting author row without writing."),
         }, required=["id"]),
         "handler": h_author_update,
+    },
+    {
+        "name": "author_sync_byline",
+        "title": "Refresh an author's byline on their articles",
+        "description": "Push an author's CURRENT name, public bio and picture onto the articles "
+                       "they already published. Every article stores its own copy of those three "
+                       "fields, taken when it was staged, so changing a portrait or rewriting a "
+                       "bio leaves every earlier piece showing the old one (the small byline "
+                       "photo stops matching the profile page). Run this after any such change. "
+                       "It rewrites only the pieces whose copy differs, leaves the article text "
+                       "alone, and does not move anything in the front-page order.",
+        "inputSchema": _obj({"id": _s("Author handle."),
+                             "limit": _i("Cap the articles scanned (0 scans 500).", minimum=0),
+                             "dry_run": _b("Report what would change without writing.")},
+                            required=["id"]),
+        "handler": h_author_sync_byline,
     },
     {
         "name": "author_delete",

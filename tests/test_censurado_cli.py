@@ -837,6 +837,94 @@ def test_edit_author_dry_run_writes_nothing(monkeypatch, capsys):
     assert json.loads(capsys.readouterr().out)["name"] == "Otro"
 
 
+def _sync_backend(monkeypatch, author, articles):
+    """Stub the backend for sync-byline: one author record, a listing, and full articles."""
+    monkeypatch.setenv("NEWSROOM_OPERATOR_TOKEN", "op.tok")
+    calls = []
+
+    def fake_req(method, url, data=None, headers=None, timeout=60):
+        calls.append((method, url, json.loads(data) if data else None))
+        if method == "GET" and "/authors" in url:
+            return 200, json.dumps({"authors": [author]}).encode()
+        if method == "GET" and "/articles?" in url:
+            return 200, json.dumps({"total": len(articles),
+                                    "articles": [{"slug": s} for s in articles]}).encode()
+        if method == "GET":
+            return 200, json.dumps(articles[url.rsplit("/", 1)[-1]]).encode()
+        return 200, b"{}"
+
+    monkeypatch.setattr(cz, "_req", fake_req)
+    return calls
+
+
+def test_sync_byline_rewrites_only_the_articles_whose_copy_is_stale(monkeypatch, capsys):
+    # Every article stores its own copy of the byline, taken at publish time, so changing an
+    # author's picture leaves the old one on every earlier piece. This pushes the current one
+    # out, and touches nothing that already matches.
+    author = {"handle": "ana", "name": "Ana Rivas", "bio": "bio nueva", "about": "bio nueva",
+              "avatar": "/media/nuevo.png"}
+    base = {"title": "T", "body": "cuerpo", "author": "ana", "section": "politics",
+            "topics": ["x"], "published_at": "2026-07-01T00:00:00Z"}
+    articles = {
+        "vieja": dict(base, metadata={"author_name": "Ana Rivas", "author_bio": "bio vieja",
+                                      "author_avatar": "/media/viejo.png", "subtitle": "dek"}),
+        "al-dia": dict(base, metadata={"author_name": "Ana Rivas", "author_bio": "bio nueva",
+                                       "author_avatar": "/media/nuevo.png"}),
+    }
+    calls = _sync_backend(monkeypatch, author, articles)
+    rc = cz.cmd_sync_byline(SimpleNamespace(id="ana", limit=0, dry_run=False))
+    assert rc == 0
+    out = json.loads(capsys.readouterr().out)
+    assert [c["slug"] for c in out["changed"]] == ["vieja"]
+    assert sorted(out["changed"][0]["fields"]) == ["author_avatar", "author_bio"]
+    puts = [c for c in calls if c[0] == "PUT"]
+    assert len(puts) == 1 and puts[0][1].endswith("/articles/vieja")
+    sent = puts[0][2]
+    assert sent["metadata"]["author_avatar"] == "/media/nuevo.png"
+    assert sent["metadata"]["author_bio"] == "bio nueva"
+    assert sent["metadata"]["subtitle"] == "dek"        # the rest of the metadata survives
+    assert sent["body"] == "cuerpo" and sent["title"] == "T"   # the piece itself is untouched
+    assert sent["published_at"] == "2026-07-01T00:00:00Z"      # and it does not move in order
+
+
+def test_sync_byline_dry_run_writes_nothing(monkeypatch, capsys):
+    author = {"handle": "ana", "name": "Ana", "bio": "nueva", "avatar": "/media/n.png"}
+    articles = {"vieja": {"title": "T", "body": "b", "author": "ana", "section": "s",
+                          "metadata": {"author_bio": "vieja"}}}
+    calls = _sync_backend(monkeypatch, author, articles)
+    rc = cz.cmd_sync_byline(SimpleNamespace(id="ana", limit=0, dry_run=True))
+    assert rc == 0
+    out = json.loads(capsys.readouterr().out)
+    assert out["dry_run"] is True and len(out["changed"]) == 1
+    assert not [c for c in calls if c[0] == "PUT"]
+
+
+def test_sync_byline_clears_the_copy_when_the_author_has_no_picture(monkeypatch, capsys):
+    author = {"handle": "ana", "name": "Ana", "bio": "b", "avatar": ""}
+    articles = {"vieja": {"title": "T", "body": "b", "author": "ana", "section": "s",
+                          "metadata": {"author_avatar": "/media/viejo.png", "author_bio": "b",
+                                       "author_name": "Ana"}}}
+    calls = _sync_backend(monkeypatch, author, articles)
+    cz.cmd_sync_byline(SimpleNamespace(id="ana", limit=0, dry_run=False))
+    capsys.readouterr()
+    sent = [c for c in calls if c[0] == "PUT"][0][2]
+    assert "author_avatar" not in sent["metadata"]
+
+
+def test_sync_byline_on_an_unknown_author_is_a_clean_error(monkeypatch):
+    monkeypatch.setenv("NEWSROOM_OPERATOR_TOKEN", "op.tok")
+    monkeypatch.setattr(cz, "_req", lambda m, u, data=None, headers=None, timeout=60:
+                        (200, json.dumps({"authors": []}).encode()))
+    with pytest.raises(cz.ToolError) as err:
+        cz.cmd_sync_byline(SimpleNamespace(id="fantasma", limit=0, dry_run=False))
+    assert "not in the registry" in str(err.value)
+
+
+def test_cli_parses_sync_byline_verb():
+    parsed = cz.build_parser().parse_args(["sync-byline", "ana", "--dry-run"])
+    assert parsed.fn is cz.cmd_sync_byline and parsed.dry_run is True
+
+
 def test_cli_parses_edit_author_verb():
     parsed = cz.build_parser().parse_args(["edit-author", "author-a", "--set", "name=X"])
     assert parsed.fn is cz.cmd_edit_author and parsed.set == ["name=X"]
