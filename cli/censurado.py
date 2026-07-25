@@ -36,11 +36,6 @@ import argparse, hashlib, html, json, os, re, shutil, subprocess, sys, tempfile,
 from datetime import datetime, timedelta
 from pathlib import Path
 
-PUBLISH = os.environ.get("CENSURADO_PUBLISH", "http://127.0.0.1:8082")
-COMFY = os.environ.get("CENSURADO_COMFY", "http://127.0.0.1:8188")
-# The generated static site (nginx). `preview` resolves a staged article's live permalink
-# here so the operator (and a driving agent) can open it; overridable for a non-local site.
-SITE = os.environ.get("CENSURADO_SITE", "http://127.0.0.1:8080")
 # Repo-relative defaults so a fresh clone runs with no edits: the repo root is the parent
 # of this cli/ dir, and the ComfyUI graph template ships beside this script under
 # cli/templates/. Both stay overridable by env, so a non-standard layout just sets the var.
@@ -75,6 +70,28 @@ def _env_value(key, default=""):
                     return v
     return default
 
+
+def _local(var, port_key, default_port):
+    """Where a local service listens. The explicit `CENSURADO_*` var wins; otherwise follow the
+    HOST PORT the stack was actually started on, which is the `*_PORT` value in .env (the same
+    one docker-compose binds). Hardcoding 8080/8082/8188 here meant that moving a service off a
+    default port (a collision with another app on the box is the common case) left the CLI
+    probing the wrong port: `status` reported the portal down, and every `preview` printed a
+    link that was not the site."""
+    explicit = os.environ.get(var, "").strip()
+    if explicit:
+        return explicit.rstrip("/")
+    port = _env_value(port_key, str(default_port))
+    if not port.isdigit():
+        port = str(default_port)
+    return f"http://127.0.0.1:{port}"
+
+
+PUBLISH = _local("CENSURADO_PUBLISH", "PUBLISH_PORT", 8082)
+COMFY = _local("CENSURADO_COMFY", "COMFYUI_PORT", 8188)
+# The generated static site (nginx). `preview` resolves a staged article's live permalink
+# here so the operator (and a driving agent) can open it; overridable for a non-local site.
+SITE = _local("CENSURADO_SITE", "SITE_PORT", 8080)
 
 # The PUBLIC production origin (Cloudflare Pages). `status` probes it to answer "did the last
 # deploy land / is the live site up". CENSURADO_PUBLIC_URL wins, else DEPLOY_BASE_URL from the

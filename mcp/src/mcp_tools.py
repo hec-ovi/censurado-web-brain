@@ -670,7 +670,7 @@ TOOLS = [
             "language": _s("Language code the author writes in, e.g. es, en, pt."),
             "gender": _s("Grammatical gender for the byline, where the language needs it."),
             "handle": _s("Explicit id; derived from the display name when omitted."),
-            "avatar_path": _s("Portrait path from media_upload or image_generate."),
+            "avatar_path": _s("The author portrait: a /media path from image_generate (see its portrait recipe) or media_upload."),
             "profile_topics": _list("Curated topics for the public profile page."),
             "few_shots_pos": _list("Positive exemplars: {prompt, good} objects.",
                                    items={"type": "object"}),
@@ -694,7 +694,7 @@ TOOLS = [
             "name": _s("New byline name."),
             "about": _s("New public bio (also becomes the site's bio field)."),
             "bio": _s("Public bio, when you want it to differ from about."),
-            "avatar": _s("Portrait path from media_upload or image_generate."),
+            "avatar": _s("The author portrait: a /media path from image_generate (see its portrait recipe) or media_upload. This is how you change an author picture."),
             "gender": _s("Grammatical gender for the byline."),
             "style": _s("New voice notes."),
             "beat": _s("New default section."),
@@ -784,12 +784,25 @@ TOOLS = [
         "name": "image_generate",
         "title": "Render a hero image",
         "description": "Art-direct and render an image through the local image lane, then upload "
-                       "it and return its media path. Write the prompt as a photographic brief "
-                       "(subject, setting, light, lens, mood); it must not contain text to be "
-                       "rendered in the image, and it must never depict a real identifiable "
-                       "person. The render is remembered, so the next article_create attaches it "
-                       "as that piece's hero with no extra step. Needs the image lane up "
-                       "(stack_up with gpu=true).",
+                       "it and return its media path. Write the prompt as a brief in this order: "
+                       "subject, then arrangement, then style and medium, then light and mood. "
+                       "There are no negative prompts, so describe what you want rather than what "
+                       "you do not. It must never depict a real identifiable person.\n"
+                       "TWO JOBS, TWO SHAPES:\n"
+                       "1. An article HERO is wide (leave width and height at their defaults) and "
+                       "is stylized art, not a staged news photo. The render is remembered, so "
+                       "the next article_create attaches it as that piece's hero automatically.\n"
+                       "2. An AUTHOR PORTRAIT follows one house recipe every author on this site "
+                       "uses: head and shoulders on a pure black background, the FACE NEVER "
+                       "READABLE (lost in shadow, with a thin neon rim light tracing only the "
+                       "edge of the head and shoulders, or a hard backlight glowing through the "
+                       "hair), dark clothing, single light source, low key, high contrast, "
+                       "cinematic studio photography. Render it PORTRAIT shaped: width 768, "
+                       "height 1024. Vary the light color, hair, clothing and age per author so "
+                       "the roster is not cloned. A portrait is NOT auto-attached: pass the media "
+                       "path it returns to author_update(avatar=...) or author_create"
+                       "(avatar_path=...).\n"
+                       "Needs the image lane up (stack_up with gpu=true).",
         "inputSchema": _obj({
             "prompt": _s("The art-directed image brief."),
             "alt": _s("Short alt text, in the author's language."),

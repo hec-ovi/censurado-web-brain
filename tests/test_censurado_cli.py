@@ -683,6 +683,33 @@ def test_profile_topics_show_reads_the_persona(monkeypatch, capsys):
     assert json.loads(capsys.readouterr().out) == ["ia", "cripto"]
 
 
+def test_local_service_urls_follow_the_ports_in_env(monkeypatch, tmp_path):
+    # The stack binds the HOST ports named in .env, so the CLI must probe those, not the
+    # defaults. Hardcoding 8080 made `status` report the portal down and `preview` print a
+    # link to whatever else held the port when the site was moved off it.
+    env = tmp_path / ".env"
+    env.write_text("SITE_PORT=8123      # moved, 8080 was taken\n"
+                   "PUBLISH_PORT=9082\nCOMFYUI_PORT=8188\n", encoding="utf-8")
+    monkeypatch.setattr(cz, "ENV_FILE", env)
+    monkeypatch.delenv("CENSURADO_SITE", raising=False)
+    monkeypatch.delenv("CENSURADO_PUBLISH", raising=False)
+    assert cz._local("CENSURADO_SITE", "SITE_PORT", 8080) == "http://127.0.0.1:8123"
+    assert cz._local("CENSURADO_PUBLISH", "PUBLISH_PORT", 8082) == "http://127.0.0.1:9082"
+    # An explicit override still wins (a non-local site, a tunnel).
+    monkeypatch.setenv("CENSURADO_SITE", "https://portal.example.com/")
+    assert cz._local("CENSURADO_SITE", "SITE_PORT", 8080) == "https://portal.example.com"
+
+
+def test_local_service_urls_fall_back_when_env_is_absent_or_junk(monkeypatch, tmp_path):
+    env = tmp_path / ".env"
+    env.write_text("SITE_PORT=not-a-port\n", encoding="utf-8")
+    monkeypatch.setattr(cz, "ENV_FILE", env)
+    monkeypatch.delenv("CENSURADO_SITE", raising=False)
+    monkeypatch.delenv("CENSURADO_COMFY", raising=False)
+    assert cz._local("CENSURADO_SITE", "SITE_PORT", 8080) == "http://127.0.0.1:8080"
+    assert cz._local("CENSURADO_COMFY", "COMFYUI_PORT", 8188) == "http://127.0.0.1:8188"
+
+
 def _author_row():
     return {"handle": "author-a", "name": "Autor A", "bio": "bio previa", "avatar": "/media/old.png",
             "gender": "f", "about": "sobre previa", "style": "estilo previo",
@@ -1085,7 +1112,10 @@ def _doctor_req(services):
     return fake_req
 
 
-_ALL_UP = {"/healthz": 200, ":8080/": 302, "/system_stats": 200}
+def _all_up():
+    """Every doctor probe green. The site key follows the module's configured SITE, since
+    the local portal port comes from .env (it is not always 8080: a busy port moves it)."""
+    return {"/healthz": 200, cz.SITE + "/": 302, "/system_stats": 200}
 
 
 def test_cli_parses_doctor_verb():
@@ -1094,7 +1124,7 @@ def test_cli_parses_doctor_verb():
 
 def test_doctor_all_green_over_the_real_package(monkeypatch, capsys, tmp_path):
     monkeypatch.setattr(cz, "PROMPTS_DIR", _recipe(tmp_path))
-    monkeypatch.setattr(cz, "_req", _doctor_req(_ALL_UP))
+    monkeypatch.setattr(cz, "_req", _doctor_req(_all_up()))
     rc = cz.cmd_doctor(SimpleNamespace())
     out = capsys.readouterr().out
     assert rc == 0
@@ -1108,7 +1138,7 @@ def test_doctor_all_green_over_the_real_package(monkeypatch, capsys, tmp_path):
 
 def test_doctor_fails_when_a_core_service_is_down(monkeypatch, capsys, tmp_path):
     monkeypatch.setattr(cz, "PROMPTS_DIR", _recipe(tmp_path))
-    down = dict(_ALL_UP, **{"/healthz": urllib.error.URLError("refused")})
+    down = dict(_all_up(), **{"/healthz": urllib.error.URLError("refused")})
     monkeypatch.setattr(cz, "_req", _doctor_req(down))
     rc = cz.cmd_doctor(SimpleNamespace())
     out = capsys.readouterr().out
@@ -1118,7 +1148,7 @@ def test_doctor_fails_when_a_core_service_is_down(monkeypatch, capsys, tmp_path)
 
 def test_doctor_marks_comfyui_optional_when_down(monkeypatch, capsys, tmp_path):
     monkeypatch.setattr(cz, "PROMPTS_DIR", _recipe(tmp_path))
-    down = dict(_ALL_UP, **{"/system_stats": urllib.error.URLError("refused")})
+    down = dict(_all_up(), **{"/system_stats": urllib.error.URLError("refused")})
     monkeypatch.setattr(cz, "_req", _doctor_req(down))
     rc = cz.cmd_doctor(SimpleNamespace())
     out = capsys.readouterr().out

@@ -47,6 +47,34 @@ An epígrafe or a source credit does NOT belong in the pixels either. If the her
 `--image-caption "<epígrafe>"` and/or `--image-credit "<Prensa Municipalidad de X>"` at `preview`
 and the site renders them as text under the hero. Both are optional; omit them and nothing shows.
 
+## Author portraits (a different job from a hero)
+
+An author's profile picture follows ONE house recipe, and every author on the site uses it: a
+head-and-shoulders portrait on a pure black background where the FACE IS NEVER READABLE. The
+personas are fictional, so their pictures must not read as photographs of a real person. What
+carries the image is the light, not the features:
+
+- head and shoulders, centered, filling the frame, on a black studio void
+- the face lost in deep shadow: either a rim light tracing only the edge of the head and
+  shoulders (a thin neon line, any single color) or a hard backlight glowing through the hair
+  so the front of the face stays dark
+- dark clothing, low key, high contrast, cinematic, a single light source
+- PORTRAIT orientation, not landscape: pass `--width 768 --height 1024`
+
+Vary the light color, the hair, the clothing, the age read and the posture per author so the
+roster does not look cloned, but keep the black void, the hidden face, and the aspect. Example:
+
+    python3 cli/censurado.py image \
+      --prompt "head and shoulders portrait of a figure on a pure black background, face entirely
+      lost in shadow, a thin amber neon rim light tracing the edge of the head and the shoulders,
+      short dark hair, dark collared shirt, single light source, low key, high contrast, cinematic
+      studio photography" \
+      --alt "Retrato en penumbra de la autora" --width 768 --height 1024
+
+Then attach it to the author (the render is NOT auto-attached to an author, only to an article):
+
+    python3 cli/censurado.py edit-author <id> --set avatar=<the /media path it printed>
+
 ## Render and attach
     python3 cli/censurado.py image --prompt "<subject -> arrangement -> style -> context>" --alt "<one line in Spanish>"
 
