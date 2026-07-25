@@ -93,6 +93,7 @@ The static site is not rebuilt inside the publish request: `generate` is a separ
 
 - `cli/censurado.py` is the agent-facing CLI: publish/edit an article, upload media, render a hero, capture a tweet/truth snapshot, read and curate authors and sources over the backend, walk the editorial `step` gate, and bring the local stack up itself (`up` for the fast lane, `up-gpu` to include ComfyUI). It is stdlib-only (no install), so a driver runs it directly.
 - `cli/SKILL.md` is the resolver skill that routes a CLI agent to the right fat sub-skill under `cli/skills/` (write-article, daily-batch, redactor, authors, sources, portada, prompts, media, publicar, translate, websearch).
+- `mcp/` is the same surface as an MCP server (stdlib only, no install): 32 tools over the CLI verbs, so an agent that cannot run shell commands can still operate the portal. See [mcp/README.md](mcp/README.md).
 - `prompts/` is the editorial recipe: the `workflow/*` step-gate nodes + `manifest.json`, the `persona/synthesize.md` author guide, and `editorial/style.md`. Plain files, git is their history, no server and no database.
 - `newsroom/` is the maintenance CLI (`censurado-brain`): a backend health probe (`status`), the `normalize` whole-corpus contract pass (subcommands `check` (default), `links`, `sections`), plus the `topics cleanse` and `embeds recheck` sweeps. It needs the package installed (httpx + the corpus helpers); the authoring CLI does not.
 - `automation/supervisor/` is the 24/7 serve loop: `./run.sh serve` (or the shipped systemd unit) brings up the docker stack, starts the [telegram-bot-skill](https://github.com/hec-ovi/telegram-bot-skill) bridge from the sibling checkout, and keeps both alive. The agent behind the bot walks a config-driven fallback chain of headless agent CLIs (cloud lanes first, a local model last; the shipped chain lives in `automation/supervisor/supervisor.config.json`): failures are classified from exit output and canary probes (auth, quota, transient), auth/quota demote immediately, and a healed agent is promoted back at a quiet moment. A mid-article walk survives the swap because all state lives in the scratch ledger plus the `step` gate, not in the agent's session. Needs node >= 22; the bot credentials (`TELEGRAM_BOT_TOKEN`, `OWNER_ID`) cascade from this repo's `.env` into the bridge, and the bridge's own `.env` wins if it has them. Spec: [automation/supervisor/REQUIREMENTS.md](automation/supervisor/REQUIREMENTS.md).
@@ -159,6 +160,33 @@ Open the operator panel at http://localhost:8082 (log in with the panel token fr
 `bootstrap.sh` is safe to re-run: it rotates the operator key (the prior operator entry is
 dropped from `keys.json`, so the old token stops working) and keeps the existing panel login
 (rotate that one with `./mint-panel-login.sh`).
+
+## Drive it over MCP
+
+Step 5 assumes an agent that can run `python3 cli/censurado.py ...`. If yours cannot run shell
+commands, or you want it to have the portal and nothing else, wire it to the MCP server in
+`mcp/`:
+
+```bash
+claude mcp add censurado -- python3 /path/to/censurado-web-brain/mcp/src/server.py
+```
+
+Any stdio MCP client works. It exposes 32 tools over the same CLI verbs (articles, front-page
+layout, the recommended rail, authors including their voice prompts and portrait, media and
+hero rendering, the editorial recipe and the gated walk, and the public deploy), so nothing
+forks: the MCP agent and a terminal operator write through the same code.
+
+The server must run on the host that has this repo and its `.env`, since that is where the
+operator token lives; the token never crosses the wire. Everything the agent needs to operate
+well (the local-versus-public rule, the layout model, the compliance line) travels in the
+connection's instructions, so it needs no repo access and no skill files.
+
+Start any session with the `doctor` tool. It checks the config and the operator token, every
+service, the authenticated content reads, the image lane, the media store, the deploy lane,
+and the editorial recipe, then prints a verdict and one next move. `deep: true` goes further
+and actually renders an image, round-trips a probe file through the media store, and checks
+the deploy login. Details in [mcp/README.md](mcp/README.md) and the contract in
+[mcp/CONTRACT.md](mcp/CONTRACT.md).
 
 ## Deploy to the live site
 

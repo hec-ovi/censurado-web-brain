@@ -1,0 +1,34 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "censurado-mcp/tool-result.schema.json",
+  "title": "Verb result envelope",
+  "description": "What every tool except doctor returns in structuredContent: the outcome of one operator-CLI verb. `data` is present only when the verb printed JSON, so a caller reads structured output where there is some and the text stream otherwise.",
+  "type": "object",
+  "properties": {
+    "ok": {
+      "type": "boolean",
+      "description": "True when the verb exited 0."
+    },
+    "verb": {
+      "type": "string",
+      "description": "The CLI verb behind the tool."
+    },
+    "exit_code": {
+      "type": "integer",
+      "description": "The verb's exit code. 124 means it was killed at the timeout; 2 means this layer refused the call before running it."
+    },
+    "stdout": {
+      "type": "string",
+      "description": "Everything the verb printed. Never truncated."
+    },
+    "stderr": {
+      "type": "string",
+      "description": "The verb's notes and errors. On a failure this carries the actionable line."
+    },
+    "data": {
+      "description": "stdout parsed as JSON, when it was JSON. Absent otherwise."
+    }
+  },
+  "required": ["ok", "verb", "exit_code", "stdout", "stderr"],
+  "additionalProperties": false
+}

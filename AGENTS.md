@@ -199,7 +199,19 @@ Status. Prompt and workflow node text is edited in this repo's git-tracked promp
 disk (via the CLI), not in the panel. Contract: `../censurado-web-backend/internal/adminweb/`
 (embedded `static/` plus the Go login/session in `auth.go`, `gate.go`, `login.go`, `ui.go`).
 
-### 6. ComfyUI (the art director's image backend)
+### 6. The MCP surface (the same verbs, for a tool-calling agent)
+
+`mcp/src/server.py` speaks MCP over stdio (revision 2025-11-25, negotiating down) and maps each
+tool to exactly one `censurado.py` verb, run as a child process. It holds no data, opens no
+socket to the backend, and knows no token: the CLI does all of that, so the two surfaces cannot
+drift. Every tool returns one envelope (`{ok, verb, exit_code, stdout, stderr, data}`), the
+destructive verbs and the public deploy need an explicit `confirm`, and the only file it writes
+is a walk artifact under `CENSURADO_WORK` (default `<repo>/.mcp-work`). The `doctor` tool is the
+one thing here that is not a single verb: it composes the status probe, the authenticated
+content reads, the image and media lanes, the deploy prerequisites, and the CLI's own
+self-check into one verdict. Contract: `mcp/CONTRACT.md`, schemas in `mcp/schema/`.
+
+### 7. ComfyUI (the art director's image backend)
 
 `comfyui` renders per-article hero images (FLUX.2 klein). The CLI agent drives it directly
 (`censurado.py image`, see `cli/skills/media/SKILL.md`), loading the render graph from
@@ -213,6 +225,10 @@ context: `../comfyui-strix-docker/`.
 - `cli/censurado.py` the agent-facing CLI (stdlib-only): publish/edit, media, image,
   tweet/truth capture, authors + sources over the backend, and the `step` gate.
 - `cli/SKILL.md` + `cli/skills/` the resolver skill + fat sub-skills.
+- `mcp/` the same operating surface as an MCP server (stdio, stdlib-only), for an agent that
+  cannot run shell commands: 32 tools, each one CLI verb, plus a whole-stack `doctor`. It is a
+  contract-isolated layer (`mcp/CONTRACT.md` + `mcp/schema/` + `mcp/tests/`); it re-implements
+  no publishing logic, so the CLI stays the single writer.
 - `cli/workflow/parameters.json` the enforced numeric floor/caps the walk fills into nodes.
 - `prompts/` the editorial recipe (workflow nodes + manifest, persona synthesize, style).
 - `newsroom/` the maintenance CLI (`censurado-brain`): `status` (backend health probe),

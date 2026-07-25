@@ -72,6 +72,8 @@ refactor.md
 
 # Per-article agent scratch (workflow temp: draft.md / ledger.md / image.json / .step-counts.json)
 scratch/
+# the MCP server's scratch dir (same artifacts, written on behalf of an MCP agent)
+.mcp-work/
 
 # CI is intentionally not shipped (workflows email on every push; the stack is validated locally)
 .github/

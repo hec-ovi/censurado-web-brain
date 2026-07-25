@@ -1,0 +1,20 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "censurado-mcp/tool-call.schema.json",
+  "title": "MCP tools/call params",
+  "description": "The one input shape this layer accepts: a tool name plus its arguments. The per-tool argument schema is the inputSchema the same tool carries in tools/list (see tool-catalog.schema.json); this layer validates arguments against it and refuses unknown keys.",
+  "type": "object",
+  "properties": {
+    "name": {
+      "type": "string",
+      "description": "A tool name from tools/list.",
+      "pattern": "^[A-Za-z0-9_.-]{1,128}$"
+    },
+    "arguments": {
+      "type": "object",
+      "description": "Arguments conforming to that tool's inputSchema. Omitted means no arguments."
+    }
+  },
+  "required": ["name"],
+  "additionalProperties": true
+}
