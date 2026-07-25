@@ -683,6 +683,27 @@ def test_profile_topics_show_reads_the_persona(monkeypatch, capsys):
     assert json.loads(capsys.readouterr().out) == ["ia", "cripto"]
 
 
+def test_sections_narrows_to_the_axes_asked_for(monkeypatch, capsys):
+    # The topic axis alone runs to tens of KB on a real corpus, so asking "what sections exist"
+    # must be able to return just that.
+    facets = {"sections": [{"value": "tech", "count": 47}],
+              "authors": [{"value": "ana", "count": 9}],
+              "topics": [{"value": "ia", "count": 30}]}
+    monkeypatch.setenv("NEWSROOM_OPERATOR_TOKEN", "op.tok")
+    monkeypatch.setattr(cz, "_req", lambda m, u, data=None, headers=None, timeout=60:
+                        (200, json.dumps(facets).encode()))
+    cz.cmd_sections(SimpleNamespace(sections=True, authors=False, topics=False))
+    assert json.loads(capsys.readouterr().out) == {"sections": facets["sections"]}
+    cz.cmd_sections(SimpleNamespace(sections=False, authors=False, topics=False))
+    assert set(json.loads(capsys.readouterr().out)) == {"sections", "authors", "topics"}
+    cz.cmd_sections(SimpleNamespace(sections=True, authors=True, topics=False))
+    assert set(json.loads(capsys.readouterr().out)) == {"sections", "authors"}
+
+
+def test_cli_parses_sections_only_flag():
+    assert cz.build_parser().parse_args(["sections", "--sections"]).sections is True
+
+
 def test_local_service_urls_follow_the_ports_in_env(monkeypatch, tmp_path):
     # The stack binds the HOST ports named in .env, so the CLI must probe those, not the
     # defaults. Hardcoding 8080 made `status` report the portal down and `preview` print a

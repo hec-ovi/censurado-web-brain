@@ -342,11 +342,11 @@ def h_article_delete(args, runner):
 
 
 def h_sections_list(args, runner):
-    argv = ["sections"]
-    if args.get("axis") == "authors":
-        argv.append("--authors")
-    elif args.get("axis") == "topics":
-        argv.append("--topics")
+    # Default to the section axis alone. The full report also carries every author and every
+    # topic, which on a real corpus is tens of KB of context spent to answer "what sections
+    # exist" (the question this tool is usually asked).
+    axis = str(args.get("axis") or "sections")
+    argv = ["sections"] + ([] if axis == "all" else ["--" + axis])
     return runner.run(argv)
 
 
@@ -785,11 +785,14 @@ TOOLS = [
     {
         "name": "sections_list",
         "title": "The live section vocabulary",
-        "description": "The section values actually in use, with counts, plus the author and "
-                       "topic distributions. Section is a free string with no registry, so this "
-                       "is the only authoritative list of what sections exist.",
-        "inputSchema": _obj({"axis": _s("Narrow the report to one axis.",
-                                        enum=["all", "authors", "topics"])}),
+        "description": "The section values actually in use, with an article count each. Section "
+                       "is a free string with no registry, so this is the only authoritative list "
+                       "of what sections exist: read it before you set an author's beat or an "
+                       "article's section, and reuse a value rather than inventing one, since a "
+                       "new value silently creates a new, near-empty section page.",
+        "inputSchema": _obj({"axis": _s("Which distribution to return. Defaults to sections; "
+                                        "'all' adds the author and topic axes, which are long.",
+                                        enum=["sections", "authors", "topics", "all"])}),
         "handler": h_sections_list,
     },
     # -- layout

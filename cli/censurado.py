@@ -724,11 +724,10 @@ def cmd_sections(a):
              f"up at {PUBLISH} and the operator token valid?")
     data = _json(body, "the facets response", want=dict)
     axes = {k: data.get(k, []) for k in ("sections", "authors", "topics")}
-    want_authors = getattr(a, "authors", False)
-    want_topics = getattr(a, "topics", False)
-    if want_authors or want_topics:  # narrow to the explicitly requested axes
-        axes = {k: v for k, v in axes.items()
-                if (k == "authors" and want_authors) or (k == "topics" and want_topics)}
+    want = {"sections": getattr(a, "sections", False), "authors": getattr(a, "authors", False),
+            "topics": getattr(a, "topics", False)}
+    if any(want.values()):           # narrow to the explicitly requested axes
+        axes = {k: v for k, v in axes.items() if want[k]}
     print(json.dumps(axes, ensure_ascii=False, indent=2))
     return 0
 
@@ -2083,6 +2082,8 @@ def build_parser():
     se = sub.add_parser("sections",
                         help="consult the LIVE section vocabulary: distinct section values on "
                              "non-deleted articles with counts (also authors + topics)")
+    se.add_argument("--sections", action="store_true",
+                    help="print ONLY the section vocabulary (the topic axis is long: on a big corpus the full report runs to tens of KB, which is a lot of context to spend on \"what sections exist\")")
     se.add_argument("--authors", action="store_true", help="print only the author distribution")
     se.add_argument("--topics", action="store_true", help="print only the topic distribution")
     se.set_defaults(fn=cmd_sections)

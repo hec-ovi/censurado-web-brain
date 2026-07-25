@@ -486,6 +486,13 @@ def test_site_publish_goes_live_when_confirmed(server):
     assert argv_of(call(server, "site_publish", {"confirm": True})) == ["publicar", "--yes"]
 
 
+def test_sections_list_defaults_to_the_section_axis_alone(server):
+    # The full report carries every author and every topic: tens of KB on a real corpus, spent
+    # to answer "what sections exist". The tool asks only for what it is for.
+    assert argv_of(call(server, "sections_list", {})) == ["sections", "--sections"]
+    assert argv_of(call(server, "sections_list", {"axis": "all"})) == ["sections"]
+
+
 def test_sections_and_topics_read_verbs(server):
     assert argv_of(call(server, "sections_list", {"axis": "authors"})) == ["sections", "--authors"]
     assert argv_of(call(server, "topics_inventory", {"limit": 50})) == ["topics", "--limit", "50"]
