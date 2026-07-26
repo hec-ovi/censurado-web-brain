@@ -92,9 +92,11 @@ def test_publicar_skill_carries_its_safety_rails():
     # would pass. The verb is `publicar`; the word "deploy" no longer names it on any skill surface.
     body = _body(SKILLS_DIR / "publicar" / "SKILL.md").lower()
     # The contrast is what matters, not the port: the local site's port comes from the host's
-    # SITE_PORT, so a doc that hardcodes 8080 is wrong on any box that moved it.
+    # SITE_PORT, so a doc that hardcodes a host:port is wrong on any box that moved it.
     assert "local site" in body, "publicar body must contrast the local preview"
-    assert "localhost:8080" not in body, "the local site's port is host config, do not hardcode it"
+    assert "localhost:8080" not in body and "localhost:8123" not in body, (
+        "the local site's port is host config, do not hardcode it"
+    )
     assert "censurado.py publicar --yes" in body, "publicar body must name the real command (the verb)"
     assert "elcensuradoweb.com" in body, "publicar body must name the public target"
     assert "explicit yes" in body, "publicar body must require an explicit yes"

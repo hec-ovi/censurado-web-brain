@@ -66,7 +66,7 @@ The code repositories, all under [github.com/hec-ovi](https://github.com/hec-ovi
 |-------------|-----------------------------|-----------------------------------------------------|-----------|
 | `publish`   | [censurado-web-backend](https://github.com/hec-ovi/censurado-web-backend) | Write + read API, media store, the only sqlite writer, owns all content data (authors, sources, articles, layout), AND serves the operator admin panel (gated SPA over Articles, Portada, Autores, Temas, Sources, Status) | 127.0.0.1:8082 |
 | `generate`  | [censurado-web](https://github.com/hec-ovi/censurado-web) | Static-site builder, watches the db and rebuilds    | none |
-| `site`      | nginx                       | Serves the generated static portal                  | **8080** (`SITE_PORT`) |
+| `site`      | nginx                       | Serves the generated static portal                  | **8123** (`SITE_PORT`) |
 | `comfyui`   | [comfyui-strix-docker](https://github.com/hec-ovi/comfyui-strix-docker) | Image generation, the art director's render backend | 127.0.0.1:8188 |
 
 Only `site` is exposed on `0.0.0.0`. Everything operational binds `127.0.0.1`; reach it on the host or over an SSH tunnel. The `publish` image builds from `censurado-web-backend`; `generate` runs the pinned `golang` image over both `censurado-web` (the generator) and `censurado-web-backend` (the shared `domain`/`store` libraries it imports), mounted read-only.
@@ -147,7 +147,7 @@ So you get the full CLI publishing lane (write, review, edit, serve) with no GPU
 curl -s http://localhost:8082/healthz          # publish API -> ok
 ```
 
-Open the operator panel at http://localhost:8082 (log in with the panel token from step 2). The backend serves it, and it manages the backend's content directly, so it works with only the backend up. The public portal (http://localhost:8080 by default, `SITE_PORT` in `.env`) is empty until the first article exists.
+Open the operator panel at http://localhost:8082 (log in with the panel token from step 2). The backend serves it, and it manages the backend's content directly, so it works with only the backend up. The public portal (http://localhost:8123 by default, `SITE_PORT` in `.env`) is empty until the first article exists.
 
 **5. Get articles in.** A CLI agent writes and publishes through the publish API, quota-free. Point a CLI agent (Claude, Codex, Hermes, OpenClaw, or any equivalent) at **[cli/SKILL.md](cli/SKILL.md)** and it walks the newsroom workflow one step at a time (`python3 cli/censurado.py step`): pick a mode, load the author's voice from the backend, research and cross-source, draft, clear the editorial gates, then show you the draft and ask before publishing. The step gate serves one node at a time, so the agent cannot skip a gate or one-shot the piece; the node text and the step order live in this repo's git-tracked `prompts/workflow/` files. It POSTs once, on approval. No model budget, nothing infers in-process. A piece can also be edited in place after it is live (the operator token carries `admin:write`), and an empty author database is filled by the same agent first.
 
@@ -190,7 +190,7 @@ the deploy login. Details in [mcp/README.md](mcp/README.md) and the contract in
 
 ## Deploy to the live site
 
-The portal at `localhost:8080` is a static snapshot of the local db. To push it to the live
+The portal at `localhost:8123` is a static snapshot of the local db. To push it to the live
 site (elcensuradoweb.com, on Cloudflare Pages):
 
 ```bash

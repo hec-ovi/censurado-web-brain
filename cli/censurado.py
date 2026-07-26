@@ -74,7 +74,7 @@ def _env_value(key, default=""):
 def _local(var, port_key, default_port):
     """Where a local service listens. The explicit `CENSURADO_*` var wins; otherwise follow the
     HOST PORT the stack was actually started on, which is the `*_PORT` value in .env (the same
-    one docker-compose binds). Hardcoding 8080/8082/8188 here meant that moving a service off a
+    one docker-compose binds). Hardcoding host ports here meant that moving a service off a
     default port (a collision with another app on the box is the common case) left the CLI
     probing the wrong port: `status` reported the portal down, and every `preview` printed a
     link that was not the site."""
@@ -91,7 +91,7 @@ PUBLISH = _local("CENSURADO_PUBLISH", "PUBLISH_PORT", 8082)
 COMFY = _local("CENSURADO_COMFY", "COMFYUI_PORT", 8188)
 # The generated static site (nginx). `preview` resolves a staged article's live permalink
 # here so the operator (and a driving agent) can open it; overridable for a non-local site.
-SITE = _local("CENSURADO_SITE", "SITE_PORT", 8080)
+SITE = _local("CENSURADO_SITE", "SITE_PORT", 8123)
 
 # The PUBLIC production origin (Cloudflare Pages). `status` probes it to answer "did the last
 # deploy land / is the live site up". CENSURADO_PUBLIC_URL wins, else DEPLOY_BASE_URL from the

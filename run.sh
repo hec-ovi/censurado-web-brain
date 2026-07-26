@@ -11,7 +11,7 @@ cd "$(dirname "$0")"
 # Ports come from .env (defaults match .env.example); needed for the readiness probe.
 [ -f .env ] && { set -a; . ./.env; set +a; } || true
 PUB_PORT="${PUBLISH_PORT:-8082}"
-WEB_PORT="${SITE_PORT:-8080}"
+WEB_PORT="${SITE_PORT:-8123}"
 
 usage() {
   cat <<EOF

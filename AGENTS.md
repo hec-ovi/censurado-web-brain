@@ -57,7 +57,7 @@ per-article hero image.
 | `publish` | `../censurado-web-backend` (`deploy/Dockerfile.publish`) | Write + read API and media store, the only sqlite writer, owns all content data (authors, sources, articles, layout); also serves the operator panel (embedded SPA + Go login, one gated login) | 127.0.0.1:8082 |
 | `generate` | `../censurado-web` (pinned `golang` image, both repos mounted ro) | Static site builder, `-watch`es the db and rebuilds | resident |
 | `init-perms` | busybox | One-shot: chown the site + data + gocache volumes to uid 65532 | none |
-| `site` | nginx | Serves the static portal | **0.0.0.0:8080** |
+| `site` | nginx | Serves the static portal | **0.0.0.0:8123** |
 | `comfyui` | `../comfyui-strix-docker` | Image generation, the art director's backend | 127.0.0.1:8188 |
 
 Only `site` is exposed on all interfaces. Everything operational binds `127.0.0.1`;
@@ -312,7 +312,7 @@ run --rm init-perms` once before the next generate so the site volume is writabl
 
 - Operator panel: http://localhost:8082 (the human entry point, served by `publish`;
   localhost login defaults to `admin` and is prefilled by the panel).
-- Public portal: http://localhost:8080 (the `SITE_PORT` in `.env`; redirects to the latest landing).
+- Public portal: http://localhost:8123 (the `SITE_PORT` in `.env`; redirects to the latest landing).
 - Write API: http://localhost:8082. ComfyUI: http://localhost:8188.
 
 Articles are authored by a CLI agent following `cli/SKILL.md`, then published to the

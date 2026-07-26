@@ -23,7 +23,7 @@
 # `./run.sh up-gpu`); nothing in the fast lane waits on it. ./run.sh needs only bash +
 # docker (no make); the Makefile just mirrors it.
 #
-# Host ports: the public news site is the only 0.0.0.0 surface (SITE_PORT, 8080).
+# Host ports: the public news site is the only 0.0.0.0 surface (SITE_PORT, 8123).
 # Everything operational (publish API, operator panel, ComfyUI) binds 127.0.0.1 only.
 # Reach those over the host or an SSH tunnel.
 #
@@ -89,7 +89,7 @@ services:
     environment:
       CENSURADO_DB: /data/censurado.db
       CENSURADO_PUBLISH_KEYS_FILE: /etc/censurado/keys.json
-      CENSURADO_BASE_URL: ${CENSURADO_BASE_URL:-http://localhost:8080}
+      CENSURADO_BASE_URL: ${CENSURADO_BASE_URL:-http://localhost:8123}
       # Self-hosted image store: publish accepts POST /media (authed) and serves
       # GET /media/{name}. Bytes land on the persistent ./data/media bind mount,
       # which the public site also serves at /media/. Unset to disable media.
@@ -185,7 +185,7 @@ services:
       # volume because the container's tmpfs /tmp is mounted noexec.
       GOTMPDIR: /gocache/tmp
       CENSURADO_DB: /data/censurado.db
-      CENSURADO_BASE_URL: ${CENSURADO_BASE_URL:-http://localhost:8080}
+      CENSURADO_BASE_URL: ${CENSURADO_BASE_URL:-http://localhost:8123}
     command: ["go", "run", "./cmd/censurado/generate", "-out", "/site", "-page-size", "6", "-watch", "-watch-interval", "2s"]
     volumes:
       - ../censurado-web:/work/censurado-web:ro
@@ -212,7 +212,7 @@ services:
       - ${CENSURADO_DATA_DIR:-./data}/media:/srv/media:ro
       - ./nginx/site.conf:/etc/nginx/conf.d/default.conf:ro
     ports:
-      - "${SITE_PORT:-8080}:80"
+      - "${SITE_PORT:-8123}:80"
     networks: [censurado]
 
   # There is no Telegram service: the bot lane is the telegram-bot-skill sibling checkout,

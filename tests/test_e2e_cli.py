@@ -4,7 +4,7 @@ writes an article, attaches/detaches a source, has its voice edited, the article
 then removed, and the author is deleted, each step asserted against the RUNNING backend AND the
 generated public site. It also asserts the brain is not a service (content serves with no brain).
 
-It needs the live stack up (publish :8082 + generate watcher + site :8080); it SKIPS otherwise,
+It needs the live stack up (publish :8082 + generate watcher + site :8123); it SKIPS otherwise,
 so a plain `make test` without a stack still passes. Bring the stack up with
 `docker compose up -d publish generate site`, then run `pytest tests/test_e2e_cli.py -q`.
 
@@ -28,7 +28,7 @@ import pytest
 ROOT = Path(__file__).resolve().parents[1]
 CLI = ROOT / "cli" / "censurado.py"
 BACKEND = os.environ.get("E2E_BACKEND", "http://127.0.0.1:8082")
-SITE = os.environ.get("E2E_SITE", "http://127.0.0.1:8080")
+SITE = os.environ.get("E2E_SITE", "http://127.0.0.1:8123")
 
 HANDLE = "e2e-pytest-throwaway"
 # Unique per run so a re-run never republishes a slug it tombstoned last time. (The backend

@@ -706,19 +706,19 @@ def test_cli_parses_sections_only_flag():
 
 def test_local_service_urls_follow_the_ports_in_env(monkeypatch, tmp_path):
     # The stack binds the HOST ports named in .env, so the CLI must probe those, not the
-    # defaults. Hardcoding 8080 made `status` report the portal down and `preview` print a
+    # defaults. Hardcoding a port made `status` report the portal down and `preview` print a
     # link to whatever else held the port when the site was moved off it.
     env = tmp_path / ".env"
-    env.write_text("SITE_PORT=8123      # moved, 8080 was taken\n"
+    env.write_text("SITE_PORT=9123      # moved, default was taken\n"
                    "PUBLISH_PORT=9082\nCOMFYUI_PORT=8188\n", encoding="utf-8")
     monkeypatch.setattr(cz, "ENV_FILE", env)
     monkeypatch.delenv("CENSURADO_SITE", raising=False)
     monkeypatch.delenv("CENSURADO_PUBLISH", raising=False)
-    assert cz._local("CENSURADO_SITE", "SITE_PORT", 8080) == "http://127.0.0.1:8123"
+    assert cz._local("CENSURADO_SITE", "SITE_PORT", 8123) == "http://127.0.0.1:9123"
     assert cz._local("CENSURADO_PUBLISH", "PUBLISH_PORT", 8082) == "http://127.0.0.1:9082"
     # An explicit override still wins (a non-local site, a tunnel).
     monkeypatch.setenv("CENSURADO_SITE", "https://portal.example.com/")
-    assert cz._local("CENSURADO_SITE", "SITE_PORT", 8080) == "https://portal.example.com"
+    assert cz._local("CENSURADO_SITE", "SITE_PORT", 8123) == "https://portal.example.com"
 
 
 def test_local_service_urls_fall_back_when_env_is_absent_or_junk(monkeypatch, tmp_path):
@@ -727,7 +727,7 @@ def test_local_service_urls_fall_back_when_env_is_absent_or_junk(monkeypatch, tm
     monkeypatch.setattr(cz, "ENV_FILE", env)
     monkeypatch.delenv("CENSURADO_SITE", raising=False)
     monkeypatch.delenv("CENSURADO_COMFY", raising=False)
-    assert cz._local("CENSURADO_SITE", "SITE_PORT", 8080) == "http://127.0.0.1:8080"
+    assert cz._local("CENSURADO_SITE", "SITE_PORT", 8123) == "http://127.0.0.1:8123"
     assert cz._local("CENSURADO_COMFY", "COMFYUI_PORT", 8188) == "http://127.0.0.1:8188"
 
 
@@ -1223,7 +1223,7 @@ def _doctor_req(services):
 
 def _all_up():
     """Every doctor probe green. The site key follows the module's configured SITE, since
-    the local portal port comes from .env (it is not always 8080: a busy port moves it)."""
+    the local portal port comes from .env (it is not always 8123: a busy port moves it)."""
     return {"/healthz": 200, cz.SITE + "/": 302, "/system_stats": 200}
 
 

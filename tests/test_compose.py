@@ -210,7 +210,7 @@ def test_site_is_the_only_public_port(tmp_path):
     assert public == ["site"], f"unexpected public ports: {public}"
     site_ports = services["site"]["ports"]
     assert site_ports[0]["target"] == 80
-    assert str(site_ports[0]["published"]) == "8080"
+    assert str(site_ports[0]["published"]) == "8123"
 
 
 def test_publish_is_the_only_db_writer_surface(tmp_path):
