@@ -303,7 +303,7 @@ make test                    # the whole suite (or: .venv/bin/pytest tests)
 
 The JS lane runs with `npm install` once, then `npm test`: the serve loop end to end against fake binaries (a scripted bridge and scripted agent canaries: demotion on auth/quota, restart-without-blame when only the bridge dies, refusal of unknown adapters, chain-down alert and revival, the transient threshold), the auto-batch wrapper, the scheduler layer, and the Pages reactions function.
 
-The python suite runs locally, no CI. It covers the authoring CLI (the tweet/truth snapshot mapping, the fail-soft error handling, the local step gate and its artifact enforcement), the maintenance sweeps (status probe, normalize contract pass, topic cleanse, embeds recheck), the editorial prompt drift-guards (the parameters stay client-filled placeholders, the anti-slop rules survive, every manifest node exists on disk), the article-contract mirror (hashing, slug, sections, schema drift), the skill package (the resolver routes only to sub-skills that exist), and the compose wiring via `docker compose config` (the real parser: the service set with no config-plane service, `site` the only public port, `generate` a resident watcher, the db and media on persistent bind mounts). No images are built and no GPU is needed.
+The python suite runs locally, no CI. It covers the authoring CLI (the tweet/truth snapshot mapping, the fail-soft error handling, the local step gate and its artifact enforcement), the maintenance sweeps (status probe, normalize contract pass, topic cleanse, embeds recheck), the editorial prompt drift-guards (the parameters stay client-filled placeholders, the anti-slop rules survive, every manifest node exists on disk), the article-contract mirror (hashing, slug, sections, schema drift), the skill package (the resolver routes only to sub-skills that exist), the durable article pipeline (adapter lanes, the editorial gate, idempotent publish and replay), and the compose wiring via `docker compose config` (the real parser: the service set with no config-plane service, `site` the only public port, `generate` a resident watcher, the db and media on persistent bind mounts). No images are built and no GPU is needed.
 
 ## Layout
 
@@ -327,6 +327,7 @@ nginx/site.conf        the public static-site server (root redirects to /latest/
 functions/             the Cloudflare Pages Function for article reactions (like/dislike + D1)
 automation/            auto-batch.sh (one unattended batch) + supervisor/ (the 24/7 serve loop + REQUIREMENTS.md)
                        + scheduler/ (standalone timed-prompt runner, contract-isolated, wired to nothing yet)
+                       + pipeline/ (durable article pipeline on DBOS: stateless api/cli steps, editorial gate, idempotent publish)
 tests/                 the local suite (CLI, sweeps, prompt drift, contracts, compose wiring)
 ```
 For the seam between the repos (the operator token, the publish API, generate then serve, the newsroom recipe), see [AGENTS.md](AGENTS.md). To have a CLI agent write articles in a persona's voice and publish them, see [cli/SKILL.md](cli/SKILL.md). For a part's internals, read that repo's own README.

@@ -1,0 +1,16 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Pipeline run result (stdout JSON of run.py)",
+  "type": "object",
+  "required": ["status", "run_id", "artifacts"],
+  "additionalProperties": false,
+  "properties": {
+    "status": { "enum": ["published", "rejected"] },
+    "run_id": { "type": "string" },
+    "artifacts": { "type": "string", "description": "Absolute path of this run's artifact dir" },
+    "slug": { "type": "string" },
+    "article_id": { "type": "string" },
+    "permalink": { "type": "string", "description": "Site path /a/<slug>-<hash8>/, empty if underivable" },
+    "notes": { "type": "string", "description": "Gate verdict note (rejected only)" }
+  }
+}

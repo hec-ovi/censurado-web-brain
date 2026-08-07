@@ -83,3 +83,4 @@ scratch/
 
 # automation run logs (local)
 automation/logs/
+automation/pipeline/runs/

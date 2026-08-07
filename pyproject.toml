@@ -7,6 +7,7 @@ requires-python = ">=3.11"
 license = { text = "MIT" }
 authors = [{ name = "Censurado" }]
 dependencies = [
+    "dbos>=2.29",
     "httpx>=0.27",
     "pydantic>=2.7",
     "pydantic-settings>=2.3",
@@ -42,7 +43,7 @@ packages = [
 [tool.pytest.ini_options]
 # The MCP layer keeps its own tests inside its folder (contract tests live with the layer),
 # so `make test` picks them up alongside the repo suite.
-testpaths = ["tests", "mcp/tests"]
+testpaths = ["tests", "mcp/tests", "automation/pipeline/tests"]
 addopts = "-q"
 
 [tool.ruff]

@@ -1,0 +1,17 @@
+{
+  "run_dir": "runs",
+  "backend": { "base_url": "http://127.0.0.1:8082", "token_env": "NEWSROOM_OPERATOR_TOKEN" },
+  "adapters": {
+    "api": {
+      "base_url": "http://127.0.0.1:8080/v1",
+      "model": "qwen3.6-35b-a3b-heretic-q8",
+      "system": "/no_think Eres parte de la redaccion del portal Censurado. Responde exactamente lo pedido, sin texto extra.",
+      "timeout_s": 300
+    },
+    "cli": { "cmd": ["claude", "-p", "{prompt}"], "timeout_s": 3600 }
+  },
+  "nodes": [
+    { "name": "draft", "adapter": "api", "role": "draft", "output": "json", "prompt": "prompts/draft.md" },
+    { "name": "evaluate", "adapter": "api", "role": "gate", "output": "json", "prompt": "prompts/evaluate.md" }
+  ]
+}

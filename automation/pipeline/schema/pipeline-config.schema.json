@@ -1,0 +1,63 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Pipeline config",
+  "type": "object",
+  "required": ["run_dir", "backend", "adapters", "nodes"],
+  "additionalProperties": false,
+  "properties": {
+    "run_dir": { "type": "string", "description": "Artifact + DBOS state dir; relative to the config file" },
+    "backend": {
+      "type": "object",
+      "required": ["base_url", "token_env"],
+      "additionalProperties": false,
+      "properties": {
+        "base_url": { "type": "string" },
+        "token_env": { "type": "string", "description": "Env var holding the operator token" },
+        "timeout_s": { "type": "number", "default": 60 }
+      }
+    },
+    "adapters": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "api": {
+          "type": "object",
+          "required": ["base_url", "model"],
+          "additionalProperties": false,
+          "properties": {
+            "base_url": { "type": "string", "description": "OpenAI-compatible base, e.g. http://127.0.0.1:8080/v1" },
+            "model": { "type": "string" },
+            "system": { "type": "string", "description": "Optional system message (model quirks live here, not in prompts)" },
+            "api_key_env": { "type": "string" },
+            "timeout_s": { "type": "number", "default": 300 }
+          }
+        },
+        "cli": {
+          "type": "object",
+          "required": ["cmd"],
+          "additionalProperties": false,
+          "properties": {
+            "cmd": { "type": "array", "items": { "type": "string" }, "minItems": 1, "description": "Argv; each {prompt} occurrence is substituted" },
+            "timeout_s": { "type": "number", "default": 3600 }
+          }
+        }
+      }
+    },
+    "nodes": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["name", "adapter", "prompt"],
+        "additionalProperties": false,
+        "properties": {
+          "name": { "type": "string", "pattern": "^[a-z0-9_-]+$" },
+          "adapter": { "enum": ["api", "cli"] },
+          "role": { "enum": ["draft", "gate", "plain"], "default": "plain" },
+          "output": { "enum": ["json", "text"], "default": "text" },
+          "prompt": { "type": "string", "description": "Prompt file path; relative to the config file" }
+        }
+      }
+    }
+  }
+}
