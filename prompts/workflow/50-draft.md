@@ -22,9 +22,9 @@ Build it in the layers you outlined: open with the self-contained summary, devel
 detail, close with the full context. Each layer new and dense; never restate an earlier one.
 
 **The body does NOT carry the headline.** The site prints the title from the title field, so a
-`# Titulo` line at the top of the body renders the headline twice on the page. Open with the
-first line of the piece itself (the dateline plus the lead, the way the rest of the corpus
-does). Inside the body, section headers are `##`, never `#`.
+`# Titulo` line at the top of the body renders the headline twice on the page. Open on the lead
+itself, with no CITY, date line above it: where and when it happened belong in the prose, where
+they carry weight. Inside the body, section headers are `##`, never `#`.
 
 **Say each idea once.** A caveat, a disclaimer, or a framing note is stated ONE time, in a
 single short compact line, and never repeated. Do not stack three, four, or five synonyms
@@ -44,9 +44,9 @@ is a failure even when every fact is right. Break the monotony on purpose. Vary 
 wherever the material gives you the chance, reach for a device that breaks the flow. The
 renderer styles all of these, so use them: a `> blockquote` pull-quote (it renders with a red
 accent, save it for the line that should hit hardest), a short list, a striking number on its
-own line, a GFM table when you are genuinely comparing things, and a second image mid-body
-with plain Markdown `![alt](url)` (an uploaded `/media/...` path or an http/https URL)
-where a visual earns its place. Do not run three identical gray paragraphs in a row when one
+own line, a GFM table when you are genuinely comparing things (two columns at most, never three
+or more), and a second image mid-body with plain Markdown `![alt](url)` (an uploaded
+`/media/...` path or an http/https URL) where a visual earns its place. Do not run three identical gray paragraphs in a row when one
 of these would carry the reader further. Where your prose names a post, a clip, or an
 earlier Censurado piece, drop its widget marker right there in the body, at that spot in the
 middle of the piece where it comes up, each on its own line: `{{tweet:<id>}}`,

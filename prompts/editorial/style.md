@@ -74,7 +74,7 @@ Attribute every claim and never invent a quote.
 
 ## Structure
 - Headline: short and direct, the essential fact, no filler or adjectives.
-- Dateline: CITY, date, at the start of the body.
-- Lede: first paragraph with what happened, who, when, and why it matters.
+- Lede: the body opens on it, with no CITY, date line above it. First paragraph with what
+  happened, who, when, and why it matters.
 - Tags: up to TOPIC_CAP tags (parameters.json), naming the proper entities.
 - Respin: up to RESPIN_PASSES revision passes before publishing.

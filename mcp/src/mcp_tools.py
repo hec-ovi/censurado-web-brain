@@ -792,7 +792,7 @@ TOOLS = [
             "author": _s("Author handle (from author_list); sets the byline and the section."),
             "title": _s("The headline. It must be accurate to the body, not a tease."),
             "description": _s("The one-line standfirst under the headline (required)."),
-            "body": _s("The article body, in markdown. Do NOT start it with a `# Title` heading: the site prints the headline from the title field, so a heading there shows it twice. Open with the piece itself (dateline plus lead) and use `##` for any section header."),
+            "body": _s("The article body, in markdown. Do NOT start it with a `# Title` heading: the site prints the headline from the title field, so a heading there shows it twice. Open on the lead itself, with no CITY, date line above it, and use `##` for any section header."),
             "section": _s("Override the author's beat as the section."),
             "subtitle": _s("Optional dek shown under the headline."),
             "topics": _list("Tags: themes plus named entities."),

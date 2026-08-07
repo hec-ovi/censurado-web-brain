@@ -50,7 +50,7 @@ you read with `editorial-rules <language>`, not literals in this file.
   story. Never a review of the author.
 
 ## 4. Body structure
-- Dateline at the start: CITY, date.
+- Open on the lede: no CITY, date line above it.
 - Lede: first paragraph with what happened, who, when, and why it matters.
 - Layers: self-contained summary, then the detail, then the full context. Each layer is NEW and
   dense; none restates an earlier one.
@@ -70,9 +70,9 @@ you read with `editorial-rules <language>`, not literals in this file.
 
 ## 7. Enrich (break the monotony)
 Where the material earns it (never forced): a `> blockquote` pull-quote for the sharpest line,
-a short list, a lone figure on its own line, a GFM table only for a real comparison, a second
-mid-body image with plain Markdown `![alt](url)`. Vary the rhythm; do not run three identical
-gray paragraphs in a row.
+a short list, a lone figure on its own line, a GFM table only for a real comparison and never
+wider than two columns, a second mid-body image with plain Markdown `![alt](url)`. Vary the
+rhythm; do not run three identical gray paragraphs in a row.
 
 ## 8. Banned (AI tells and sensationalism)
 - Em and en dashes: NEVER. Use commas, periods, parentheses, or a colon.
