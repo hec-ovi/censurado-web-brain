@@ -305,6 +305,16 @@ The JS lane runs with `npm install` once, then `npm test`: the serve loop end to
 
 The python suite runs locally, no CI. It covers the authoring CLI (the tweet/truth snapshot mapping, the fail-soft error handling, the local step gate and its artifact enforcement), the maintenance sweeps (status probe, normalize contract pass, topic cleanse, embeds recheck), the editorial prompt drift-guards (the parameters stay client-filled placeholders, the anti-slop rules survive, every manifest node exists on disk), the article-contract mirror (hashing, slug, sections, schema drift), the skill package (the resolver routes only to sub-skills that exist), the durable article pipeline (adapter lanes, the editorial gate, idempotent publish and replay), and the compose wiring via `docker compose config` (the real parser: the service set with no config-plane service, `site` the only public port, `generate` a resident watcher, the db and media on persistent bind mounts). No images are built and no GPU is needed.
 
+## Local model benchmark
+
+The fully local lane (a headless agent CLI walking the whole editorial workflow against a local model, no cloud) measured on the reference box:
+
+- Box: AMD Strix Halo (gfx1151), Ubuntu 26.04 LTS.
+- Inference: [llama.cpp](https://github.com/ggml-org/llama.cpp) server on the Vulkan backend, run per [llama-vulkan-strix](https://github.com/hec-ovi/llama-vulkan-strix), all layers on GPU.
+- Model: Qwen3.6-35B-A3B heretic, Q8_0 GGUF.
+- Throughput: ~40 tokens/s generation, 440-635 tokens/s prompt ingestion.
+- Articles: an unattended 6-article daily sweep ran end to end in 28 minutes, about 4.7 minutes per article (news research with web fetches, the full gated step walk, ~900-word bodies). A single cold-start article including a ComfyUI hero render took ~18 minutes.
+
 ## Layout
 
 ```
