@@ -7,12 +7,12 @@ AUTH failure on the then-primary CLI through the canary, and demoted to the next
 real evidence. Still open against this spec: the remaining cloud-CLI adapters upstream in
 telegram-bot-skill (R5 gap;
 until then the bridge lane settles on `claude-code`), routing auto-batch through the chain
-(R7 phase 2), and the induced-failure soak (R8 gate, needs days of wall-clock). Running the
-supervisor itself inside docker was considered and deliberately dropped: the agent CLIs and
-their auth state live on the host, which is exactly what killed the old in-container bridge.
+(R7 phase 2), and the induced-failure soak (R8 gate, needs days of wall-clock). The supervisor
+runs on the host, not inside docker: the agent CLIs and their auth state live there, out of
+a container's reach.
 
-Written 2026-07-09. This replaces the n8n direction: no node-graph orchestrator, we build
-our own lean loop and keep the moving parts we already own.
+Written 2026-07-09. The loop is our own lean code, no node-graph orchestrator: we keep the
+moving parts we already own.
 
 ## Decisions locked
 
@@ -22,9 +22,9 @@ our own lean loop and keep the moving parts we already own.
   retires when this ships. Less code carried here; the bridge's own repo owns that surface.
   Retiring the profile also removes the known `CENSURADO_PUBLISH: publish:8082` port bug that
   only exists on that path.
-- **n8n / Flowise / node-canvas orchestrators: discarded (deferred).** Too heavy for this,
-  and containerized they cannot reach the host CLIs anyway. Revisit only if the flow becomes
-  a branching multi-integration graph.
+- **The loop is plain host code; no node-graph orchestrator.** Graph tools are too heavy
+  for this flow, and containerized they cannot reach the host CLIs. Revisit only if the flow
+  becomes a branching multi-integration graph.
 - **The loop runs on the host, outside docker**, as one plain process (systemd unit). The
   agents are host CLIs; that is why it cannot live in a container.
 - **README lists telegram-bot-skill as a requirement and nothing more.** Its setup docs live

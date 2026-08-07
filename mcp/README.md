@@ -41,21 +41,21 @@ Check the wiring without a client:
 
 ## The surface
 
-32 tools, one per operation:
+33 tools, one per operation:
 
 | group | tools |
 |---|---|
 | health | `doctor`, `stack_status`, `stack_up` |
 | articles | `article_list`, `article_get`, `article_create`, `article_update`, `article_delete`, `sections_list` |
 | front page | `portada_get`, `portada_set`, `recomendado_get`, `recomendado_set` |
-| authors | `author_list`, `author_get`, `author_create`, `author_update`, `author_delete`, `author_sources_get`, `author_sources_set`, `source_catalog` |
+| authors | `author_list`, `author_get`, `author_create`, `author_update`, `author_sync_byline`, `author_delete`, `author_sources_get`, `author_sources_set`, `source_catalog` |
 | topics | `topics_inventory`, `topic_remove` |
 | media | `media_upload`, `image_generate` |
 | recipe | `editorial_style`, `editorial_rules`, `prompt_get`, `prompt_set`, `workflow_step`, `workflow_save` |
 | going live | `site_publish` |
 
 Two things are gated twice, here and at the CLI: anything destructive (`article_delete`,
-`author_delete`, `topic_remove`, `author_delete`) and the one public action (`site_publish`)
+`author_delete`, `topic_remove`) and the one public action (`site_publish`)
 refuse without `confirm: true`.
 
 Every tool returns the same envelope: `{ok, verb, exit_code, stdout, stderr, data}`, with

@@ -26,7 +26,7 @@ install:          ## create the venv and install the package + dev tools
 	VIRTUAL_ENV=$(VENV) uv pip install -e ".[dev]"
 
 test:             ## run the whole suite (CLI + sweeps + compose wiring + prompt drift)
-	$(PYTEST) tests -q
+	$(PYTEST) tests
 
 lint:             ## ruff check
 	$(RUFF) check .

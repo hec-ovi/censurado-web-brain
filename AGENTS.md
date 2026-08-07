@@ -226,7 +226,7 @@ context: `../comfyui-strix-docker/`.
   tweet/truth capture, authors + sources over the backend, and the `step` gate.
 - `cli/SKILL.md` + `cli/skills/` the resolver skill + fat sub-skills.
 - `mcp/` the same operating surface as an MCP server (stdio, stdlib-only), for an agent that
-  cannot run shell commands: 32 tools, each one CLI verb, plus a whole-stack `doctor`. It is a
+  cannot run shell commands: 33 tools, one per CLI verb plus the whole-stack `doctor`. It is a
   contract-isolated layer (`mcp/CONTRACT.md` + `mcp/schema/` + `mcp/tests/`); it re-implements
   no publishing logic, so the CLI stays the single writer.
 - `cli/workflow/parameters.json` the enforced numeric floor/caps the walk fills into nodes.
@@ -320,7 +320,7 @@ write API; the `generate` watcher refreshes the portal within ~2s. The backend h
 authors and sources the agent reads; the workflow/persona prompts are on-disk files in this
 repo. Nothing runs a batch model in-process.
 
-Tests (no build, no GPU): `make test` (or `.venv/bin/pytest tests -q`). They cover the
+Tests (no build, no GPU): `make test` (or `.venv/bin/pytest tests`). They cover the
 authoring CLI, the maintenance sweeps, the editorial prompt drift-guards, the article-contract
 mirror, the skill package, and the compose wiring over the real `docker compose config` parser
 (the service set `comfyui`/`publish`/`site`/`generate`/`init-perms`, with no config-plane
