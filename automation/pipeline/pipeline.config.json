@@ -11,7 +11,10 @@
     "cli": { "cmd": ["claude", "-p", "{prompt}"], "timeout_s": 3600 }
   },
   "nodes": [
-    { "name": "draft", "adapter": "api", "role": "draft", "output": "json", "prompt": "prompts/draft.md" },
+    { "name": "draft", "adapter": "api", "role": "draft", "output": "json", "prompt": "prompts/draft.md",
+      "context": { "skill": { "file": "../../cli/skills/write-article/SKILL.md" },
+                   "persona": { "persona": true },
+                   "reglas": { "editorial": "es" } } },
     { "name": "evaluate", "adapter": "api", "role": "gate", "output": "json", "prompt": "prompts/evaluate.md" }
   ]
 }

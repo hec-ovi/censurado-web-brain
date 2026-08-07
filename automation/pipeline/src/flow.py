@@ -7,6 +7,7 @@ from dbos import DBOS
 
 from .adapter_api import ApiAdapter
 from .adapter_cli import CliAdapter
+from .context import ContextFetcher
 from .errors import AdapterError
 from .publisher import Publisher
 
@@ -33,6 +34,11 @@ def parse_json_output(raw: str) -> dict:
 
 
 @DBOS.step(retries_allowed=True, max_attempts=3, interval_seconds=1.0, backoff_rate=2.0)
+def fetch_context(cfg: dict, node: dict, inputs: dict) -> dict:
+    return ContextFetcher(cfg["backend"]).resolve(node["context"], inputs)
+
+
+@DBOS.step(retries_allowed=True, max_attempts=3, interval_seconds=1.0, backoff_rate=2.0)
 def run_node(cfg: dict, node: dict, prompt: str) -> str:
     adapter_cfg = cfg["adapters"][node["adapter"]]
     adapter = ApiAdapter(adapter_cfg) if node["adapter"] == "api" else CliAdapter(adapter_cfg)
@@ -52,7 +58,8 @@ def article_run(cfg: dict, inputs: dict) -> dict:
     context = dict(inputs)
     piece = None
     for node in cfg["nodes"]:
-        prompt = render(Path(node["prompt_path"]).read_text(), context)
+        extra = fetch_context(cfg, node, inputs) if node.get("context") else {}
+        prompt = render(Path(node["prompt_path"]).read_text(), {**context, **extra})
         raw = run_node(cfg, node, prompt)
         (art_dir / f"{node['name']}.txt").write_text(raw)
         out = parse_json_output(raw) if node["output"] == "json" else raw

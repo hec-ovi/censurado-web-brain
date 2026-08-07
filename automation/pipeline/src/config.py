@@ -1,6 +1,7 @@
 """Load and fail-closed validate the pipeline config (schema/pipeline-config.schema.json)."""
 import json
 import os
+import re
 from pathlib import Path
 
 from .errors import ConfigError
@@ -103,6 +104,33 @@ class PipelineConfig:
                 if not pp.is_file():
                     v.append(f"{tag}.prompt: file not found: {pp}")
                 n["prompt_path"] = str(pp)
+            ctx = n.get("context")
+            if ctx is not None:
+                if not isinstance(ctx, dict):
+                    v.append(f"{tag}.context: must be an object")
+                    continue
+                for ck, cs in ctx.items():
+                    ctag = f"{tag}.context.{ck}"
+                    if not re.match(r"^[a-z0-9_-]+$", ck):
+                        v.append(f"{ctag}: placeholder name must be [a-z0-9_-]+")
+                    if not isinstance(cs, dict) or len(cs) != 1:
+                        v.append(f"{ctag}: must be exactly one of file|persona|editorial")
+                        continue
+                    (kind, val), = cs.items()
+                    if kind == "file":
+                        fp = (base / val).resolve()
+                        if not fp.is_file():
+                            v.append(f"{ctag}.file: not found: {fp}")
+                        else:
+                            cs["file"] = str(fp)
+                    elif kind == "persona":
+                        if val is not True:
+                            v.append(f"{ctag}.persona: must be true")
+                    elif kind == "editorial":
+                        if not isinstance(val, str) or not val:
+                            v.append(f"{ctag}.editorial: language code required")
+                    else:
+                        v.append(f"{ctag}: unknown source '{kind}'")
         if nodes and drafts != 1:
             v.append(f"nodes: exactly one node must have role 'draft' (found {drafts})")
 

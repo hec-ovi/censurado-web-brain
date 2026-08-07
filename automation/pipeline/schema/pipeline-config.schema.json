@@ -56,7 +56,22 @@
           "adapter": { "enum": ["api", "cli"] },
           "role": { "enum": ["draft", "gate", "plain"], "default": "plain" },
           "output": { "enum": ["json", "text"], "default": "text" },
-          "prompt": { "type": "string", "description": "Prompt file path; relative to the config file" }
+          "prompt": { "type": "string", "description": "Prompt file path; relative to the config file" },
+          "context": {
+            "type": "object",
+            "description": "Placeholder name -> source, inlined into the prompt before rendering",
+            "propertyNames": { "pattern": "^[a-z0-9_-]+$" },
+            "additionalProperties": {
+              "type": "object",
+              "minProperties": 1,
+              "maxProperties": 1,
+              "properties": {
+                "file": { "type": "string", "description": "File content (path relative to the config file), e.g. a SKILL.md" },
+                "persona": { "const": true, "description": "The run author's card from the backend (name, bio, style, who_i_am)" },
+                "editorial": { "type": "string", "description": "The backend editorial-text lexicon for this language code" }
+              }
+            }
+          }
         }
       }
     }

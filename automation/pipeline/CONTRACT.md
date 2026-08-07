@@ -1,6 +1,6 @@
 # Article pipeline contract
 
-contractVersion: 1.1.0
+contractVersion: 1.2.0
 
 ## Purpose
 
@@ -10,7 +10,8 @@ Run one article end to end as a durable DBOS workflow: each editorial node is on
 
 - **Config file** (`--config`, required): schema [schema/pipeline-config.schema.json](schema/pipeline-config.schema.json). Cross-field rules the loader enforces fail-closed (exit 2, every violation listed): node names unique, exactly one node with role `draft`, every node's adapter present under `adapters`, every prompt file exists, the cli `cmd` carries a `{prompt}` element. Relative paths (`run_dir`, prompts) resolve against the config file's directory.
 - **Invocation**: `--topic`, `--author`, `--section` (required), `--run-id` (optional; defaults to a fresh id). The run id is the durability key.
-- **Prompt files**: markdown with `{topic}`, `{author}`, `{section}`, and `{<node-name>}` placeholders (a prior node's parsed output); unknown braces pass through untouched.
+- **Prompt files**: markdown with `{topic}`, `{author}`, `{section}`, `{<node-name>}` (a prior node's parsed output), and any `{<context-key>}` placeholders; unknown braces pass through untouched.
+- **Node context** (optional, per node): `context` maps placeholder names to sources fetched by a durable step and inlined before rendering: `{"file": "<path>"}` (file content, e.g. a SKILL.md), `{"persona": true}` (the run author's card from the backend), `{"editorial": "<lang>"}` (the backend editorial lexicon). This is how the api lane reads the house recipe without a CLI.
 - **Secrets via env**: `backend.token_env` names the env var holding the operator token; `adapters.api.api_key_env` (optional) names the API key var.
 
 ## Outputs

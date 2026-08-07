@@ -59,7 +59,15 @@ class FakeBackend(BaseHTTPRequestHandler):
         self.wfile.write(out)
 
     def do_GET(self):
-        out = json.dumps({"slug": "nota-prueba", "content_hash": "deadbeefcafebabe"}).encode()
+        if self.path.startswith("/authors"):
+            out = json.dumps([{"handle": "autor-test", "name": "Autor Test", "bio": "bio-prueba",
+                               "style": "estilo-prueba: tercera persona.",
+                               "metadata": {"who_i_am": "soy una prueba"}}]).encode()
+        elif self.path.startswith("/editorial-text"):
+            out = json.dumps({"entries": [
+                {"key": "regla.uno", "value": "sin muletillas", "deleted": False}]}).encode()
+        else:
+            out = json.dumps({"slug": "nota-prueba", "content_hash": "deadbeefcafebabe"}).encode()
         self.send_response(200)
         self.send_header("Content-Type", "application/json")
         self.end_headers()
@@ -173,6 +181,28 @@ def test_cli_stdin_mode_feeds_the_prompt(tmp_path, servers):
                        cli_cmd=[sys.executable, str(fake_cli)], cli_stdin=True)
     p = run_pipeline(cfg)
     assert p.returncode == 0, p.stderr
+    assert len(FakeBackend.posts) == 1
+
+
+def test_context_sources_reach_the_prompt(tmp_path, servers):
+    api_port, backend_port = servers
+    manual = tmp_path / "manual.md"
+    manual.write_text("CONTENIDO-DEL-MANUAL: nunca uses relleno.")
+    nodes = [
+        {"name": "draft", "adapter": "api", "role": "draft", "output": "json",
+         "prompt": str(PROMPTS / "draft.md"),
+         "context": {"skill": {"file": str(manual)},
+                     "persona": {"persona": True},
+                     "reglas": {"editorial": "es"}}},
+        {"name": "evaluate", "adapter": "api", "role": "gate", "output": "json",
+         "prompt": str(PROMPTS / "evaluate.md")},
+    ]
+    p = run_pipeline(write_config(tmp_path, api_port, backend_port, nodes=nodes))
+    assert p.returncode == 0, p.stderr
+    draft_prompt = FakeApi.calls[0]["messages"][-1]["content"]
+    assert "CONTENIDO-DEL-MANUAL" in draft_prompt
+    assert "estilo-prueba" in draft_prompt and "soy una prueba" in draft_prompt
+    assert "regla.uno: sin muletillas" in draft_prompt
     assert len(FakeBackend.posts) == 1
 
 
