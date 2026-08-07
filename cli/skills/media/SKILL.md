@@ -9,9 +9,11 @@ description: >-
 # Art-direct the hero image
 
 When a piece earns a hero, YOU are its art director: you brief ONE lead illustration, render
-it, and attach it. Treat the image as a rule for tech/AI pieces (it lifts every page) and
-optional elsewhere (reach for it on a lead, a literary piece, or a strong opinion column). A
-piece publishes fine text-only, and a video or a quoted post can stand in for art.
+it, and attach it. Whether a piece gets one is the AUTHOR'S call, not yours: each persona's
+card carries its image policy (`images: never|always` in their record; unset means optional),
+and `preview` enforces it, refusing a hero the author bans and refusing to stage without one
+the author requires (`--no-hero` overrides only when ComfyUI is off in this lane). A piece
+publishes fine text-only, and a video or a quoted post can stand in for art.
 
 This is the HERO (the image at the top of the article page). It is a SEPARATE slot from the
 front-page CARD (the small listing preview), which you choose with `--card-type` at publish (see

@@ -1808,3 +1808,51 @@ def test_preview_consumes_the_work_hero_so_it_cannot_leak(monkeypatch, tmp_path)
     monkeypatch.setattr(cz, "token", lambda: "t")
     assert cz.cmd_publish(_preview_ns()) == 0
     assert not (tmp_path / "image.json").exists()  # consumed on publish
+
+
+# ---- the author image policy gate (preview enforces the card's images: never|always) ----
+
+def _gate_patches(monkeypatch, policy):
+    posts = []
+    monkeypatch.setattr(cz, "api", lambda m, p, **k: (
+        200, json.dumps([{"handle": "lara-arianna", "metadata": {"images": policy}}]).encode()))
+    monkeypatch.setattr(cz, "_req", lambda m, u, data=None, headers=None, **k: (
+        posts.append(json.loads(data)), (201, b'{"slug": "s1"}'))[1])
+    monkeypatch.setattr(cz, "token", lambda: "t")
+    return posts
+
+
+def test_never_author_refuses_an_explicit_hero(monkeypatch, capsys):
+    posts = _gate_patches(monkeypatch, "never")
+    rc = cz.cmd_publish(_preview_ns(image="/media/" + "a" * 16 + ".png"))
+    assert rc == 1
+    assert "images: never" in capsys.readouterr().err
+    assert not posts
+
+
+def test_never_author_drops_the_workdir_hero_and_stages(monkeypatch, tmp_path, capsys):
+    posts = _gate_patches(monkeypatch, "never")
+    monkeypatch.setenv("CENSURADO_WORK", str(tmp_path))
+    (tmp_path / "image.json").write_text(
+        json.dumps({"image": "/media/" + "b" * 16 + ".png", "image_alt": "x"}))
+    rc = cz.cmd_publish(_preview_ns())
+    assert rc == 0
+    assert len(posts) == 1
+    assert "image" not in (posts[0].get("metadata") or {})
+    assert not (tmp_path / "image.json").exists()
+    assert "dropped the staged hero" in capsys.readouterr().err
+
+
+def test_always_author_refuses_without_a_hero(monkeypatch, capsys):
+    posts = _gate_patches(monkeypatch, "always")
+    rc = cz.cmd_publish(_preview_ns())
+    assert rc == 1
+    assert "images: always" in capsys.readouterr().err
+    assert not posts
+
+
+def test_always_author_stages_with_the_no_hero_override(monkeypatch):
+    posts = _gate_patches(monkeypatch, "always")
+    rc = cz.cmd_publish(_preview_ns(no_hero=True))
+    assert rc == 0
+    assert len(posts) == 1

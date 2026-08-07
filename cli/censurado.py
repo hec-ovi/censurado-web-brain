@@ -769,6 +769,27 @@ def _await_preview_url(slug, tries=6, delay=1.0):
     return url, False
 
 
+def _author_image_policy(handle):
+    """The author's hero policy from their private tail ("images": never|always), or "".
+    Best-effort: an unreachable backend reads as no policy; the POST itself reports real downtime."""
+    try:
+        st, body = api("GET", "/authors")
+    except Exception:
+        return ""
+    if st != 200:
+        return ""
+    try:
+        rows = json.loads(body.decode("utf-8", "replace"))
+    except Exception:
+        return ""
+    if isinstance(rows, dict):
+        rows = rows.get("authors") or []
+    for r in rows:
+        if isinstance(r, dict) and r.get("handle") == handle:
+            return str(((r.get("metadata") or {}).get("images")) or "").strip().lower()
+    return ""
+
+
 def cmd_publish(a):
     payload = build_publish_payload(a)
     if a.dry_run:
@@ -779,6 +800,33 @@ def cmd_publish(a):
     if missing:
         sys.stderr.write("preview needs a one-line --description (the bajada). "
                          "Add it, then run preview again.\n")
+        return 1
+    # The author's image policy is enforced HERE, not in the prompts: a card rule alone is
+    # advisory to a model, this gate is not.
+    policy = _author_image_policy(a.author)
+    pmeta = payload.get("metadata") or {}
+    if policy == "never" and pmeta.get("image"):
+        if (getattr(a, "image", "") or "").strip():
+            sys.stderr.write(f"preview REFUSED: {a.author} publishes without images (their card "
+                            f"carries images: never). Re-run preview without --image.\n")
+            return 1
+        dropped = pmeta.pop("image", "")
+        pmeta.pop("image_alt", None)
+        card = pmeta.get("card") or {}
+        if card.get("type") == "image" and card.get("src") == dropped:
+            pmeta.pop("card", None)
+        try:
+            (_work_dir() / "image.json").unlink()
+        except (FileNotFoundError, OSError, TypeError):
+            pass
+        sys.stderr.write(f"note: dropped the staged hero; {a.author} publishes without images "
+                         f"(images: never in their card).\n")
+    if (policy == "always" and not getattr(a, "no_hero", False)
+            and not (pmeta.get("image") or pmeta.get("youtube") or pmeta.get("video"))):
+        sys.stderr.write(f"preview REFUSED: {a.author} requires a hero (their card carries "
+                         f"images: always). Render one with `image --prompt ...` (it auto-attaches "
+                         f"here), then run preview again. Only when ComfyUI is off in this lane, "
+                         f"pass --no-hero.\n")
         return 1
     # Any tweet card the body embeds ({{tweet:id}}) whose snapshot is not attached yet: fetch it
     # now from the id, so a correct marker always renders even if the model forgot to run `tweet`.
@@ -1102,7 +1150,7 @@ def cmd_create_author(a):
 
 
 _AUTHOR_PUBLIC = ("name", "bio", "about", "avatar", "gender", "style")
-_AUTHOR_META = ("beat", "who_i_am", "language", "few_shots_pos", "few_shots_neg")
+_AUTHOR_META = ("beat", "who_i_am", "language", "images", "few_shots_pos", "few_shots_neg")
 
 
 def _byline_of(rec):
@@ -2195,6 +2243,8 @@ def build_parser():
     pub.add_argument("--author-bio", dest="author_bio", default="")
     pub.add_argument("--author-avatar", dest="author_avatar", default="")
     pub.add_argument("--tweets-file", dest="tweets_file", default="", help="JSON array of snapshots")
+    pub.add_argument("--no-hero", dest="no_hero", action="store_true",
+                     help="stage an images:always author text-only (only when ComfyUI is off in this lane)")
     pub.add_argument("--idempotency", default="")
     pub.add_argument("--dry-run", action="store_true", help="print the payload, do not POST")
     pub.set_defaults(fn=cmd_publish)
