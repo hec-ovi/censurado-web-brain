@@ -38,6 +38,7 @@
           "additionalProperties": false,
           "properties": {
             "cmd": { "type": "array", "items": { "type": "string" }, "minItems": 1, "description": "Argv; each {prompt} occurrence is substituted" },
+            "stdin": { "type": "boolean", "default": false, "description": "Feed the prompt on stdin instead of substituting {prompt} (for REPL CLIs)" },
             "timeout_s": { "type": "number", "default": 3600 }
           }
         }

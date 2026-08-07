@@ -7,12 +7,17 @@ from .errors import AdapterError
 class CliAdapter:
     def __init__(self, cfg: dict):
         self.cmd = cfg["cmd"]
+        self.stdin = cfg.get("stdin", False)
         self.timeout = cfg.get("timeout_s", 3600)
 
     def complete(self, prompt: str, want_json: bool) -> str:
-        argv = [a.replace("{prompt}", prompt) for a in self.cmd]
+        if self.stdin:
+            argv, feed = list(self.cmd), prompt
+        else:
+            argv, feed = [a.replace("{prompt}", prompt) for a in self.cmd], None
         try:
-            p = subprocess.run(argv, capture_output=True, text=True, timeout=self.timeout)
+            p = subprocess.run(argv, input=feed, capture_output=True, text=True,
+                               timeout=self.timeout)
         except subprocess.TimeoutExpired as e:
             raise AdapterError(f"cli timed out after {self.timeout}s") from e
         except FileNotFoundError as e:

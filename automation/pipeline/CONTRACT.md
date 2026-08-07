@@ -1,6 +1,6 @@
 # Article pipeline contract
 
-contractVersion: 1.0.0
+contractVersion: 1.1.0
 
 ## Purpose
 
@@ -32,7 +32,7 @@ Run one article end to end as a durable DBOS workflow: each editorial node is on
 
 - The backend publish API (`POST /articles`, `GET /articles/{slug}`) with an operator token; `Idempotency-Key` semantics are the backend's.
 - The `api` adapter's endpoint: any OpenAI-compatible `/chat/completions`.
-- The `cli` adapter's binary: argv in (with `{prompt}` substituted), article text on stdout, exit code out.
+- The `cli` adapter's binary: argv in (with `{prompt}` substituted, or the whole prompt on stdin when `stdin` is set), article text on stdout, exit code out.
 
 ## Invariants
 

@@ -15,14 +15,21 @@ function run(args, { preflightExit = 0, agentExit = 0, env = {} } = {}) {
   mkdirSync(bin)
   const argvFile = join(dir, 'agent-argv.txt')
 
+  const stdinFile = join(dir, 'agent-stdin.txt')
+
   writeFileSync(join(bin, 'python3'), `#!/bin/sh\nexit ${preflightExit}\n`)
   // The prompt argument spans lines, so record argv with a separator no arg can contain.
   writeFileSync(
     join(bin, 'fake-agent'),
     `#!/bin/sh\nprintf '%s<<ARG>>' "$@" > '${argvFile}'\nexit ${agentExit}\n`,
   )
+  writeFileSync(
+    join(bin, 'fake-stdin-agent'),
+    `#!/bin/sh\ncat > '${stdinFile}'\nexit ${agentExit}\n`,
+  )
   chmodSync(join(bin, 'python3'), 0o755)
   chmodSync(join(bin, 'fake-agent'), 0o755)
+  chmodSync(join(bin, 'fake-stdin-agent'), 0o755)
 
   const result = spawnSync('bash', [SCRIPT, ...args], {
     encoding: 'utf8',
@@ -37,7 +44,8 @@ function run(args, { preflightExit = 0, agentExit = 0, env = {} } = {}) {
   const argv = existsSync(argvFile)
     ? readFileSync(argvFile, 'utf8').split('<<ARG>>').slice(0, -1)
     : null
-  return { result, argv }
+  const stdin = existsSync(stdinFile) ? readFileSync(stdinFile, 'utf8') : null
+  return { result, argv, stdin }
 }
 
 describe('auto-batch.sh', () => {
@@ -57,6 +65,15 @@ describe('auto-batch.sh', () => {
     const prompt = argv[3]
     expect(prompt).toContain("cover this week's news")
     expect(prompt).toContain('Write a healthy sweep of 3 to 6 articles')
+  })
+
+  it('feeds the prompt on stdin, one line, when the template carries no {prompt}', () => {
+    const { result, stdin } = run(['daily', '1'], {
+      env: { AUTO_BATCH_AGENT_CMD: 'fake-stdin-agent --yolo' },
+    })
+    expect(result.status).toBe(0)
+    expect(stdin).toContain("cover today's news")
+    expect(stdin.trim()).not.toContain('\n')
   })
 
   it('skips without launching the agent when the stack preflight fails', () => {

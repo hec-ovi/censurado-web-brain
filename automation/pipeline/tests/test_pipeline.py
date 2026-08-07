@@ -82,13 +82,15 @@ def servers():
         s.shutdown()
 
 
-def write_config(tmp: Path, api_port: int, backend_port: int, nodes=None, cli_cmd=None) -> Path:
+def write_config(tmp: Path, api_port: int, backend_port: int, nodes=None, cli_cmd=None,
+                 cli_stdin=False) -> Path:
     cfg = {
         "run_dir": "runs",
         "backend": {"base_url": f"http://127.0.0.1:{backend_port}", "token_env": "TEST_TOKEN"},
         "adapters": {
             "api": {"base_url": f"http://127.0.0.1:{api_port}/v1", "model": "fake"},
-            **({"cli": {"cmd": cli_cmd}} if cli_cmd else {}),
+            **({"cli": {"cmd": cli_cmd, **({"stdin": True} if cli_stdin else {})}}
+               if cli_cmd else {}),
         },
         "nodes": nodes or [
             {"name": "draft", "adapter": "api", "role": "draft", "output": "json",
@@ -150,6 +152,25 @@ def test_cli_adapter_drives_a_node(tmp_path, servers):
     ]
     cfg = write_config(tmp_path, api_port, backend_port, nodes=nodes,
                        cli_cmd=[sys.executable, str(fake_cli), "{prompt}"])
+    p = run_pipeline(cfg)
+    assert p.returncode == 0, p.stderr
+    assert len(FakeBackend.posts) == 1
+
+
+def test_cli_stdin_mode_feeds_the_prompt(tmp_path, servers):
+    api_port, backend_port = servers
+    fake_cli = tmp_path / "fake-stdin-agent.py"
+    fake_cli.write_text(
+        "import json,sys\nassert 'software libre' in sys.stdin.read()\n"
+        f"print(json.dumps({DRAFT!r}, ensure_ascii=False))\n")
+    nodes = [
+        {"name": "draft", "adapter": "cli", "role": "draft", "output": "json",
+         "prompt": str(PROMPTS / "draft.md")},
+        {"name": "evaluate", "adapter": "api", "role": "gate", "output": "json",
+         "prompt": str(PROMPTS / "evaluate.md")},
+    ]
+    cfg = write_config(tmp_path, api_port, backend_port, nodes=nodes,
+                       cli_cmd=[sys.executable, str(fake_cli)], cli_stdin=True)
     p = run_pipeline(cfg)
     assert p.returncode == 0, p.stderr
     assert len(FakeBackend.posts) == 1

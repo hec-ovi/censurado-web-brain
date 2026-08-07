@@ -65,8 +65,8 @@ class PipelineConfig:
             cmd = cli.get("cmd")
             if not isinstance(cmd, list) or not cmd:
                 v.append("adapters.cli.cmd: required non-empty argv list")
-            elif not any("{prompt}" in a for a in cmd):
-                v.append("adapters.cli.cmd: no element carries {prompt}")
+            elif not cli.get("stdin") and not any("{prompt}" in a for a in cmd):
+                v.append("adapters.cli.cmd: no element carries {prompt} (or set adapters.cli.stdin)")
 
         nodes = raw.get("nodes")
         if not isinstance(nodes, list) or not nodes:

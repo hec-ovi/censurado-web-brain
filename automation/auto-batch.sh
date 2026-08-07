@@ -15,6 +15,8 @@
 #   AUTO_BATCH_AGENT_CMD  the agent command as a space-split template; {prompt} is replaced
 #                         with the batch prompt. Any CLI with a headless one-prompt mode
 #                         slots in. Default: claude --dangerously-skip-permissions -p {prompt}
+#                         A template with no {prompt} gets the prompt on stdin instead,
+#                         flattened to one line (for line-oriented REPL CLIs, e.g. noob --yolo)
 #   AUTO_BATCH_LOG_DIR    where run logs and the lock live (default automation/logs)
 set -uo pipefail
 
@@ -79,11 +81,17 @@ echo "-- launching agent headless (timeout $TIMEOUT): $AGENT_CMD_TPL --"
 cd "$REPO"
 read -r -a TPL <<<"$AGENT_CMD_TPL"
 CMD=()
+VIA_ARGV=0
 for arg in "${TPL[@]}"; do
-  if [ "$arg" = "{prompt}" ]; then CMD+=("$PROMPT"); else CMD+=("$arg"); fi
+  if [ "$arg" = "{prompt}" ]; then CMD+=("$PROMPT"); VIA_ARGV=1; else CMD+=("$arg"); fi
 done
 
-timeout "$TIMEOUT" "${CMD[@]}"
+if [ "$VIA_ARGV" -eq 1 ]; then
+  timeout "$TIMEOUT" "${CMD[@]}"
+else
+  # stdin lane: one flattened line, so line-oriented REPL CLIs read it as a single task.
+  printf '%s\n' "${PROMPT//$'\n'/ }" | timeout "$TIMEOUT" "${CMD[@]}"
+fi
 rc=$?
 
 if [ "$rc" -eq 124 ]; then
