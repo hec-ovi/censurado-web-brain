@@ -5,7 +5,7 @@
     "api": {
       "base_url": "http://127.0.0.1:8080/v1",
       "model": "qwen3.6-35b-a3b-heretic-q8",
-      "system": "/no_think Eres parte de la redaccion del portal Censurado. Responde exactamente lo pedido, sin texto extra.",
+      "system": "/no_think Sos parte de la redaccion del portal Censurado. Tu respuesta es directamente el contenido pedido, listo para usar.",
       "timeout_s": 300
     },
     "cli": { "cmd": ["claude", "-p", "{prompt}"], "timeout_s": 3600 }
@@ -21,8 +21,7 @@
                                            "fetch_urls_top": 3 } } } },
     { "name": "outline", "adapter": "api", "output": "text", "prompt": "prompts/outline.md" },
     { "name": "draft", "adapter": "api", "output": "json", "prompt": "prompts/draft.md",
-      "context": { "skill": { "file": "../../cli/skills/write-article/SKILL.md" },
-                   "persona": { "persona": true },
+      "context": { "persona": { "persona": true },
                    "reglas": { "editorial": "es" } } },
     { "name": "evaluate", "adapter": "api", "role": "gate", "output": "json", "prompt": "prompts/evaluate.md",
       "context": { "persona": { "persona": true } },

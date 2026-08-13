@@ -7,9 +7,9 @@ Tema: {topic}
 Seccion: {section}
 
 Escribí el esqueleto de la nota:
-- Titular tentativo (corto, concreto, sin punchline).
-- Bajada tentativa (una frase).
+- Titular tentativo: corto, concreto, con gancho.
+- Bajada tentativa: una frase que remata la nota.
 - Entre 4 y 7 bloques en orden; para cada bloque: qué cuenta, y qué hecho o cifra del acta lo respalda.
-- El primer bloque responde qué pasó; el cierre aterriza qué significa o qué sigue, sin moralejas.
+- El primer bloque responde qué pasó; el cierre aterriza qué significa o qué sigue.
 
-Texto plano, sin JSON.
+Texto plano.

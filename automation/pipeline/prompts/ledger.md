@@ -22,4 +22,4 @@ Armá el acta de investigación de la nota, solo con lo que el material realment
 ## Lo que NO está confirmado
 - afirmaciones que circulan pero el material no respalda
 
-Reglas: nada inventado; ninguna URL que no esté en el material; si el material no alcanza para fundar la nota, escribí INSUFICIENTE como primera línea y listá qué falta.
+El acta registra exactamente lo que el material dice, con la URL que lo respalda; es el archivo interno de la redacción y ahí se quedan las URLs. Cuando el material no alcanza para fundar la nota, escribí INSUFICIENTE como primera línea y listá qué falta.

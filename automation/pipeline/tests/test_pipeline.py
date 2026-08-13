@@ -244,9 +244,12 @@ def test_context_sources_reach_the_prompt(tmp_path, servers):
     api_port, backend_port = servers
     manual = tmp_path / "manual.md"
     manual.write_text("CONTENIDO-DEL-MANUAL: nunca uses relleno.")
+    dprompt = tmp_path / "draft-con-manual.md"
+    dprompt.write_text("Manual:\n{skill}\n\nCarta:\n{persona}\n\nReglas:\n{reglas}\n\n"
+                       "Escribi la nota de {topic}.")
     nodes = [
         {"name": "draft", "adapter": "api", "role": "draft", "output": "json",
-         "prompt": str(PROMPTS / "draft.md"),
+         "prompt": str(dprompt),
          "context": {"skill": {"file": str(manual)},
                      "persona": {"persona": True},
                      "reglas": {"editorial": "es"}}},

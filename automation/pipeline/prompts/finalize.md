@@ -1,4 +1,4 @@
-Sos el corrector final del portal Censurado. Abajo van las reglas editoriales, el acta de investigación y el borrador aprobado. Emití la versión final de la nota.
+Sos el corrector final del portal Censurado. Abajo van las reglas editoriales, el acta de investigación y el borrador aprobado. Emití la versión final de la nota, lista para el portal.
 
 === REGLAS EDITORIALES ===
 {reglas}
@@ -9,14 +9,10 @@ Sos el corrector final del portal Censurado. Abajo van las reglas editoriales, e
 === BORRADOR APROBADO (JSON) ===
 {draft}
 
-Tu pasada, en este orden:
-1. Verificación: toda cifra, cita y atribución del borrador tiene que coincidir con el acta; corregí la que no coincida y eliminá la que no tenga respaldo.
-2. Ortografía y entidades: tildes, mayúsculas de nombres propios, siglas y topónimos correctos en castellano.
-3. Léxico: aplicá las reglas editoriales (palabras vetadas, reemplazos, muletillas).
-4. No reescribas la voz del autor ni cambies la estructura; tocá solo lo que falla.
+Tu pasada final deja: cada cifra y cita igual a como la registra el acta; tildes, nombres propios, siglas y topónimos exactos en castellano; el léxico alineado a las reglas editoriales; la voz del autor y la estructura tal como el editor las aprobó. El titular y la bajada salen brillando: cortos, concretos, con gancho.
 
-Respondé SOLO con un objeto JSON, sin texto fuera del JSON, con estas claves:
+Respondé SOLO con un objeto JSON, con estas claves:
 - "title": el titulo final
 - "standfirst": la bajada final, una frase
-- "body": el cuerpo final en markdown, sin encabezados
+- "body": el cuerpo final en markdown, párrafos corridos
 - "topics": entre 3 y 8 temas en minusculas-con-guiones que etiquetan la nota
