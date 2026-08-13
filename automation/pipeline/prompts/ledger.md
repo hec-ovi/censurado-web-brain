@@ -8,10 +8,10 @@ Tema: {topic}
 Armá el acta de investigación de la nota, solo con lo que el material realmente dice:
 
 ## Hechos
-- un hecho por línea, con su fuente al final en formato (URL)
+- un hecho por línea: qué pasó, QUIÉN LO AFIRMA (el actor primario: gobierno, ministerio, organismo, ejército, empresa, documento; el medio donde salió no es el actor), y su fuente al final en formato (URL)
 
 ## Cifras y datos duros
-- cada cifra con su fuente (URL)
+- cada cifra con quién la afirma (actor primario) y su fuente (URL)
 
 ## Citas textuales
 - cita corta entre comillas, quién la dijo, fuente (URL)
