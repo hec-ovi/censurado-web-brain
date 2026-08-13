@@ -41,9 +41,9 @@ packages = [
 "newsroom.contracts" = ["vendored/v1/*.json", "vendored/v1/*.md"]
 
 [tool.pytest.ini_options]
-# The MCP layer keeps its own tests inside its folder (contract tests live with the layer),
-# so `make test` picks them up alongside the repo suite.
-testpaths = ["tests", "mcp/tests", "automation/pipeline/tests"]
+# Contract-isolated layers keep their tests inside their folder; `make test` picks
+# them up alongside the repo suite.
+testpaths = ["tests", "automation/pipeline/tests"]
 addopts = "-q"
 
 [tool.ruff]
