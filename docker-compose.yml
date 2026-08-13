@@ -104,6 +104,9 @@ services:
       PANEL_LOGIN_TOKEN_HASH: ${PANEL_LOGIN_TOKEN_HASH:-}
       PANEL_LOGIN_TOKEN: ${PANEL_LOGIN_TOKEN:-}
       PANEL_SECURE_COOKIES: ${PANEL_SECURE_COOKIES:-false}
+      # The panel's language: the panel_text rows injected into the SPA (keys
+      # without a row in this language fall back to English). es, like the site.
+      PANEL_LANG: ${PANEL_LANG:-es}
     volumes:
       # Persistent host bind mounts (survive `docker compose down -v`): the sqlite
       # source of truth and the uploaded images, owned by uid 65532 (init-perms).

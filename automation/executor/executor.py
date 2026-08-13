@@ -34,7 +34,8 @@ RUN_PY = REPO / "automation" / "pipeline" / "run.py"
 
 
 def summarize(stdout: str) -> str:
-    """One human line from the batch's stdout result JSON, for the run strip."""
+    """One human line (in the newsroom's Spanish) from the batch's stdout result
+    JSON, for the run strip the panel shows."""
     for line in reversed(stdout.strip().splitlines()):
         line = line.strip()
         if not line.startswith("{"):
@@ -46,11 +47,11 @@ def summarize(stdout: str) -> str:
         articles = result.get("articles") or []
         if result.get("status") == "batch-published":
             published = sum(1 for a in articles if a.get("status") == "published")
-            return f"{published}/{len(articles)} published"
+            return f"{published}/{len(articles)} publicadas"
         if result.get("status") == "batch-previewed":
-            return f"{len(articles)} previewed"
-        return result.get("status", "done")
-    return "done"
+            return f"{len(articles)} en preview"
+        return result.get("status", "listo")
+    return "listo"
 
 
 class Executor:

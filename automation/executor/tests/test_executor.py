@@ -97,11 +97,11 @@ def test_derive_config_merges_panel_settings_over_the_file():
 def test_summarize_reads_the_batch_result_line():
     published = json.dumps({"status": "batch-published", "batch_id": "b", "artifacts": "x",
                             "articles": [{"status": "published"}, {"status": "failed"}]})
-    assert summarize("noise\n" + published) == "1/2 published"
+    assert summarize("noise\n" + published) == "1/2 publicadas"
     previewed = json.dumps({"status": "batch-previewed", "batch_id": "b", "artifacts": "x",
                             "articles": [{}, {}, {}]})
-    assert summarize(previewed) == "3 previewed"
-    assert summarize("not json at all") == "done"
+    assert summarize(previewed) == "3 en preview"
+    assert summarize("not json at all") == "listo"
 
 
 # ----- the loop against a real HTTP backend fake ------------------------------
