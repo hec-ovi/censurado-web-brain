@@ -40,6 +40,15 @@ class Backend:
         """The active schedule registry (tombstoned rows are already excluded)."""
         return self._request("GET", "/schedules").get("schedules", [])
 
+    def settings(self) -> dict:
+        """The automation-settings singleton the panel's Models section edits
+        ({} when never set)."""
+        return self._request("GET", "/automation-settings").get("settings", {})
+
+    def put_status(self, status: dict) -> None:
+        """Replace the automation-status heartbeat singleton the panel reads."""
+        self._request("PUT", "/automation-status", {"settings": status})
+
     def record_run(self, slug: str, run: dict) -> None:
         """Record one firing on the schedule's run strip. A repeated run_id
         replaces its entry, which is how "running" becomes the outcome."""

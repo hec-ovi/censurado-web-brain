@@ -59,6 +59,41 @@ def test_run_id_is_deterministic_and_marks_the_minute_fired():
     assert already_fired(sched(runs=[{"run_id": run_id, "status": "running"}]), run_id)
 
 
+def test_derive_config_merges_panel_settings_over_the_file():
+    from derive import derive_config
+
+    base = {
+        "adapters": {"api": {"base_url": "http://127.0.0.1:8080/v1", "model": "qwen-local"}},
+        "nodes": [
+            {"name": "draft", "adapter": "api", "model": "stale-override"},
+            {"name": "evaluate", "adapter": "api"},
+        ],
+    }
+    settings = {
+        "lanes": {"local": {"model": "qwen-nuevo"},
+                  "openrouter": {"model": "deepseek/deepseek-chat"}},
+        "stages": {"evaluate": {"lane": "openrouter", "model": "openai/gpt-5-mini"},
+                   "draft": {"lane": "local"},
+                   "fantasma": {"lane": "openrouter"}},
+    }
+    cfg = derive_config(base, settings)
+    # Lanes: local overrides the api adapter's model, keeps its base_url; the
+    # openrouter entry appears with its defaults plus the chosen model.
+    assert cfg["adapters"]["api"] == {"base_url": "http://127.0.0.1:8080/v1", "model": "qwen-nuevo"}
+    orl = cfg["adapters"]["openrouter"]
+    assert orl["kind"] == "api" and orl["api_key_env"] == "OPENROUTER_API_KEY"
+    assert orl["model"] == "deepseek/deepseek-chat"
+    # Stages: evaluate rides the remote lane with its own model; draft's lane
+    # switch clears the stale per-node override; an unknown stage is ignored.
+    nodes = {n["name"]: n for n in cfg["nodes"]}
+    assert nodes["evaluate"]["adapter"] == "openrouter"
+    assert nodes["evaluate"]["model"] == "openai/gpt-5-mini"
+    assert nodes["draft"]["adapter"] == "api" and "model" not in nodes["draft"]
+    # The base object is untouched, and empty settings derive it unchanged.
+    assert base["nodes"][0]["model"] == "stale-override"
+    assert derive_config(base, {}) == base
+
+
 def test_summarize_reads_the_batch_result_line():
     published = json.dumps({"status": "batch-published", "batch_id": "b", "artifacts": "x",
                             "articles": [{"status": "published"}, {"status": "failed"}]})
@@ -87,6 +122,16 @@ class FakeBackendHandler(http.server.BaseHTTPRequestHandler):
     def do_GET(self):
         if self.path == "/schedules":
             self._json(200, {"schedules": self.store["schedules"]})
+        elif self.path == "/automation-settings":
+            self._json(200, {"settings": self.store.get("settings", {})})
+        else:
+            self._json(404, {"code": "not_found"})
+
+    def do_PUT(self):
+        if self.path == "/automation-status":
+            body = json.loads(self.rfile.read(int(self.headers["Content-Length"])))
+            self.store["status"] = body["settings"]
+            self._json(200, body)
         else:
             self._json(404, {"code": "not_found"})
 
@@ -120,7 +165,7 @@ def fake_backend():
     server.shutdown()
 
 
-def test_tick_fires_due_schedule_and_records_running_then_outcome(fake_backend):
+def test_tick_queues_then_drain_records_running_and_outcome(fake_backend):
     store, backend = fake_backend
     store["schedules"].append(sched())
     calls = []
@@ -129,20 +174,56 @@ def test_tick_fires_due_schedule_and_records_running_then_outcome(fake_backend):
         calls.append((schedule["slug"], run_id))
         return "ok", "5/8 published"
 
-    executor = Executor(backend, Path("cfg.json"), runner=runner)
+    executor = Executor(backend, Path("cfg.json"), runner=runner, llama_probe=lambda: True)
     assert executor.tick(WED) == 1
+    executor.drain()
     assert calls == [("edicion", "edicion-20260812-0730")]
     statuses = [(slug, r["run_id"], r["status"]) for slug, r in store["runs"]]
     assert statuses == [
+        ("edicion", "edicion-20260812-0730", "queued"),
         ("edicion", "edicion-20260812-0730", "running"),
         ("edicion", "edicion-20260812-0730", "ok"),
     ]
-    assert store["runs"][1][1]["detail"] == "5/8 published"
-    assert store["runs"][1][1]["started_at"] and store["runs"][1][1]["finished_at"]
+    assert store["runs"][2][1]["detail"] == "5/8 published"
+    assert store["runs"][2][1]["started_at"] and store["runs"][2][1]["finished_at"]
 
     # The same minute never fires twice: the strip now carries the run id.
     assert executor.tick(WED) == 0
+    executor.drain()
     assert len(calls) == 1
+
+
+def test_close_firings_queue_and_run_in_arrival_order(fake_backend):
+    # Two schedules due at the same minute: both are recorded as queued at the
+    # tick, then the single worker runs them one after the other.
+    store, backend = fake_backend
+    store["schedules"].append(sched(slug="alfa"))
+    store["schedules"].append(sched(slug="beta"))
+    calls = []
+
+    executor = Executor(backend, Path("cfg.json"), llama_probe=lambda: True,
+                        runner=lambda s, r: (calls.append(r), ("ok", "done"))[1])
+    assert executor.tick(WED) == 2
+    queued = [(slug, r["status"]) for slug, r in store["runs"]]
+    assert queued == [("alfa", "queued"), ("beta", "queued")], "both wait before any runs"
+    # The heartbeat published the queue before anything ran.
+    assert store["status"]["queued"] == ["alfa-20260812-0730", "beta-20260812-0730"]
+
+    executor.drain()
+    assert calls == ["alfa-20260812-0730", "beta-20260812-0730"], "arrival order, one at a time"
+    outcomes = {slug: r["status"] for slug, r in store["runs"]}
+    assert outcomes == {"alfa": "ok", "beta": "ok"}, "both firings reached their outcome"
+
+
+def test_heartbeat_reports_clock_and_lane_health(fake_backend):
+    store, backend = fake_backend
+    executor = Executor(backend, Path("cfg.json"), runner=lambda s, r: ("ok", ""),
+                        llama_probe=lambda: False)
+    executor.tick(WED)
+    assert store["status"]["llama_ok"] is False
+    assert store["status"]["running"] is None
+    assert store["status"]["queued"] == []
+    assert store["status"]["at"].startswith("2026-08-12T07:30")
 
 
 def test_tick_skips_not_due_and_records_failures(fake_backend):
@@ -150,9 +231,10 @@ def test_tick_skips_not_due_and_records_failures(fake_backend):
     store["schedules"].append(sched(slug="tarde", times=["18:00"]))
     store["schedules"].append(sched(slug="falla"))
 
-    executor = Executor(backend, Path("cfg.json"),
+    executor = Executor(backend, Path("cfg.json"), llama_probe=lambda: True,
                         runner=lambda s, r: ("failed", "exit 4: adapter down"))
     assert executor.tick(WED) == 1
+    executor.drain()
     slugs = {slug for slug, _ in store["runs"]}
     assert slugs == {"falla"}, "the 18:00 schedule must not fire at 07:30"
     assert store["runs"][-1][1]["status"] == "failed"
@@ -161,7 +243,7 @@ def test_tick_skips_not_due_and_records_failures(fake_backend):
 
 def test_unreachable_backend_is_survived():
     executor = Executor(Backend("http://127.0.0.1:9", "tok", timeout_s=1), Path("cfg.json"),
-                        runner=lambda s, r: ("ok", ""))
+                        runner=lambda s, r: ("ok", ""), llama_probe=lambda: True)
     assert executor.tick(WED) == 0
 
 
@@ -169,3 +251,10 @@ def test_backend_error_carries_the_http_detail(fake_backend):
     _, backend = fake_backend
     with pytest.raises(BackendError, match="404.*not_found"):
         backend.record_run("ghost", {"run_id": "r", "status": "ok"})
+
+
+def test_backend_settings_roundtrip(fake_backend):
+    store, backend = fake_backend
+    assert backend.settings() == {}
+    store["settings"] = {"stages": {"evaluate": {"lane": "openrouter"}}}
+    assert backend.settings()["stages"]["evaluate"]["lane"] == "openrouter"
