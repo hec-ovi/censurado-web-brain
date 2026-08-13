@@ -47,7 +47,7 @@ def run_node(cfg: dict, node: dict, prompt: str) -> str:
 
 @DBOS.step(retries_allowed=True, max_attempts=3, interval_seconds=1.0, backoff_rate=2.0)
 def publish_piece(cfg: dict, piece: dict, inputs: dict, run_id: str) -> dict:
-    return Publisher(cfg["backend"]).publish(piece, inputs, idempotency_key=run_id)
+    return Publisher(cfg).publish(piece, inputs, idempotency_key=run_id)
 
 
 def _verdict(out, raw: str) -> tuple[str, str]:

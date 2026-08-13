@@ -69,11 +69,12 @@ class PipelineConfig:
             elif not cli.get("stdin") and not any("{prompt}" in a for a in cmd):
                 v.append("adapters.cli.cmd: no element carries {prompt} (or set adapters.cli.stdin)")
 
-        websearch = raw.get("websearch")
-        if websearch is not None:
-            ws_cmd = websearch.get("cmd")
-            if ws_cmd is not None and (not isinstance(ws_cmd, list) or not ws_cmd):
-                v.append("websearch.cmd: must be a non-empty argv list")
+        for block in ("websearch", "toolkit"):
+            block_cfg = raw.get(block)
+            if block_cfg is not None:
+                bc = block_cfg.get("cmd")
+                if bc is not None and (not isinstance(bc, list) or not bc):
+                    v.append(f"{block}.cmd: must be a non-empty argv list")
 
         nodes = raw.get("nodes")
         if not isinstance(nodes, list) or not nodes:
@@ -143,7 +144,7 @@ class PipelineConfig:
                     if not re.match(r"^[a-z0-9_-]+$", ck):
                         v.append(f"{ctag}: placeholder name must be [a-z0-9_-]+")
                     if not isinstance(cs, dict) or len(cs) != 1:
-                        v.append(f"{ctag}: must be exactly one of file|persona|editorial|feeds|websearch")
+                        v.append(f"{ctag}: must be exactly one of file|persona|editorial|feeds|websearch|topics|articles")
                         continue
                     (kind, val), = cs.items()
                     if kind == "file":
@@ -161,6 +162,12 @@ class PipelineConfig:
                     elif kind == "feeds":
                         if not isinstance(val, dict):
                             v.append(f"{ctag}.feeds: must be an object (may be empty)")
+                    elif kind == "topics":
+                        if val is not True:
+                            v.append(f"{ctag}.topics: must be true")
+                    elif kind == "articles":
+                        if not isinstance(val, dict):
+                            v.append(f"{ctag}.articles: must be an object (may be empty)")
                     elif kind == "websearch":
                         if not isinstance(val, dict) or not isinstance(val.get("queries_from"), str):
                             v.append(f"{ctag}.websearch: queries_from (a prior node name) is required")

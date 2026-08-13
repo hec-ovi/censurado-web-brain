@@ -110,7 +110,7 @@ def cmd_approve(argv: list[str]) -> int:
     from src.publisher import Publisher
     stored = json.loads(piece_file.read_text())
     try:
-        pub = Publisher(cfg.data["backend"]).publish(
+        pub = Publisher(cfg.data).publish(
             stored["piece"], stored["inputs"], idempotency_key=args.run_id)
     except PublishError as e:
         print(f"PublishError: {e}", file=sys.stderr)

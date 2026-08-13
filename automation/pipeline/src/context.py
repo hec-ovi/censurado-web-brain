@@ -31,7 +31,26 @@ class ContextFetcher:
                 out[key] = self._feeds(inputs["author"], src["feeds"])
             elif "websearch" in src:
                 out[key] = self._websearch(src["websearch"], outputs)
+            elif "topics" in src:
+                out[key] = self._topics()
+            elif "articles" in src:
+                out[key] = self._articles(src["articles"])
         return out
+
+    def _articles(self, opts: dict) -> str:
+        """Recent published notes (slug: titulo), the pool {{relacionado:<slug>}} draws from."""
+        data = self._get("/articles")
+        rows = data.get("articles", data) if isinstance(data, dict) else data
+        limit = opts.get("limit", 15)
+        lines = [f"- {a['slug']}: {a.get('title', '')}" for a in rows[:limit] if a.get("slug")]
+        return "\n".join(lines) if lines else "(todavia ninguna)"
+
+    def _topics(self) -> str:
+        data = self._get("/topics")
+        rows = data.get("topics", data) if isinstance(data, dict) else data
+        slugs = [r.get("slug") if isinstance(r, dict) else str(r) for r in rows]
+        slugs = [s for s in slugs if s]
+        return ", ".join(slugs) if slugs else "(todavia ninguno)"
 
     def _get(self, path: str):
         try:

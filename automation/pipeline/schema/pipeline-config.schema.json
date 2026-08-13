@@ -212,6 +212,21 @@
                       "description": "Direct source pages to read"
                     }
                   }
+                },
+                "topics": {
+                  "const": true,
+                  "description": "The portal's existing topic slugs from the backend, so finalize reuses exact slugs instead of coining variants"
+                },
+                "articles": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "description": "Recent published notes (slug: titulo), the pool {{relacionado:<slug>}} draws from",
+                  "properties": {
+                    "limit": {
+                      "type": "integer",
+                      "default": 15
+                    }
+                  }
                 }
               }
             }
@@ -262,6 +277,24 @@
         "timeout_s": {
           "type": "number",
           "default": 180
+        }
+      }
+    },
+    "toolkit": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "The censurado.py toolkit the publisher shells out to (tweet-card auto-fetch). Default: the repo's own cli/censurado.py",
+      "properties": {
+        "cmd": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "minItems": 1
+        },
+        "timeout_s": {
+          "type": "number",
+          "default": 60
         }
       }
     }

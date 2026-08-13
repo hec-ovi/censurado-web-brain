@@ -22,11 +22,12 @@
     { "name": "outline", "adapter": "api", "output": "text", "prompt": "prompts/outline.md" },
     { "name": "draft", "adapter": "api", "output": "json", "prompt": "prompts/draft.md",
       "context": { "persona": { "persona": true },
-                   "reglas": { "editorial": "es" } } },
+                   "reglas": { "editorial": "es" },
+                   "relacionadas": { "articles": { "limit": 15 } } } },
     { "name": "evaluate", "adapter": "api", "role": "gate", "output": "json", "prompt": "prompts/evaluate.md",
       "context": { "persona": { "persona": true } },
       "respin": { "prompt": "prompts/respin.md", "target": "draft", "passes": 2 } },
     { "name": "finalize", "adapter": "api", "role": "draft", "output": "json", "prompt": "prompts/finalize.md",
-      "context": { "reglas": { "editorial": "es" } } }
+      "context": { "reglas": { "editorial": "es" }, "temas": { "topics": true } } }
   ]
 }

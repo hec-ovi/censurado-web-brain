@@ -43,6 +43,9 @@ class FakeApi(BaseHTTPRequestHandler):
         elif "MARCA-CONSULTAS" in prompt:
             content = json.dumps({"queries": ["consulta de prueba"],
                                   "read_urls": ["https://fuente.test/nota-1"]})
+        elif "MARCA-TUIT" in prompt:
+            content = json.dumps({**DRAFT, "body": "Parrafo uno.\n\n{{tweet:123}}\n\nCierre."},
+                                 ensure_ascii=False)
         else:
             content = json.dumps(DRAFT, ensure_ascii=False)
         out = json.dumps({"choices": [{"message": {"content": content}}]}).encode()
@@ -82,6 +85,10 @@ class FakeBackend(BaseHTTPRequestHandler):
                 {"slug": "cuenta-x", "domain": "x.com", "lean": "right",
                  "enabled": True, "feed_type": "site_search", "feed_urls": []},
             ]}).encode()
+        elif self.path.startswith("/topics"):
+            out = json.dumps({"topics": [{"slug": "tema-existente"}]}).encode()
+        elif self.path == "/articles":
+            out = json.dumps({"articles": [{"slug": "nota-vieja", "title": "Nota vieja"}]}).encode()
         elif self.path.startswith("/authors"):
             out = json.dumps([{"handle": "autor-test", "name": "Autor Test", "bio": "bio-prueba",
                                "style": "estilo-prueba: tercera persona.",
@@ -187,7 +194,7 @@ def test_publishes_through_the_gate(tmp_path, servers):
     assert len(FakeBackend.posts) == 1
     assert FakeBackend.posts[0]["idem"] == "run-pub"
     assert FakeBackend.posts[0]["auth"] == "Bearer tok-test"
-    assert FakeBackend.posts[0]["body"]["metadata"]["standfirst"] == "Una frase."
+    assert FakeBackend.posts[0]["body"]["metadata"]["description"] == "Una frase."
     art = tmp_path / "runs" / "run-pub"
     assert (art / "draft.json").is_file() and (art / "evaluate.json").is_file()
 
@@ -246,13 +253,16 @@ def test_context_sources_reach_the_prompt(tmp_path, servers):
     manual.write_text("CONTENIDO-DEL-MANUAL: nunca uses relleno.")
     dprompt = tmp_path / "draft-con-manual.md"
     dprompt.write_text("Manual:\n{skill}\n\nCarta:\n{persona}\n\nReglas:\n{reglas}\n\n"
+                       "Temas:\n{temas}\n\nRecientes:\n{relacionadas}\n\n"
                        "Escribi la nota de {topic}.")
     nodes = [
         {"name": "draft", "adapter": "api", "role": "draft", "output": "json",
          "prompt": str(dprompt),
          "context": {"skill": {"file": str(manual)},
                      "persona": {"persona": True},
-                     "reglas": {"editorial": "es"}}},
+                     "reglas": {"editorial": "es"},
+                     "temas": {"topics": True},
+                     "relacionadas": {"articles": {"limit": 5}}}},
         {"name": "evaluate", "adapter": "api", "role": "gate", "output": "json",
          "prompt": str(PROMPTS / "evaluate.md")},
     ]
@@ -263,6 +273,8 @@ def test_context_sources_reach_the_prompt(tmp_path, servers):
     assert "estilo-prueba" in draft_prompt and "soy una prueba" in draft_prompt
     assert "EJEMPLO-SI" in draft_prompt and "EJEMPLO-NO" in draft_prompt
     assert "tema-perfil" in draft_prompt
+    assert "tema-existente" in draft_prompt
+    assert "nota-vieja: Nota vieja" in draft_prompt
     assert "regla.uno: sin muletillas" in draft_prompt
     assert len(FakeBackend.posts) == 1
 
@@ -378,6 +390,32 @@ def test_events_console_shows_runs_and_failures(tmp_path, servers):
     assert ev.returncode == 0, ev.stderr
     assert "run-bien" in ev.stdout and "published" in ev.stdout
     assert "run-mal" in ev.stdout and "FAIL" in ev.stdout
+
+
+def test_tweet_markers_attach_their_cards_on_publish(tmp_path, servers):
+    api_port, backend_port = servers
+    toolkit = tmp_path / "fake-toolkit.py"
+    toolkit.write_text(
+        "import json, sys\n"
+        "assert sys.argv[1] == 'tweet' and sys.argv[2] == '123'\n"
+        "print(json.dumps({'id': '123', 'handle': 'prueba', 'text': 'hola'}))\n")
+    dprompt = tmp_path / "draft-con-tuit.md"
+    dprompt.write_text("MARCA-TUIT: escribi la nota de {topic}.")
+    nodes = [
+        {"name": "draft", "adapter": "api", "role": "draft", "output": "json",
+         "prompt": str(dprompt)},
+        {"name": "evaluate", "adapter": "api", "role": "gate", "output": "json",
+         "prompt": str(PROMPTS / "evaluate.md")},
+    ]
+    cfg = write_config(tmp_path, api_port, backend_port, nodes=nodes)
+    raw = json.loads(cfg.read_text())
+    raw["toolkit"] = {"cmd": [sys.executable, str(toolkit)]}
+    cfg.write_text(json.dumps(raw))
+    p = run_pipeline(cfg)
+    assert p.returncode == 0, p.stderr
+    posted = FakeBackend.posts[0]["body"]
+    assert "{{tweet:123}}" in posted["body"]
+    assert posted["metadata"]["tweets"] == [{"id": "123", "handle": "prueba", "text": "hola"}]
 
 
 def test_gate_respin_rewrites_and_passes(tmp_path, servers):
