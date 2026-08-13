@@ -26,7 +26,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from backend import Backend, BackendError  # noqa: E402
 from derive import derive_config  # noqa: E402
-from schedule import already_fired, due_run_id, is_due  # noqa: E402
+from schedule import already_fired, due_run_id, is_due, latest_due  # noqa: E402
 
 REPO = Path(__file__).resolve().parents[2]
 DEFAULT_CONFIG = REPO / "automation" / "pipeline" / "pipeline.config.json"
@@ -105,6 +105,67 @@ class Executor:
     def _pending(self, run_id: str) -> bool:
         with self.lock:
             return run_id == self.current or any(r == run_id for _, r, _ in self.queue)
+
+    # ---- startup catch-up ----------------------------------------------------
+
+    def catch_up(self, now: datetime | None = None) -> int:
+        """Run what is PENDING at startup: each enabled schedule's most recent
+        due minute (last 24h) that never reached an outcome — either it was
+        missed while the executor was down, or a queued/running record was left
+        by a crash (the batch resumes idempotently under the same run id).
+        Pending firings with the SAME setup (mode + prompt + authors) collapse
+        into one batch: the first fires, the others' strips record who covered
+        them. Older misses stay skipped."""
+        now = now or datetime.now()
+        try:
+            schedules = self.backend.schedules()
+        except BackendError as e:
+            print(f"[executor] backend unreachable at catch-up: {e}", file=sys.stderr)
+            return 0
+        pending = []
+        for schedule in schedules:
+            if not schedule.get("enabled") or schedule.get("deleted"):
+                continue
+            due = latest_due(schedule, now)
+            if due is None:
+                continue
+            run_id = due_run_id(schedule["slug"], due)
+            record = next((r for r in schedule.get("runs") or []
+                           if r.get("run_id") == run_id), None)
+            if record and record.get("status") in ("ok", "failed"):
+                continue
+            if self._pending(run_id):
+                continue
+            pending.append((schedule, run_id))
+        groups: dict = {}
+        for schedule, run_id in pending:
+            key = (schedule.get("mode", "preview"), schedule.get("prompt", ""),
+                   tuple(sorted(schedule.get("authors") or [])))
+            groups.setdefault(key, []).append((schedule, run_id))
+        fired = 0
+        for items in groups.values():
+            lead, lead_run_id = items[0]
+            for schedule, run_id in items[1:]:
+                try:
+                    self.backend.record_run(schedule["slug"], {
+                        "run_id": run_id, "status": "ok",
+                        "detail": f"cubierta por {lead_run_id}"})
+                except BackendError as e:
+                    print(f"[executor] could not mark {run_id} covered: {e}", file=sys.stderr)
+            try:
+                self.backend.record_run(lead["slug"], {"run_id": lead_run_id, "status": "queued"})
+            except BackendError as e:
+                print(f"[executor] could not queue catch-up {lead_run_id}: {e}", file=sys.stderr)
+                continue
+            print(f"[executor] catch-up queued {lead_run_id} "
+                  f"(+{len(items) - 1} covered)")
+            with self.lock:
+                self.queue.append((lead, lead_run_id, now))
+            fired += 1
+        self.heartbeat(now)
+        if fired:
+            self.wake.set()
+        return fired
 
     # ---- the heartbeat -------------------------------------------------------
 
@@ -209,6 +270,8 @@ class Executor:
         authors = schedule.get("authors") or []
         if authors:
             cmd += ["--authors", ",".join(authors)]
+        if schedule.get("prompt"):
+            cmd += ["--directive", schedule["prompt"]]
         try:
             proc = subprocess.run(cmd, capture_output=True, text=True, timeout=self.batch_timeout_s)
         except subprocess.TimeoutExpired:
@@ -230,6 +293,7 @@ def main() -> int:
     executor = Executor(Backend(base_url, token), config, batch_timeout_s=timeout_s)
     threading.Thread(target=executor.worker, daemon=True).start()
     print(f"[executor] up: backend {base_url}, config {config}")
+    executor.catch_up()
     while True:
         executor.tick()
         # Sleep to just past the next minute boundary so each wall-clock minute

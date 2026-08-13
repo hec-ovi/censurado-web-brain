@@ -188,6 +188,9 @@ def cmd_batch(argv: list[str]) -> int:
                          "auto: publish them in portada order")
     ap.add_argument("--authors", help="Comma-separated handles (default: every author "
                                       "with a beat and attached sources)")
+    ap.add_argument("--directive", default="",
+                    help="Operator directive for this edition (a custom schedule's "
+                         "prompt); reaches the candidates and jefe prompts")
     args = ap.parse_args(argv)
 
     cfg = load_config(args.config)
@@ -200,7 +203,8 @@ def cmd_batch(argv: list[str]) -> int:
     emit_event(cfg.run_dir, {"event": "batch-start", "run_id": batch_id, "mode": args.mode})
     try:
         result = run_batch(cfg.data, str(Path(args.config).resolve()), batch_id,
-                           args.mode, authors, lambda e: emit_event(cfg.run_dir, e))
+                           args.mode, authors, lambda e: emit_event(cfg.run_dir, e),
+                           directive=args.directive)
     except PipelineError as e:
         print(f"{type(e).__name__}: {e}", file=sys.stderr)
         emit_event(cfg.run_dir, {"event": "batch", "run_id": batch_id, "status": "failed",

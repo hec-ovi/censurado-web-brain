@@ -94,6 +94,44 @@ def test_derive_config_merges_panel_settings_over_the_file():
     assert derive_config(base, {}) == base
 
 
+def test_latest_due_finds_the_most_recent_missed_minute():
+    from schedule import latest_due
+    from datetime import datetime as dt
+    # Daily at 07:30: at Wed 10:00 the last due minute was Wed 07:30.
+    assert latest_due(sched(), WED.replace(hour=10, minute=0)) == dt(2026, 8, 12, 7, 30)
+    # At Wed 07:00 it was Tue 07:30 (still inside the 24h window).
+    assert latest_due(sched(), WED.replace(hour=7, minute=0)) == dt(2026, 8, 11, 7, 30)
+    # A weekly schedule whose last firing is outside the window has nothing due.
+    assert latest_due(sched(cadence="weekly", weekdays=[0]), WED) is None
+
+
+def test_catch_up_runs_pending_and_collapses_same_setup(fake_backend):
+    store, backend = fake_backend
+    # a: missed (no record). b: same setup as a -> collapsed under a's run.
+    # c: different setup (has a prompt) -> its own catch-up run.
+    # d: already finished -> untouched. e: stale "queued" from a crash -> resumed.
+    store["schedules"] += [
+        sched(slug="a"),
+        sched(slug="b"),
+        sched(slug="c", prompt="usando borge cubri la marcha"),
+        sched(slug="d", runs=[{"run_id": "d-20260812-0730", "status": "ok"}]),
+        sched(slug="e", runs=[{"run_id": "e-20260812-0730", "status": "queued"}]),
+    ]
+    calls = []
+    executor = Executor(backend, Path("cfg.json"), llama_probe=lambda: True,
+                        runner=lambda s, r: (calls.append((s["slug"], r)), ("ok", "listo"))[1])
+    now = WED.replace(hour=10, minute=0)
+    assert executor.catch_up(now) == 2, "one batch covers a+b+e (same setup); c fires alone"
+    executor.drain()
+    assert [slug for slug, _ in calls] == ["a", "c"]
+    covered = {slug: r["detail"] for slug, r in store["runs"] if "cubierta" in r.get("detail", "")}
+    assert covered == {"b": "cubierta por a-20260812-0730",
+                       "e": "cubierta por a-20260812-0730"}
+    outcomes = {slug: r["status"] for slug, r in store["runs"]}
+    assert outcomes["a"] == "ok" and outcomes["c"] == "ok"
+    assert "d" not in outcomes, "a finished run is never replayed"
+
+
 def test_summarize_reads_the_batch_result_line():
     published = json.dumps({"status": "batch-published", "batch_id": "b", "artifacts": "x",
                             "articles": [{"status": "published"}, {"status": "failed"}]})

@@ -51,7 +51,7 @@ def _call_node(cfg: dict, prompt_path: str, context: dict) -> tuple[dict, str]:
     return parse_json_output(raw), raw
 
 
-def _candidates(cfg: dict, author: dict, batch_dir: Path, emit) -> list[dict]:
+def _candidates(cfg: dict, author: dict, batch_dir: Path, emit, directive: str = "") -> list[dict]:
     fetcher = ContextFetcher(cfg)
     handle = author["handle"]
     try:
@@ -60,7 +60,7 @@ def _candidates(cfg: dict, author: dict, batch_dir: Path, emit) -> list[dict]:
              "titulares": {"feeds": cfg.get("batch", {}).get("feeds", {"hours": 48})}},
             {"author": handle}, {})
         out, raw = _call_node(cfg, cfg["batch"]["candidates_prompt_path"],
-                              {"author": handle, **extra})
+                              {"author": handle, "directiva": directive, **extra})
     except AdapterError as e:
         emit({"event": "batch-candidates", "run_id": batch_dir.name,
               "author": handle, "status": "failed", "error": str(e)[:300]})
@@ -78,12 +78,13 @@ def _candidates(cfg: dict, author: dict, batch_dir: Path, emit) -> list[dict]:
     return cands
 
 
-def _jefe(cfg: dict, candidates: list[dict], batch_dir: Path) -> list[dict]:
+def _jefe(cfg: dict, candidates: list[dict], batch_dir: Path, directive: str = "") -> list[dict]:
     listing = "\n".join(
         f"- [{c['autor']}] {c['titulo']}: {c['descripcion']}" for c in candidates)
     recientes = ContextFetcher(cfg)._articles({"limit": 20})
     out, raw = _call_node(cfg, cfg["batch"]["jefe_prompt_path"],
-                          {"candidatos": listing, "recientes": recientes})
+                          {"candidatos": listing, "recientes": recientes,
+                           "directiva": directive})
     (batch_dir / "jefe.txt").write_text(raw)
     by_author = {}
     for c in candidates:
@@ -135,7 +136,7 @@ def _approve(cfg_path: str, run_id: str) -> dict:
 
 
 def run_batch(cfg: dict, cfg_path: str, batch_id: str, mode: str,
-              authors: list[str] | None, emit) -> dict:
+              authors: list[str] | None, emit, directive: str = "") -> dict:
     batch_cfg = cfg.get("batch")
     if not batch_cfg:
         raise ConfigError("batch: the config carries no batch block")
@@ -153,11 +154,12 @@ def run_batch(cfg: dict, cfg_path: str, batch_id: str, mode: str,
             raise ConfigError("batch: no authors with a beat and attached sources")
         candidates = []
         for author in roster:
-            candidates.extend(_candidates(cfg, author, batch_dir, emit))
+            candidates.extend(_candidates(cfg, author, batch_dir, emit, directive))
         if not candidates:
             raise AdapterError("batch: no author produced any candidate")
-        selection = _jefe(cfg, candidates, batch_dir)
-        plan_path.write_text(json.dumps({"seleccion": selection, "mode": mode},
+        selection = _jefe(cfg, candidates, batch_dir, directive)
+        plan_path.write_text(json.dumps({"seleccion": selection, "mode": mode,
+                                         "directiva": directive},
                                         ensure_ascii=False, indent=1))
         emit({"event": "batch-plan", "run_id": batch_id, "status": "previewed",
               "notes": f"{len(selection)} notas elegidas de {len(candidates)} candidatas"})

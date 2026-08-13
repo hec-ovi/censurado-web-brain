@@ -586,15 +586,22 @@ def test_feeds_context_omits_used_titulars(tmp_path, servers):
 def test_batch_preview_holds_the_edition(tmp_path, servers):
     api_port, backend_port = servers
     cfg = write_config(tmp_path, api_port, backend_port, batch=BATCH)
-    p = run_sub(cfg, "batch", "--run-id", "lote-1")
+    p = run_sub(cfg, "batch", "--run-id", "lote-1",
+                "--directive", "MARCA-DIRECTIVA: solo energia")
     assert p.returncode == 0, p.stderr
     result = json.loads(p.stdout.strip().splitlines()[-1])
     assert result["status"] == "batch-previewed"
     assert [a["status"] for a in result["articles"]] == ["previewed", "previewed"]
     lote = tmp_path / "runs" / "lote-1"
     assert (lote / "plan.json").is_file()
+    assert json.loads((lote / "plan.json").read_text())["directiva"].startswith("MARCA-DIRECTIVA")
     assert (lote / "candidates-autor-test.json").is_file()
     assert (tmp_path / "runs" / "lote-1-n1" / "piece.json").is_file()
+    # The operator directive reached both the candidates and the jefe prompts.
+    steering = [c["messages"][-1]["content"] for c in FakeApi.calls
+                if "MARCA-DIRECTIVA" in c["messages"][-1]["content"]]
+    assert any("historias valen la pena" in s for s in steering), "candidates saw it"
+    assert any("jefe de redacción" in s for s in steering), "the jefe saw it"
     assert FakeBackend.posts == []
     assert FakeBackend.used_urls == ["https://fuente.test/nota-2",
                                      "https://fuente.test/nota-1"]

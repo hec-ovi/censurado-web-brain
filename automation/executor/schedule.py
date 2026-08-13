@@ -39,3 +39,15 @@ def due_run_id(slug: str, now: datetime) -> str:
 def already_fired(schedule: dict, run_id: str) -> bool:
     """Whether the schedule's run strip already carries this firing."""
     return any(r.get("run_id") == run_id for r in schedule.get("runs") or [])
+
+
+def latest_due(schedule: dict, now: datetime, window_hours: int = 24):
+    """The schedule's most recent due minute strictly before `now`, within the
+    window, or None. This is the startup catch-up's question: what should have
+    fired while the executor was down."""
+    from datetime import timedelta
+    for minutes_back in range(1, window_hours * 60 + 1):
+        candidate = now - timedelta(minutes=minutes_back)
+        if is_due(schedule, candidate):
+            return candidate
+    return None
