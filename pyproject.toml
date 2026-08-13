@@ -43,7 +43,7 @@ packages = [
 [tool.pytest.ini_options]
 # Contract-isolated layers keep their tests inside their folder; `make test` picks
 # them up alongside the repo suite.
-testpaths = ["tests", "automation/pipeline/tests"]
+testpaths = ["tests", "automation/pipeline/tests", "automation/executor/tests"]
 addopts = "-q"
 
 [tool.ruff]

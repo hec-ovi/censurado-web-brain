@@ -11,7 +11,7 @@
 # copy on disk.
 
 [Unit]
-Description=Censurado serve loop (docker stack + telegram bridge + agent fallback chain)
+Description=Censurado serve loop (docker stack + telegram bridge)
 After=network-online.target docker.service
 Wants=network-online.target
 

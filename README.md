@@ -95,7 +95,8 @@ The static site is not rebuilt inside the publish request: `generate` is a separ
 - `cli/SKILL.md` is the resolver skill that routes a CLI agent to the right fat sub-skill under `cli/skills/` (write-article, daily-batch, redactor, authors, sources, portada, prompts, media, publicar, translate, websearch).
 - `prompts/` is the editorial recipe: the `workflow/*` step-gate nodes + `manifest.json`, the `persona/synthesize.md` author guide, and `editorial/style.md`. Plain files, git is their history, no server and no database.
 - `newsroom/` is the maintenance CLI (`censurado-brain`): a backend health probe (`status`), the `normalize` whole-corpus contract pass (subcommands `check` (default), `links`, `sections`), plus the `topics cleanse` and `embeds recheck` sweeps. It needs the package installed (httpx + the corpus helpers); the authoring CLI does not.
-- `automation/supervisor/` is the 24/7 serve loop: `./run.sh serve` (or the shipped systemd unit) brings up the docker stack, starts the [telegram-bot-skill](https://github.com/hec-ovi/telegram-bot-skill) bridge from the sibling checkout, and keeps both alive. The agent behind the bot walks a config-driven fallback chain of headless agent CLIs (cloud lanes first, a local model last; the shipped chain lives in `automation/supervisor/supervisor.config.json`): failures are classified from exit output and canary probes (auth, quota, transient), auth/quota demote immediately, and a healed agent is promoted back at a quiet moment. A mid-article walk survives the swap because all state lives in the scratch ledger plus the `step` gate, not in the agent's session. Needs node >= 22; the bot credentials (`TELEGRAM_BOT_TOKEN`, `OWNER_ID`) cascade from this repo's `.env` into the bridge, and the bridge's own `.env` wins if it has them. Spec: [automation/supervisor/REQUIREMENTS.md](automation/supervisor/REQUIREMENTS.md).
+- `automation/supervisor/` is the 24/7 serve loop: `./run.sh serve` (or the shipped systemd unit) brings up the docker stack, starts the [telegram-bot-skill](https://github.com/hec-ovi/telegram-bot-skill) bridge from the sibling checkout with the one adapter named in `automation/supervisor/supervisor.config.json`, and keeps both alive with budget-limited restarts and owner alerts. Needs node >= 22; the bot credentials (`TELEGRAM_BOT_TOKEN`, `OWNER_ID`) cascade from this repo's `.env` into the bridge, and the bridge's own `.env` wins if it has them. Spec: [automation/supervisor/REQUIREMENTS.md](automation/supervisor/REQUIREMENTS.md).
+- `automation/executor/` is the schedule executor: a compose service that polls the backend's schedule registry (managed in the panel's Automation tab) each minute and fires due edition batches through the pipeline, one at a time, recording each run's outcome back onto the schedule. It starts and stops with the stack, so the newsroom's clock runs whenever docker runs. Contract: [automation/executor/CONTRACT.md](automation/executor/CONTRACT.md).
 
 ### ComfyUI
 
@@ -264,7 +265,7 @@ Not built yet, captured here so we can pick them up. Nothing below blocks the cu
 
 - **Analytics / BI dashboard** (backend panel). One surface for growth: a most-popular-topics chart (filtered totals, built to scale to thousands of topics), authors ranked by likes, authors with the fewest articles, and statistical/growth modeling. Note: author-likes needs a reactions data source the backend does not hold yet (reactions live in the downstream Cloudflare Pages reactions function).
 - **Rebel Forge integration.** Integrate the Rebel Forge functionality (a separate GitHub repo). Pending, scope defined when picked up.
-- **Serve-loop follow-ups.** The 24/7 loop itself shipped (`./run.sh serve`, see below). Still open: the remaining CLI adapters contributed upstream in [telegram-bot-skill](https://github.com/hec-ovi/telegram-bot-skill) (until they land, the bridge lane settles on `claude-code` while the chain logic already walks whatever the config lists), routing `automation/auto-batch.sh` through the same fallback chain, the multi-day induced-failure soak before calling it 24/7-proven, and a lightweight email trigger (a Cloudflare Email Worker posting to a small listener) for on-demand runs. The loop stays lean host code: node-graph orchestrators are too heavy for this flow, and containerized they cannot reach the host CLIs.
+- **Serve-loop follow-ups.** The 24/7 loop itself shipped (`./run.sh serve`, see below). Still open: a telegram command adapter that maps chat to the pipeline (run an article, run the batch, approve a run, tail events), contributed upstream in [telegram-bot-skill](https://github.com/hec-ovi/telegram-bot-skill), and a lightweight email trigger (a Cloudflare Email Worker posting to a small listener) for on-demand runs. The loop stays lean host code because the bridge's agent CLI and its auth live on the host.
 
 ## Tests
 
@@ -273,7 +274,7 @@ make install                 # once: create the venv, install the package + dev 
 make test                    # the whole suite (or: .venv/bin/pytest tests)
 ```
 
-The JS lane runs with `npm install` once, then `npm test`: the serve loop end to end against fake binaries (a scripted bridge and scripted agent canaries: demotion on auth/quota, restart-without-blame when only the bridge dies, refusal of unknown adapters, chain-down alert and revival, the transient threshold), the auto-batch wrapper, the scheduler layer, and the Pages reactions function.
+The JS lane runs with `npm install` once, then `npm test`: the serve loop end to end against fake binaries (a scripted bridge: boot + lock, restart of a dead bridge, the restart budget holding with an owner alert, the credential cascade) and the Pages reactions function.
 
 The python suite runs locally, no CI. It covers the authoring CLI (the tweet/truth snapshot mapping, the fail-soft error handling, the local step gate and its artifact enforcement), the maintenance sweeps (status probe, normalize contract pass, topic cleanse, embeds recheck), the editorial prompt drift-guards (the parameters stay client-filled placeholders, the anti-slop rules survive, every manifest node exists on disk), the article-contract mirror (hashing, slug, sections, schema drift), the skill package (the resolver routes only to sub-skills that exist), the durable article pipeline (adapter lanes, the feed and websearch research contexts, the editorial gate with its respin pass, idempotent publish and replay, preview and approve), and the compose wiring via `docker compose config` (the real parser: the service set with no config-plane service, `site` the only public port, `generate` a resident watcher, the db and media on persistent bind mounts). No images are built and no GPU is needed.
 
@@ -307,8 +308,9 @@ run.sh                 the no-dependency stack runner (bash + docker): start/up/
 Makefile               optional `make` mirror of run.sh, plus the python lane (install/test/lint)
 nginx/site.conf        the public static-site server (root redirects to /latest/)
 functions/             the Cloudflare Pages Function for article reactions (like/dislike + D1)
-automation/            auto-batch.sh (one unattended batch) + supervisor/ (the 24/7 serve loop + REQUIREMENTS.md)
-                       + scheduler/ (standalone timed-prompt runner, contract-isolated, wired to nothing yet)
+automation/            pipeline/ (the durable article pipeline + daily-edition batch, CONTRACT.md)
+                       + executor/ (the schedule executor compose service, CONTRACT.md)
+                       + supervisor/ (the 24/7 serve loop + REQUIREMENTS.md)
                        + pipeline/ (durable article pipeline on DBOS: stateless api/cli steps, feed titulars +
                          websearch research fetched by code, editorial gate with respin, idempotent publish,
                          preview/approve modes, events console)

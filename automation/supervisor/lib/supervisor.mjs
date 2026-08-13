@@ -1,13 +1,11 @@
-// The serve loop (automation/supervisor/REQUIREMENTS.md): one resident
-// process that keeps the docker stack, the Telegram bridge, and the active
-// agent alive 24/7, and walks the agent fallback chain when the active one
-// breaks. All commands, patterns, and intervals come from the config file;
-// this module owns only the wiring.
+// The serve loop (automation/supervisor/REQUIREMENTS.md): one resident host
+// process that keeps the docker stack and the Telegram bridge alive 24/7. The
+// bridge answers through the ONE adapter named in the config; scheduled edition
+// batches are the executor compose service's job, not this loop's. All commands
+// and intervals come from the config file; this module owns only the wiring.
 
-import { appendFileSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs'
+import { appendFileSync, mkdirSync } from 'node:fs'
 import { dirname, isAbsolute, resolve } from 'node:path'
-import { classify, compilePatterns } from './classify.mjs'
-import { Chain } from './chain.mjs'
 import {
   acquireLock, findOwnerChatId, parseEnvFile, releaseLock, runCommand, startChild, telegramNotify,
 } from './procs.mjs'
@@ -23,7 +21,6 @@ export function resolveConfig(raw, baseDir) {
   cfg.bridge.envFile = resolve(cfg.bridge.dir, raw.bridge.envFile ?? '.env')
   cfg.logFile = abs(raw.logFile ?? '../logs/serve.log')
   cfg.lockFile = abs(raw.lockFile ?? '../logs/.serve.lock')
-  cfg.stateFile = abs(raw.stateFile ?? '../logs/.serve-state.json')
   return cfg
 }
 
@@ -50,8 +47,6 @@ export class Supervisor {
     this.cfg = config
     this.now = now
     this.fetchImpl = fetchImpl
-    this.patterns = compilePatterns(config.patterns)
-    this.chain = new Chain(config.chain, config, now)
     this.log = log ?? ((line) => {
       const stamped = `${new Date(this.now()).toISOString()} ${line}`
       console.log(stamped)
@@ -59,7 +54,6 @@ export class Supervisor {
     })
     this.bridge = null
     this.stopping = false
-    this.lastActivity = 0
     this.busy = new Set() // reentrancy guards per tick kind
     this.timers = []
     this.bridgeBudget = new Budget(config.restartBudget.max, config.restartBudget.windowMs, now)
@@ -70,17 +64,16 @@ export class Supervisor {
   async start() {
     mkdirSync(dirname(this.cfg.logFile), { recursive: true })
     if (!acquireLock(this.cfg.lockFile)) throw new Error(`another supervisor holds ${this.cfg.lockFile}`)
-    this.#restoreState()
-    this.log(`serve: up, chain=[${this.cfg.chain.map((e) => e.name).join(' -> ')}], active=${this.chain.active?.name ?? 'none'}`)
+    this.log(`serve: up, adapter=${this.cfg.bridge.adapter}`)
     await this.#dockerTick()
     await this.#exclusive(() => this.#startBridge())
-    const every = (ms, kind, fn) => {
-      const t = setInterval(() => this.#guarded(kind, fn), ms)
-      this.timers.push(t)
-    }
-    every(this.cfg.intervals.dockerCheckMs, 'docker', () => this.#dockerTick())
-    every(this.cfg.intervals.activeCanaryMs, 'canary', () => this.#canaryTick())
-    every(this.cfg.intervals.promotionProbeMs, 'promotion', () => this.#promotionTick())
+    const t = setInterval(() => this.#guarded('docker', async () => {
+      await this.#dockerTick()
+      // Reconcile: a bridge that stayed down (budget hold) retries once the
+      // window has rolled over.
+      if (this.bridge === null) await this.#exclusive(() => this.#startBridge())
+    }), this.cfg.intervals.dockerCheckMs)
+    this.timers.push(t)
   }
 
   async stop() {
@@ -104,9 +97,8 @@ export class Supervisor {
     }
   }
 
-  // Every bridge stop/start goes through here. Ticks run under different
-  // #guarded keys, so without this two of them could race the bridge into two
-  // live children.
+  // Every bridge stop/start goes through here so an exit event and a reconcile
+  // tick can never race the bridge into two live children.
   #exclusive(fn) {
     const run = this.#serial.then(fn, fn)
     this.#serial = run.catch(() => {})
@@ -139,160 +131,45 @@ export class Supervisor {
   // ---- bridge -------------------------------------------------------------
 
   async #startBridge() {
-    if (this.bridge !== null) return // idempotent: concurrent exit processors may both ask
-    const entry = this.chain.active
-    if (entry === null) {
-      await this.#alertOnce('chain', 'every agent in the chain is down or cooling; the bot is offline until one heals')
+    if (this.bridge !== null || this.stopping) return // idempotent
+    if (!this.bridgeBudget.hit()) {
+      await this.#alertOnce('bridge', 'bridge keeps dying; restart budget spent, holding until the window rolls over')
       return
     }
-    this.alerted.delete('chain')
-    this.log(`bridge: starting with agent=${entry.name} adapter=${entry.adapter}`)
-    // The handle-identity check makes an intentional stop (swap, shutdown)
-    // silent: only the CURRENT bridge dying unexpectedly reaches onBridgeExit.
+    this.log(`bridge: starting with adapter=${this.cfg.bridge.adapter}`)
+    // The handle-identity check makes an intentional stop (shutdown) silent:
+    // only the CURRENT bridge dying unexpectedly reaches onBridgeExit.
     const handle = startChild(this.cfg.bridge.startCmd, {
       cwd: this.cfg.bridge.dir,
-      graceMs: this.cfg.swap.graceMs,
-      env: { ...process.env, ...this.#cascadeEnv(), AGENT_ADAPTER: entry.adapter, AGENT_CWD: this.cfg.repoRoot },
+      graceMs: this.cfg.bridge.graceMs ?? 10_000,
+      env: { ...process.env, ...this.#cascadeEnv(), AGENT_ADAPTER: this.cfg.bridge.adapter, AGENT_CWD: this.cfg.repoRoot },
       onLine: () => {
-        this.lastActivity = this.now()
         this.alerted.delete('bridge')
         this.alerted.delete('bridge-bin')
       },
       onExit: (exit) => {
         if (this.stopping || this.bridge !== handle) return
         this.bridge = null
-        // Every exit is processed, never skip-guarded: a dropped exit event is
-        // a dead bot until the next reconcile tick. Bridge mutations inside
-        // stay safe through #exclusive plus the idempotent #startBridge.
-        void this.#onBridgeExit(entry, exit).catch((err) => this.log(`serve: bridge-exit error: ${err?.message ?? err}`))
+        void this.#onBridgeExit(exit).catch((err) => this.log(`serve: bridge-exit error: ${err?.message ?? err}`))
       },
     })
     this.bridge = handle
   }
 
-  async #onBridgeExit(entry, exit) {
+  async #onBridgeExit(exit) {
     if (exit.spawnError !== undefined) {
       await this.#alertOnce('bridge-bin', `bridge cannot start (${exit.spawnError.code ?? exit.spawnError.message}); check bridge.dir/startCmd in the config`)
       return
     }
-    const verdict = classify(exit.recentOutput, this.patterns)
-    this.log(`bridge: exited (code ${exit.code}) class=${verdict.cls} evidence="${verdict.evidence}"`)
-
-    if (verdict.cls === 'UNSUPPORTED') {
-      // The bridge itself refused the adapter; no canary needed.
-      await this.#handleAgentFailure(entry, verdict)
-      return
-    }
-    // Ambiguous: the exit may be the bridge's own problem (telegram token,
-    // network) or the agent's. The canary decides before anyone is demoted.
-    const canary = await this.#runCanary(entry)
-    if (canary.ok) {
-      if (!this.bridgeBudget.hit()) {
-        await this.#alertOnce('bridge', 'bridge keeps dying with a healthy agent; restart budget spent, holding')
-        return
-      }
-      this.alerted.delete('bridge')
-      await this.#exclusive(() => this.#startBridge())
-      return
-    }
-    await this.#handleAgentFailure(entry, canary.verdict)
-  }
-
-  // ---- agent canaries and the chain ---------------------------------------
-
-  async #runCanary(entry) {
-    const cmd = entry.canaryCmd.map((a) => a.replace('{prompt}', this.cfg.canaryPrompt))
-    const res = await runCommand(cmd, { cwd: this.cfg.repoRoot, timeoutMs: this.cfg.canary.timeoutMs })
-    if (res.spawnError !== undefined) {
-      return { ok: false, verdict: { cls: 'UNSUPPORTED', evidence: `spawn: ${res.spawnError.code ?? res.spawnError.message}` } }
-    }
-    if (res.timedOut) return { ok: false, verdict: { cls: 'UNKNOWN', evidence: 'canary timed out' } }
-    const output = res.stdout + '\n' + res.stderr
-    if (res.code === 0) {
-      const expect = this.cfg.canary.expect
-      if (expect === undefined || output.includes(expect)) return { ok: true }
-      return { ok: false, verdict: { cls: 'UNKNOWN', evidence: `canary exit 0 without "${expect}"` } }
-    }
-    return { ok: false, verdict: classify(output, this.patterns) }
-  }
-
-  async #canaryTick() {
-    const entry = this.chain.active
-    if (entry === null) {
-      await this.#guarded('reconnect', () => this.#reconnectDownChain())
-      return
-    }
-    const res = await this.#runCanary(entry)
-    if (res.ok) {
-      this.chain.recordSuccess(entry.name)
-      return
-    }
-    this.log(`canary: ${entry.name} failed class=${res.verdict.cls} evidence="${res.verdict.evidence}"`)
-    await this.#handleAgentFailure(entry, res.verdict)
-  }
-
-  async #handleAgentFailure(entry, verdict) {
-    const move = this.chain.recordFailure(entry.name, verdict.cls)
-    this.#persistState()
-    if (!move.demoted) return
-    if (move.to === null) {
-      await this.#exclusive(() => this.#stopBridge())
-      await this.#alertOnce('chain', `every agent is down (${entry.name} fell last, ${verdict.cls}); the bot is offline until one heals`)
-      return
-    }
-    this.log(`chain: ${move.from} -> ${move.to.name} (${verdict.cls}: ${verdict.evidence})`)
-    await this.#swapTo(move.to, `${move.from} is unavailable (${verdict.cls.toLowerCase()})`)
-  }
-
-  async #promotionTick() {
-    if (this.chain.active === null) {
-      await this.#guarded('reconnect', () => this.#reconnectDownChain())
-      return
-    }
-    if (this.bridge === null) {
-      await this.#exclusive(() => this.#startBridge())
-      return
-    }
-    for (const candidate of this.chain.promotionCandidates()) {
-      const res = await this.#runCanary(candidate)
-      if (!res.ok) continue
-      // Only swap at a quiet moment, never under a running conversation.
-      if (this.now() - this.lastActivity < this.cfg.swap.quietMs) return
-      this.chain.promote(candidate.name)
-      this.#persistState()
-      this.log(`chain: promoted back to ${candidate.name}`)
-      await this.#swapTo(candidate, `${candidate.name} is healthy again`)
-      return
-    }
-  }
-
-  // When the whole chain was down, cooldowns expire silently; probe the
-  // priority order and revive the first agent that answers.
-  async #reconnectDownChain() {
-    for (const entry of this.cfg.chain) {
-      const res = await this.#runCanary(entry)
-      if (!res.ok) continue
-      if (!this.chain.revive(entry.name)) continue
-      this.#persistState()
-      this.log(`chain: revived on ${entry.name}`)
-      await this.#swapTo(entry, `${entry.name} is back`)
-      return
-    }
+    const evidence = exit.recentOutput.trim().split('\n').at(-1)?.slice(0, 200) ?? ''
+    this.log(`bridge: exited (code ${exit.code}) last="${evidence}"`)
+    await this.#exclusive(() => this.#startBridge())
   }
 
   async #stopBridge() {
     const old = this.bridge
     this.bridge = null // detach first so onExit sees a stale handle and stays silent
     if (old !== null) await old.stop()
-  }
-
-  async #swapTo(entry, reason) {
-    await this.#exclusive(async () => {
-      await this.#stopBridge()
-      await this.#startBridge()
-    })
-    // Deliberately not awaited: the swap must never wait on Telegram.
-    void this.#notifyOwner(`reconnected: ${reason}, now answering through ${entry.name}. A piece that was mid-walk resumes from its ledger; just say continue.`)
   }
 
   // ---- env cascade ----------------------------------------------------------
@@ -320,7 +197,7 @@ export class Supervisor {
     return out
   }
 
-  // ---- owner notices and state --------------------------------------------
+  // ---- owner notices --------------------------------------------------------
 
   async #alertOnce(key, text) {
     if (this.alerted.has(key)) return
@@ -337,24 +214,5 @@ export class Supervisor {
       ?? (Number.isInteger(ownerFromEnv) && ownerFromEnv > 0 ? ownerFromEnv : undefined)
     if (token === undefined || chatId === undefined) return
     await telegramNotify(token, chatId, text, this.fetchImpl)
-  }
-
-  // Temp-file + rename so a crash mid-write can never leave a truncated state
-  // file (restore treats unparseable state as first boot, silently dropping every
-  // cooldown and the active-agent pointer).
-  #persistState() {
-    try {
-      const tmp = `${this.cfg.stateFile}.tmp`
-      writeFileSync(tmp, JSON.stringify(this.chain.state(), null, 2))
-      renameSync(tmp, this.cfg.stateFile)
-    } catch (err) {
-      this.log(`serve: cannot persist state: ${err.message}`)
-    }
-  }
-
-  #restoreState() {
-    try {
-      this.chain.restore(JSON.parse(readFileSync(this.cfg.stateFile, 'utf8')))
-    } catch { /* first boot */ }
   }
 }

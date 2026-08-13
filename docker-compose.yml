@@ -215,6 +215,36 @@ services:
       - "${SITE_PORT:-8123}:80"
     networks: [censurado]
 
+  # --- executor: the schedule executor, the newsroom's clock ---------------------
+  # Polls the backend's /schedules registry each minute and fires due edition
+  # batches through automation/pipeline/run.py, one at a time. It runs whenever
+  # docker runs and stops with it; minutes missed while it is down are skipped,
+  # never replayed (contract: automation/executor/CONTRACT.md). network_mode host
+  # because the pipeline config's endpoints are host loopback (publish :8082,
+  # llama.cpp :8080, SearXNG :8888, ComfyUI :8188) and llama.cpp binds 127.0.0.1
+  # only, which a bridge network cannot reach. The repo is bind-mounted so code is
+  # live; the image only carries the python deps + the websearch CLI. Runs as the
+  # host user so the pipeline's runs/ artifacts stay owned by the operator, and
+  # mounts /etc/localtime so schedule times mean host wall clock.
+  executor:
+    build:
+      context: .
+      dockerfile: automation/executor/Dockerfile
+    image: censurado-executor:local
+    container_name: censurado-executor
+    restart: unless-stopped
+    depends_on: [publish]
+    network_mode: host
+    user: "${EXECUTOR_UID:-1000}:${EXECUTOR_GID:-1000}"
+    environment:
+      HOME: /tmp
+      NEWSROOM_OPERATOR_TOKEN: ${NEWSROOM_OPERATOR_TOKEN:-}
+      WEBSEARCH_SEARXNG_URL: ${WEBSEARCH_SEARXNG_URL:-http://127.0.0.1:8888}
+    volumes:
+      - .:/newsroom
+      - /etc/localtime:/etc/localtime:ro
+    working_dir: /newsroom
+
   # There is no Telegram service: the bot lane is the telegram-bot-skill sibling checkout,
   # run on the HOST by the serve loop (`./run.sh serve`, automation/supervisor/), because
   # the agent CLIs and their auth live on the host. The old in-container tg-bridge retired

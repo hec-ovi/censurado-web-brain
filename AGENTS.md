@@ -228,7 +228,7 @@ context: `../comfyui-strix-docker/`.
 - `deploy/deploy-cdn.sh` + `deploy/CACHING.md` the Cloudflare Pages push + cache policy.
 - `functions/` the Cloudflare Pages Function for article reactions (like/dislike + D1).
 - `tests/` the local suite (CLI, sweeps, prompt drift, contracts, compose wiring).
-- `automation/` `auto-batch.sh` (one unattended batch) + `supervisor/` (the 24/7 serve loop: docker + the telegram-bot-skill bridge + the agent fallback chain; see its REQUIREMENTS.md) + `pipeline/` (the durable article pipeline: DBOS workflow, stateless `api`/`cli` adapter steps, feed titulars and websearch research fetched by code into the prompts, editorial gate with a bounded respin, idempotent publish, preview/approve modes, events console; contract in `automation/pipeline/CONTRACT.md`).
+- `automation/` `pipeline/` (the durable article pipeline: DBOS workflow, stateless `api`/`cli` adapter steps, feed titulars and websearch research fetched by code into the prompts, editorial gate with a bounded respin, idempotent publish, preview/approve modes, daily-edition batch, events console; contract in `automation/pipeline/CONTRACT.md`) + `executor/` (the schedule executor compose service: fires edition batches from the backend's schedule registry, managed in the panel's Automation tab; contract in `automation/executor/CONTRACT.md`) + `supervisor/` (the 24/7 serve loop: docker stack + the telegram-bot-skill bridge; see its REQUIREMENTS.md).
 
 **Data + API (`../censurado-web-backend`)**
 - Publish + read API and media store: `internal/publish/`, `cmd/censurado/publish/`

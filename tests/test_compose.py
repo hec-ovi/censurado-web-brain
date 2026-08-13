@@ -58,11 +58,29 @@ def test_default_service_set(tmp_path):
     # legacy admin (:8081) and console (:8083) surfaces are gone; the operator panel is
     # folded INTO publish (Go go:embed) and the brain is a host-run CLI now.
     assert set(cfg["services"]) == {
-        "publish", "site", "generate", "init-perms",
+        "publish", "site", "generate", "init-perms", "executor",
     }
     assert "comfyui" not in cfg["services"], "comfyui is profile-gated (opt-in), not in a default up"
     assert "panel" not in cfg["services"], "the panel is folded into publish, not a separate service"
     assert "brain" not in cfg["services"], "the brain is a host-run CLI now, not a service"
+
+
+def test_executor_runs_the_schedules_beside_the_stack(tmp_path):
+    # The schedule executor fires the newsroom's edition batches (see
+    # automation/executor/CONTRACT.md). It starts with the stack (so "docker up"
+    # means "the clock runs") and rides the HOST network: the pipeline config's
+    # endpoints are host loopback and llama.cpp binds 127.0.0.1 only, which a
+    # bridge network cannot reach.
+    executor = _config(tmp_path)["services"]["executor"]
+    assert executor["network_mode"] == "host"
+    assert "ports" not in executor, "the executor exposes nothing"
+    assert executor.get("depends_on", {}).get("publish"), "the executor waits on the schedule registry"
+    # The repo is bind-mounted (code live, artifacts land in the host tree) and
+    # the local time is the host's, so schedule times mean host wall clock.
+    sources = [v.get("source") for v in executor["volumes"]]
+    assert "/etc/localtime" in sources
+    env = executor["environment"]
+    assert "NEWSROOM_OPERATOR_TOKEN" in env, "the executor authenticates with the operator token"
 
 
 def test_comfyui_is_opt_in_behind_the_comfyui_profile(tmp_path):
@@ -228,6 +246,8 @@ def test_single_shared_network(tmp_path):
     for name, svc in cfg["services"].items():
         if name == "init-perms":
             continue  # the perms one-shot deliberately owns no network (network_mode: none)
+        if name == "executor":
+            continue  # the executor rides the HOST network (loopback-bound llama.cpp)
         assert "censurado" in svc["networks"], f"{name} is off the shared network"
 
 

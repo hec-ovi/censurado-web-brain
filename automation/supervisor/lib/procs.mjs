@@ -96,8 +96,8 @@ export function startChild(cmd, { cwd, env, graceMs = 10_000, onLine, onExit } =
   }
 }
 
-// Single instance: a pid lockfile with stale-pid takeover, same job as the
-// flock in auto-batch.sh but portable to a long-lived node process.
+// Single instance: a pid lockfile with stale-pid takeover, portable to a
+// long-lived node process (no flock dependency).
 export function acquireLock(path) {
   mkdirSync(dirname(path), { recursive: true })
   try {
