@@ -133,7 +133,10 @@ class ContextFetcher:
         urls = []
         if opts.get("urls_from"):
             picked = outputs.get(opts["urls_from"])
-            chosen = json.loads(picked).get("read_urls") if picked else None
+            try:
+                chosen = json.loads(picked).get("read_urls") if picked else None
+            except (json.JSONDecodeError, AttributeError):
+                chosen = None    # read_urls is an enhancement; a malformed pick drops to search-only
             if isinstance(chosen, list):
                 urls = [u for u in chosen
                         if isinstance(u, str) and u.startswith(("http://", "https://"))]
