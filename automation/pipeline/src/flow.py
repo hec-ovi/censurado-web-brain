@@ -34,8 +34,8 @@ def parse_json_output(raw: str) -> dict:
 
 
 @DBOS.step(retries_allowed=True, max_attempts=3, interval_seconds=1.0, backoff_rate=2.0)
-def fetch_context(cfg: dict, node: dict, inputs: dict) -> dict:
-    return ContextFetcher(cfg["backend"]).resolve(node["context"], inputs)
+def fetch_context(cfg: dict, node: dict, inputs: dict, outputs: dict) -> dict:
+    return ContextFetcher(cfg).resolve(node["context"], inputs, outputs)
 
 
 @DBOS.step(retries_allowed=True, max_attempts=3, interval_seconds=1.0, backoff_rate=2.0)
@@ -58,7 +58,7 @@ def article_run(cfg: dict, inputs: dict) -> dict:
     context = dict(inputs)
     piece = None
     for node in cfg["nodes"]:
-        extra = fetch_context(cfg, node, inputs) if node.get("context") else {}
+        extra = fetch_context(cfg, node, inputs, context) if node.get("context") else {}
         prompt = render(Path(node["prompt_path"]).read_text(), {**context, **extra})
         raw = run_node(cfg, node, prompt)
         (art_dir / f"{node['name']}.txt").write_text(raw)
@@ -76,5 +76,11 @@ def article_run(cfg: dict, inputs: dict) -> dict:
                 return {"status": "rejected", "run_id": run_id,
                         "notes": out.get("notes", "") if isinstance(out, dict) else raw[:200],
                         "artifacts": str(art_dir)}
+    if inputs.get("mode", "preview") == "preview":
+        (art_dir / "piece.json").write_text(json.dumps(
+            {"piece": piece, "inputs": {k: inputs[k] for k in ("topic", "author", "section")}},
+            ensure_ascii=False, indent=1))
+        return {"status": "previewed", "run_id": run_id, "artifacts": str(art_dir),
+                "piece": piece}
     pub = publish_piece(cfg, piece, inputs, run_id)
     return {"status": "published", "run_id": run_id, "artifacts": str(art_dir), **pub}

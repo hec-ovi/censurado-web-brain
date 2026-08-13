@@ -69,6 +69,12 @@ class PipelineConfig:
             elif not cli.get("stdin") and not any("{prompt}" in a for a in cmd):
                 v.append("adapters.cli.cmd: no element carries {prompt} (or set adapters.cli.stdin)")
 
+        websearch = raw.get("websearch")
+        if websearch is not None:
+            ws_cmd = websearch.get("cmd")
+            if ws_cmd is not None and (not isinstance(ws_cmd, list) or not ws_cmd):
+                v.append("websearch.cmd: must be a non-empty argv list")
+
         nodes = raw.get("nodes")
         if not isinstance(nodes, list) or not nodes:
             v.append("nodes: required non-empty list")
@@ -114,7 +120,7 @@ class PipelineConfig:
                     if not re.match(r"^[a-z0-9_-]+$", ck):
                         v.append(f"{ctag}: placeholder name must be [a-z0-9_-]+")
                     if not isinstance(cs, dict) or len(cs) != 1:
-                        v.append(f"{ctag}: must be exactly one of file|persona|editorial")
+                        v.append(f"{ctag}: must be exactly one of file|persona|editorial|feeds|websearch")
                         continue
                     (kind, val), = cs.items()
                     if kind == "file":
@@ -129,6 +135,15 @@ class PipelineConfig:
                     elif kind == "editorial":
                         if not isinstance(val, str) or not val:
                             v.append(f"{ctag}.editorial: language code required")
+                    elif kind == "feeds":
+                        if not isinstance(val, dict):
+                            v.append(f"{ctag}.feeds: must be an object (may be empty)")
+                    elif kind == "websearch":
+                        if not isinstance(val, dict) or not isinstance(val.get("queries_from"), str):
+                            v.append(f"{ctag}.websearch: queries_from (a prior node name) is required")
+                        elif val["queries_from"] == name or val["queries_from"] not in names:
+                            v.append(f"{ctag}.websearch.queries_from: "
+                                     f"'{val['queries_from']}' is not an earlier node")
                     else:
                         v.append(f"{ctag}: unknown source '{kind}'")
         if nodes and drafts != 1:

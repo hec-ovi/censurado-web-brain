@@ -1,23 +1,27 @@
 # Article pipeline contract
 
-contractVersion: 1.2.0
+contractVersion: 1.3.0
 
 ## Purpose
 
-Run one article end to end as a durable DBOS workflow: each editorial node is one stateless model call through a configured adapter (`api` or `cli`), a gate node can stop the run, and the approved piece publishes exactly once to the backend.
+Run one article end to end as a durable DBOS workflow: each editorial node is one stateless model call through a configured adapter (`api` or `cli`), research context (fresh titulars from the source registry's feeds, web search + fenced page reads) is fetched by code and inlined into the prompts, a gate node can stop the run, and the approved piece publishes exactly once to the backend.
 
 ## Inputs
 
 - **Config file** (`--config`, required): schema [schema/pipeline-config.schema.json](schema/pipeline-config.schema.json). Cross-field rules the loader enforces fail-closed (exit 2, every violation listed): node names unique, exactly one node with role `draft`, every node's adapter present under `adapters`, every prompt file exists, the cli `cmd` carries a `{prompt}` element. Relative paths (`run_dir`, prompts) resolve against the config file's directory.
-- **Invocation**: `--topic`, `--author`, `--section` (required), `--run-id` (optional; defaults to a fresh id). The run id is the durability key.
+- **Invocation**: `--topic`, `--author`, `--section` (required), `--run-id` (optional; defaults to a fresh id), `--mode preview|auto` (default `preview`). The run id is the durability key. `preview` walks every node and gate but holds the piece for approval; `auto` publishes as soon as the gate passes.
+- **Approve**: `run.py approve --config <c> --run-id <r>` publishes a previewed run's held piece (from its `piece.json` artifact), idempotency-keyed by the same run id.
+- **Events console**: `run.py events --config <c> [-n N] [--follow]` prints the run/approve/failure event stream.
 - **Prompt files**: markdown with `{topic}`, `{author}`, `{section}`, `{<node-name>}` (a prior node's parsed output), and any `{<context-key>}` placeholders; unknown braces pass through untouched.
-- **Node context** (optional, per node): `context` maps placeholder names to sources fetched by a durable step and inlined before rendering: `{"file": "<path>"}` (file content, e.g. a SKILL.md), `{"persona": true}` (the run author's card from the backend), `{"editorial": "<lang>"}` (the backend editorial lexicon). This is how the api lane reads the house recipe without a CLI.
+- **Node context** (optional, per node): `context` maps placeholder names to sources fetched by a durable step and inlined before rendering: `{"file": "<path>"}` (file content, e.g. a SKILL.md), `{"persona": true}` (the run author's card from the backend), `{"editorial": "<lang>"}` (the backend editorial lexicon), `{"feeds": {...}}` (fresh titulars from the run author's registered sources: each source's registry `feed_urls` is fetched and windowed by `hours`, and `site_search` sources are listed for the search lane), `{"websearch": {"queries_from": "<node>", ...}}` (run the searches an earlier json node proposed as `{"queries": [...]}` through the websearch CLI, dedup by URL, and inline the results plus the top pages read as fenced untrusted content). This is how the api lane reads the house recipe and the live web without a CLI agent.
+- **Websearch config** (top-level `websearch`, optional): `cmd` argv of the websearch CLI (default `["websearch"]`) and `timeout_s`. Only needed when a node declares a websearch context.
 - **Secrets via env**: `backend.token_env` names the env var holding the operator token; `adapters.api.api_key_env` (optional) names the API key var.
 
 ## Outputs
 
-- One result JSON on stdout, schema [schema/run-result.schema.json](schema/run-result.schema.json): always `status` (`published` | `rejected`), `run_id`, `artifacts`; plus `slug`, `article_id`, `permalink` when published; plus `notes` when rejected.
-- Per-node artifacts under `<run_dir>/<run_id>/`: `<node>.txt` (raw adapter output) and `<node>.json` (parsed).
+- One result JSON on stdout, schema [schema/run-result.schema.json](schema/run-result.schema.json): always `status` (`published` | `rejected` | `previewed`), `run_id`, `artifacts`; plus `slug`, `article_id`, `permalink` when published; plus `notes` when rejected; plus `piece` (what publish would have posted) when previewed.
+- Per-node artifacts under `<run_dir>/<run_id>/`: `<node>.txt` (raw adapter output) and `<node>.json` (parsed). A previewed run also writes `piece.json` (the held piece plus its inputs), which is what `approve` publishes.
+- One event line per invocation appended to `<run_dir>/events.jsonl`, schema [schema/event.schema.json](schema/event.schema.json): `run-start`, then `run` or `approve` with its status (`published` | `rejected` | `previewed` | `failed`, failures carrying `exit_code` and the first 300 chars of the error). The `events` command renders this file; the stream is append-only.
 - The DBOS system db at `<run_dir>/.dbos.sqlite` (the durable state; deleting it forgets run history).
 
 ## Errors (closed set, as exit codes of `run.py`)
@@ -27,17 +31,20 @@ Run one article end to end as a durable DBOS workflow: each editorial node is on
 - `4` ADAPTER_FAILED: a node failed after 3 attempts
 - `5` PUBLISH_FAILED: the backend refused after 3 attempts
 - `1` any other failure
-- `0` published
+- `0` published, or previewed (mode `preview`)
+
+`approve` uses the same set: `2` when the run has no previewed piece, `5` when the backend refuses, `0` published. `events` is `0` (or `2` on a bad config).
 
 ## Dependencies
 
-- The backend publish API (`POST /articles`, `GET /articles/{slug}`) with an operator token; `Idempotency-Key` semantics are the backend's.
+- The backend publish API (`POST /articles`, `GET /articles/{slug}`) with an operator token; `Idempotency-Key` semantics are the backend's. The feeds context additionally reads `GET /authors/{handle}/sources` and `GET /sources` (the registry's `feed_urls`/`feed_type` per source).
 - The `api` adapter's endpoint: any OpenAI-compatible `/chat/completions`.
 - The `cli` adapter's binary: argv in (with `{prompt}` substituted, or the whole prompt on stdin when `stdin` is set), article text on stdout, exit code out.
+- The websearch CLI (websearch-skill) for the websearch context: `web-search`/`web-fetch` with `--json`, one `Envelope {ok, data, error}` per call, fenced page content.
 
 ## Invariants
 
-- One publish per run id: the workflow id is both the DBOS durability key and the `Idempotency-Key`, so step retries, crashes, and re-invocations with the same run id never create a second article.
+- One publish per run id: the workflow id is both the DBOS durability key and the `Idempotency-Key`, so step retries, crashes, re-invocations, and repeated `approve` calls with the same run id never create a second article.
 - Re-running a finished run id replays the stored result without touching any adapter or the backend.
 - Steps are stateless: everything a node needs is in its rendered prompt; everything it produces is its artifact.
 - The pipeline never deploys. Going live (the CDN push) stays a human action outside this box.

@@ -1,30 +1,53 @@
 #!/usr/bin/env python3
-"""Run one durable article pipeline. Contract: CONTRACT.md; result JSON on stdout."""
+"""Run one durable article pipeline. Contract: CONTRACT.md; result JSON on stdout.
+
+Three invocations:
+  run.py --config C --topic T --author A --section S [--run-id R] [--mode preview|auto]
+  run.py approve --config C --run-id R      publish a previewed run's piece
+  run.py events  --config C [-n N] [--follow]   console of run events and failures
+"""
 import argparse
 import json
 import sys
+import time
 import uuid
+from datetime import datetime, timezone
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from src.config import PipelineConfig            # noqa: E402
-from src.errors import ConfigError, PipelineError  # noqa: E402
+from src.errors import ConfigError, PipelineError, PublishError  # noqa: E402
 
 
-def main() -> int:
+def emit_event(run_dir: Path, event: dict) -> None:
+    event = {"ts": datetime.now(timezone.utc).isoformat(timespec="seconds"), **event}
+    with (run_dir / "events.jsonl").open("a") as f:
+        f.write(json.dumps(event, ensure_ascii=False) + "\n")
+
+
+def load_config(path: str) -> PipelineConfig | None:
+    try:
+        return PipelineConfig.load(path)
+    except ConfigError as e:
+        print(f"CONFIG_INVALID:\n{e}", file=sys.stderr)
+        return None
+
+
+def cmd_run(argv: list[str]) -> int:
     ap = argparse.ArgumentParser(description="Run one article through the durable pipeline")
     ap.add_argument("--config", required=True)
     ap.add_argument("--topic", required=True)
     ap.add_argument("--author", required=True)
     ap.add_argument("--section", required=True)
     ap.add_argument("--run-id", help="Durability key; reuse to resume/replay a run")
-    args = ap.parse_args()
+    ap.add_argument("--mode", choices=["preview", "auto"], default="preview",
+                    help="preview (default): walk and gate, return the piece for approval; "
+                         "auto: publish when the gate passes")
+    args = ap.parse_args(argv)
 
-    try:
-        cfg = PipelineConfig.load(args.config)
-    except ConfigError as e:
-        print(f"CONFIG_INVALID:\n{e}", file=sys.stderr)
+    cfg = load_config(args.config)
+    if cfg is None:
         return 2
 
     cfg.run_dir.mkdir(parents=True, exist_ok=True)
@@ -35,23 +58,126 @@ def main() -> int:
     DBOS.launch()
 
     run_id = args.run_id or "run-" + uuid.uuid4().hex[:12]
-    inputs = {"topic": args.topic, "author": args.author, "section": args.section}
+    inputs = {"topic": args.topic, "author": args.author, "section": args.section,
+              "mode": args.mode}
+    emit_event(cfg.run_dir, {"event": "run-start", "run_id": run_id, "mode": args.mode,
+                             "author": args.author, "section": args.section,
+                             "topic": args.topic})
     try:
         with SetWorkflowID(run_id):
             handle = DBOS.start_workflow(flow.article_run, cfg.data, inputs)
         result = handle.get_result()
     except Exception as e:
+        code = 1
+        detail = f"pipeline failed: {e}"
         for err in (e, e.__cause__):
             if isinstance(err, PipelineError):
-                print(f"{type(err).__name__}: {err}", file=sys.stderr)
-                return err.exit_code
-        print(f"pipeline failed: {e}", file=sys.stderr)
-        return 4 if "AdapterError" in str(e) or "MaxStepRetries" in type(e).__name__ else 1
+                code, detail = err.exit_code, f"{type(err).__name__}: {err}"
+                break
+        else:
+            if "AdapterError" in str(e) or "MaxStepRetries" in type(e).__name__:
+                code = 4
+        print(detail, file=sys.stderr)
+        emit_event(cfg.run_dir, {"event": "run", "run_id": run_id, "mode": args.mode,
+                                 "status": "failed", "exit_code": code, "error": detail[:300]})
+        return code
     finally:
         DBOS.destroy()
 
+    emit_event(cfg.run_dir, {"event": "run", "run_id": run_id, "mode": args.mode,
+                             "status": result["status"],
+                             **({"notes": result["notes"]} if result.get("notes") else {})})
     print(json.dumps(result, ensure_ascii=False))
-    return 0 if result["status"] == "published" else 3
+    return 0 if result["status"] in ("published", "previewed") else 3
+
+
+def cmd_approve(argv: list[str]) -> int:
+    ap = argparse.ArgumentParser(prog="run.py approve",
+                                 description="Publish the piece of a previewed run")
+    ap.add_argument("--config", required=True)
+    ap.add_argument("--run-id", required=True)
+    args = ap.parse_args(argv)
+
+    cfg = load_config(args.config)
+    if cfg is None:
+        return 2
+    piece_file = cfg.run_dir / args.run_id / "piece.json"
+    if not piece_file.is_file():
+        print(f"CONFIG_INVALID:\nno previewed piece at {piece_file} "
+              "(run the pipeline in preview mode first)", file=sys.stderr)
+        return 2
+
+    from src.publisher import Publisher
+    stored = json.loads(piece_file.read_text())
+    try:
+        pub = Publisher(cfg.data["backend"]).publish(
+            stored["piece"], stored["inputs"], idempotency_key=args.run_id)
+    except PublishError as e:
+        print(f"PublishError: {e}", file=sys.stderr)
+        emit_event(cfg.run_dir, {"event": "approve", "run_id": args.run_id,
+                                 "status": "failed", "exit_code": 5, "error": str(e)[:300]})
+        return 5
+    result = {"status": "published", "run_id": args.run_id,
+              "artifacts": str(piece_file.parent), **pub}
+    emit_event(cfg.run_dir, {"event": "approve", "run_id": args.run_id,
+                             "status": "published", "slug": pub.get("slug", "")})
+    print(json.dumps(result, ensure_ascii=False))
+    return 0
+
+
+def cmd_events(argv: list[str]) -> int:
+    ap = argparse.ArgumentParser(prog="run.py events",
+                                 description="Console of run events and failures")
+    ap.add_argument("--config", required=True)
+    ap.add_argument("-n", type=int, default=30, help="Lines of history to show (default 30)")
+    ap.add_argument("--follow", action="store_true", help="Keep printing new events")
+    args = ap.parse_args(argv)
+
+    cfg = load_config(args.config)
+    if cfg is None:
+        return 2
+    path = cfg.run_dir / "events.jsonl"
+
+    def show(line: str) -> None:
+        try:
+            e = json.loads(line)
+        except json.JSONDecodeError:
+            return
+        when = e.get("ts", "")[:19].replace("T", " ")
+        status = e.get("status", "")
+        mark = "FAIL" if status == "failed" else "ok  " if status else "... "
+        head = f"{when}  {mark} {e.get('event', ''):9s} {e.get('run_id', ''):22s}"
+        tail = " ".join(str(e[k]) for k in ("mode", "status", "author", "topic", "slug")
+                        if e.get(k))
+        if e.get("error"):
+            tail += f"  [{e['error']}]"
+        if e.get("notes"):
+            tail += f"  ({e['notes']})"
+        print(f"{head} {tail}")
+
+    lines = path.read_text().splitlines() if path.is_file() else []
+    for line in lines[-args.n:]:
+        show(line)
+    if not args.follow:
+        return 0
+    seen = len(lines)
+    try:
+        while True:
+            time.sleep(2)
+            lines = path.read_text().splitlines() if path.is_file() else []
+            for line in lines[seen:]:
+                show(line)
+            seen = len(lines)
+    except KeyboardInterrupt:
+        return 0
+
+
+def main() -> int:
+    if len(sys.argv) > 1 and sys.argv[1] == "approve":
+        return cmd_approve(sys.argv[2:])
+    if len(sys.argv) > 1 and sys.argv[1] == "events":
+        return cmd_events(sys.argv[2:])
+    return cmd_run(sys.argv[1:])
 
 
 if __name__ == "__main__":

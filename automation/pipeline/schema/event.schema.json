@@ -1,0 +1,21 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Pipeline event (one JSON line in <run_dir>/events.jsonl)",
+  "type": "object",
+  "required": ["ts", "event", "run_id"],
+  "additionalProperties": false,
+  "properties": {
+    "ts": { "type": "string", "description": "UTC ISO timestamp" },
+    "event": { "enum": ["run-start", "run", "approve"] },
+    "run_id": { "type": "string" },
+    "mode": { "enum": ["preview", "auto"] },
+    "topic": { "type": "string" },
+    "author": { "type": "string" },
+    "section": { "type": "string" },
+    "status": { "enum": ["published", "rejected", "previewed", "failed"] },
+    "notes": { "type": "string", "description": "Gate verdict note (rejected)" },
+    "slug": { "type": "string", "description": "Published slug (approve)" },
+    "exit_code": { "type": "integer", "description": "Failed only" },
+    "error": { "type": "string", "description": "Failed only, first 300 chars" }
+  }
+}

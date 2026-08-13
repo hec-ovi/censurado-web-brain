@@ -10,11 +10,21 @@
     },
     "cli": { "cmd": ["claude", "-p", "{prompt}"], "timeout_s": 3600 }
   },
+  "websearch": { "cmd": ["websearch"], "timeout_s": 180 },
   "nodes": [
-    { "name": "draft", "adapter": "api", "role": "draft", "output": "json", "prompt": "prompts/draft.md",
+    { "name": "queries", "adapter": "api", "output": "json", "prompt": "prompts/queries.md",
+      "context": { "persona": { "persona": true },
+                   "titulares": { "feeds": { "hours": 48, "max_per_source": 6 } } } },
+    { "name": "ledger", "adapter": "api", "output": "text", "prompt": "prompts/ledger.md",
+      "context": { "web": { "websearch": { "queries_from": "queries",
+                                           "max_results": 5, "fetch_top": 4 } } } },
+    { "name": "outline", "adapter": "api", "output": "text", "prompt": "prompts/outline.md" },
+    { "name": "draft", "adapter": "api", "output": "json", "prompt": "prompts/draft.md",
       "context": { "skill": { "file": "../../cli/skills/write-article/SKILL.md" },
                    "persona": { "persona": true },
                    "reglas": { "editorial": "es" } } },
-    { "name": "evaluate", "adapter": "api", "role": "gate", "output": "json", "prompt": "prompts/evaluate.md" }
+    { "name": "evaluate", "adapter": "api", "role": "gate", "output": "json", "prompt": "prompts/evaluate.md" },
+    { "name": "finalize", "adapter": "api", "role": "draft", "output": "json", "prompt": "prompts/finalize.md",
+      "context": { "reglas": { "editorial": "es" } } }
   ]
 }

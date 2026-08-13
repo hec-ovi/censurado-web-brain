@@ -2,18 +2,37 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "title": "Pipeline config",
   "type": "object",
-  "required": ["run_dir", "backend", "adapters", "nodes"],
+  "required": [
+    "run_dir",
+    "backend",
+    "adapters",
+    "nodes"
+  ],
   "additionalProperties": false,
   "properties": {
-    "run_dir": { "type": "string", "description": "Artifact + DBOS state dir; relative to the config file" },
+    "run_dir": {
+      "type": "string",
+      "description": "Artifact + DBOS state dir; relative to the config file"
+    },
     "backend": {
       "type": "object",
-      "required": ["base_url", "token_env"],
+      "required": [
+        "base_url",
+        "token_env"
+      ],
       "additionalProperties": false,
       "properties": {
-        "base_url": { "type": "string" },
-        "token_env": { "type": "string", "description": "Env var holding the operator token" },
-        "timeout_s": { "type": "number", "default": 60 }
+        "base_url": {
+          "type": "string"
+        },
+        "token_env": {
+          "type": "string",
+          "description": "Env var holding the operator token"
+        },
+        "timeout_s": {
+          "type": "number",
+          "default": 60
+        }
       }
     },
     "adapters": {
@@ -22,24 +41,56 @@
       "properties": {
         "api": {
           "type": "object",
-          "required": ["base_url", "model"],
+          "required": [
+            "base_url",
+            "model"
+          ],
           "additionalProperties": false,
           "properties": {
-            "base_url": { "type": "string", "description": "OpenAI-compatible base, e.g. http://127.0.0.1:8080/v1" },
-            "model": { "type": "string" },
-            "system": { "type": "string", "description": "Optional system message (model quirks live here, not in prompts)" },
-            "api_key_env": { "type": "string" },
-            "timeout_s": { "type": "number", "default": 300 }
+            "base_url": {
+              "type": "string",
+              "description": "OpenAI-compatible base, e.g. http://127.0.0.1:8080/v1"
+            },
+            "model": {
+              "type": "string"
+            },
+            "system": {
+              "type": "string",
+              "description": "Optional system message (model quirks live here, not in prompts)"
+            },
+            "api_key_env": {
+              "type": "string"
+            },
+            "timeout_s": {
+              "type": "number",
+              "default": 300
+            }
           }
         },
         "cli": {
           "type": "object",
-          "required": ["cmd"],
+          "required": [
+            "cmd"
+          ],
           "additionalProperties": false,
           "properties": {
-            "cmd": { "type": "array", "items": { "type": "string" }, "minItems": 1, "description": "Argv; each {prompt} occurrence is substituted" },
-            "stdin": { "type": "boolean", "default": false, "description": "Feed the prompt on stdin instead of substituting {prompt} (for REPL CLIs)" },
-            "timeout_s": { "type": "number", "default": 3600 }
+            "cmd": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "minItems": 1,
+              "description": "Argv; each {prompt} occurrence is substituted"
+            },
+            "stdin": {
+              "type": "boolean",
+              "default": false,
+              "description": "Feed the prompt on stdin instead of substituting {prompt} (for REPL CLIs)"
+            },
+            "timeout_s": {
+              "type": "number",
+              "default": 3600
+            }
           }
         }
       }
@@ -49,29 +100,135 @@
       "minItems": 1,
       "items": {
         "type": "object",
-        "required": ["name", "adapter", "prompt"],
+        "required": [
+          "name",
+          "adapter",
+          "prompt"
+        ],
         "additionalProperties": false,
         "properties": {
-          "name": { "type": "string", "pattern": "^[a-z0-9_-]+$" },
-          "adapter": { "enum": ["api", "cli"] },
-          "role": { "enum": ["draft", "gate", "plain"], "default": "plain" },
-          "output": { "enum": ["json", "text"], "default": "text" },
-          "prompt": { "type": "string", "description": "Prompt file path; relative to the config file" },
+          "name": {
+            "type": "string",
+            "pattern": "^[a-z0-9_-]+$"
+          },
+          "adapter": {
+            "enum": [
+              "api",
+              "cli"
+            ]
+          },
+          "role": {
+            "enum": [
+              "draft",
+              "gate",
+              "plain"
+            ],
+            "default": "plain"
+          },
+          "output": {
+            "enum": [
+              "json",
+              "text"
+            ],
+            "default": "text"
+          },
+          "prompt": {
+            "type": "string",
+            "description": "Prompt file path; relative to the config file"
+          },
           "context": {
             "type": "object",
             "description": "Placeholder name -> source, inlined into the prompt before rendering",
-            "propertyNames": { "pattern": "^[a-z0-9_-]+$" },
+            "propertyNames": {
+              "pattern": "^[a-z0-9_-]+$"
+            },
             "additionalProperties": {
               "type": "object",
               "minProperties": 1,
               "maxProperties": 1,
               "properties": {
-                "file": { "type": "string", "description": "File content (path relative to the config file), e.g. a SKILL.md" },
-                "persona": { "const": true, "description": "The run author's card from the backend (name, bio, style, who_i_am)" },
-                "editorial": { "type": "string", "description": "The backend editorial-text lexicon for this language code" }
+                "file": {
+                  "type": "string",
+                  "description": "File content (path relative to the config file), e.g. a SKILL.md"
+                },
+                "persona": {
+                  "const": true,
+                  "description": "The run author's card from the backend (name, bio, style, who_i_am)"
+                },
+                "editorial": {
+                  "type": "string",
+                  "description": "The backend editorial-text lexicon for this language code"
+                },
+                "feeds": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "description": "Fresh titulars from the run author's registered sources (registry feed_urls); site_search sources are listed for the search lane",
+                  "properties": {
+                    "hours": {
+                      "type": "number",
+                      "default": 48,
+                      "description": "Freshness window"
+                    },
+                    "max_per_source": {
+                      "type": "integer",
+                      "default": 6
+                    }
+                  }
+                },
+                "websearch": {
+                  "type": "object",
+                  "required": [
+                    "queries_from"
+                  ],
+                  "additionalProperties": false,
+                  "description": "Run the searches a prior json node proposed ({\"queries\": [...]}) and inline results plus fenced page reads",
+                  "properties": {
+                    "queries_from": {
+                      "type": "string",
+                      "description": "Name of the earlier node whose output carries the queries"
+                    },
+                    "max_results": {
+                      "type": "integer",
+                      "default": 5,
+                      "description": "Search results per query"
+                    },
+                    "fetch_top": {
+                      "type": "integer",
+                      "default": 4,
+                      "description": "Pages to read across all results"
+                    },
+                    "page_tokens": {
+                      "type": "integer",
+                      "default": 3000,
+                      "description": "Token budget per read page"
+                    }
+                  }
+                }
               }
             }
           }
+        }
+      }
+    },
+    "websearch": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "The websearch CLI the websearch context source runs (search + fenced page reads)",
+      "properties": {
+        "cmd": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "minItems": 1,
+          "default": [
+            "websearch"
+          ],
+          "description": "Argv of the websearch CLI"
+        },
+        "timeout_s": {
+          "type": "number",
+          "default": 180
         }
       }
     }
