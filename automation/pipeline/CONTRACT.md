@@ -1,6 +1,6 @@
 # Article pipeline contract
 
-contractVersion: 1.3.0
+contractVersion: 1.4.0
 
 ## Purpose
 
@@ -8,7 +8,7 @@ Run one article end to end as a durable DBOS workflow: each editorial node is on
 
 ## Inputs
 
-- **Config file** (`--config`, required): schema [schema/pipeline-config.schema.json](schema/pipeline-config.schema.json). Cross-field rules the loader enforces fail-closed (exit 2, every violation listed): node names unique, exactly one node with role `draft`, every node's adapter present under `adapters`, every prompt file exists (respin prompts included), the cli `cmd` carries a `{prompt}` element, `websearch.cmd` is a non-empty argv list, a websearch context's `queries_from`/`urls_from` and a respin's `target` name an earlier node, respin only on gate nodes. Relative paths (`run_dir`, prompts) resolve against the config file's directory.
+- **Config file** (`--config`, required): schema [schema/pipeline-config.schema.json](schema/pipeline-config.schema.json). `adapters` is a map of NAMED entries: `api` and `cli` imply their kind, and any other name (e.g. `openrouter`) declares `"kind": "api"|"cli"`, so several OpenAI-compatible endpoints can coexist and a node picks one by name. A node may also set `"model"` to override its api-kind adapter's default model, which is how gates run on a big remote model while drafts stay local. Cross-field rules the loader enforces fail-closed (exit 2, every violation listed): node names unique, exactly one node with role `draft`, every node's adapter present under `adapters`, adapter kinds valid (api needs `base_url`+`model`, cli a `cmd` argv carrying `{prompt}` or `stdin`), a node `model` only on an api-kind adapter, every prompt file exists (respin prompts included), `websearch.cmd` is a non-empty argv list, a websearch context's `queries_from`/`urls_from` and a respin's `target` name an earlier node, respin only on gate nodes. Relative paths (`run_dir`, prompts) resolve against the config file's directory.
 - **Invocation**: `--topic`, `--author`, `--section` (required), `--run-id` (optional; defaults to a fresh id), `--mode preview|auto` (default `preview`). The run id is the durability key. `preview` walks every node and gate but holds the piece for approval; `auto` publishes as soon as the gate passes.
 - **Approve**: `run.py approve --config <c> --run-id <r>` publishes a previewed run's held piece (from its `piece.json` artifact), idempotency-keyed by the same run id.
 - **Events console**: `run.py events --config <c> [-n N] [--follow]` prints the run/approve/failure event stream.

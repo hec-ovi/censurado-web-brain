@@ -56,18 +56,28 @@ class PipelineConfig:
         if not isinstance(adapters, dict):
             v.append("adapters: required object")
             adapters = {}
-        api = adapters.get("api")
-        if api is not None:
-            for k in ("base_url", "model"):
-                if not api.get(k):
-                    v.append(f"adapters.api.{k}: required")
-        cli = adapters.get("cli")
-        if cli is not None:
-            cmd = cli.get("cmd")
-            if not isinstance(cmd, list) or not cmd:
-                v.append("adapters.cli.cmd: required non-empty argv list")
-            elif not cli.get("stdin") and not any("{prompt}" in a for a in cmd):
-                v.append("adapters.cli.cmd: no element carries {prompt} (or set adapters.cli.stdin)")
+        # An adapter entry's KIND (api|cli) defaults to its name; extra entries
+        # (e.g. "openrouter") declare theirs, so several api endpoints can coexist.
+        kinds: dict[str, str] = {}
+        for aname, acfg in adapters.items():
+            if not isinstance(acfg, dict):
+                v.append(f"adapters.{aname}: must be an object")
+                continue
+            kind = acfg.get("kind", aname)
+            if kind not in ADAPTERS:
+                v.append(f"adapters.{aname}.kind: must be one of {sorted(ADAPTERS)}")
+                continue
+            kinds[aname] = kind
+            if kind == "api":
+                for k in ("base_url", "model"):
+                    if not acfg.get(k):
+                        v.append(f"adapters.{aname}.{k}: required")
+            else:
+                cmd = acfg.get("cmd")
+                if not isinstance(cmd, list) or not cmd:
+                    v.append(f"adapters.{aname}.cmd: required non-empty argv list")
+                elif not acfg.get("stdin") and not any("{prompt}" in a for a in cmd):
+                    v.append(f"adapters.{aname}.cmd: no element carries {{prompt}} (or set adapters.{aname}.stdin)")
 
         for block in ("websearch", "toolkit"):
             block_cfg = raw.get(block)
@@ -108,10 +118,14 @@ class PipelineConfig:
                 v.append(f"{tag}.name: duplicate '{name}'")
             else:
                 names.add(name)
-            if n.get("adapter") not in ADAPTERS:
-                v.append(f"{tag}.adapter: must be one of {sorted(ADAPTERS)}")
-            elif n["adapter"] not in adapters:
-                v.append(f"{tag}.adapter: '{n['adapter']}' is not configured under adapters")
+            if n.get("adapter") not in adapters:
+                v.append(f"{tag}.adapter: '{n.get('adapter')}' is not configured under adapters")
+            model = n.get("model")
+            if model is not None:
+                if not isinstance(model, str) or not model:
+                    v.append(f"{tag}.model: must be a non-empty string")
+                elif kinds.get(n.get("adapter")) == "cli":
+                    v.append(f"{tag}.model: only an api-kind adapter takes a model override")
             if n.setdefault("role", "plain") not in ROLES:
                 v.append(f"{tag}.role: must be one of {sorted(ROLES)}")
             if n.setdefault("output", "text") not in OUTPUTS:

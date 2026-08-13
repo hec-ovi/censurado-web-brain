@@ -1,342 +1,331 @@
 {
-  "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "title": "Pipeline config",
-  "type": "object",
-  "required": [
-    "run_dir",
-    "backend",
-    "adapters",
-    "nodes"
-  ],
-  "additionalProperties": false,
-  "properties": {
-    "run_dir": {
-      "type": "string",
-      "description": "Artifact + DBOS state dir; relative to the config file"
+ "$schema": "https://json-schema.org/draft/2020-12/schema",
+ "title": "Pipeline config",
+ "type": "object",
+ "required": [
+  "run_dir",
+  "backend",
+  "adapters",
+  "nodes"
+ ],
+ "additionalProperties": false,
+ "properties": {
+  "run_dir": {
+   "type": "string",
+   "description": "Artifact + DBOS state dir; relative to the config file"
+  },
+  "backend": {
+   "type": "object",
+   "required": [
+    "base_url",
+    "token_env"
+   ],
+   "additionalProperties": false,
+   "properties": {
+    "base_url": {
+     "type": "string"
     },
-    "backend": {
-      "type": "object",
-      "required": [
-        "base_url",
-        "token_env"
+    "token_env": {
+     "type": "string",
+     "description": "Env var holding the operator token"
+    },
+    "timeout_s": {
+     "type": "number",
+     "default": 60
+    }
+   }
+  },
+  "adapters": {
+   "type": "object",
+   "description": "Named adapter entries. 'api' and 'cli' imply their kind; any other name declares kind explicitly.",
+   "additionalProperties": {
+    "type": "object",
+    "properties": {
+     "kind": {
+      "enum": [
+       "api",
+       "cli"
       ],
-      "additionalProperties": false,
-      "properties": {
-        "base_url": {
-          "type": "string"
-        },
-        "token_env": {
-          "type": "string",
-          "description": "Env var holding the operator token"
-        },
-        "timeout_s": {
-          "type": "number",
-          "default": 60
-        }
-      }
-    },
-    "adapters": {
-      "type": "object",
-      "additionalProperties": false,
-      "properties": {
-        "api": {
-          "type": "object",
-          "required": [
-            "base_url",
-            "model"
-          ],
-          "additionalProperties": false,
-          "properties": {
-            "base_url": {
-              "type": "string",
-              "description": "OpenAI-compatible base, e.g. http://127.0.0.1:8080/v1"
-            },
-            "model": {
-              "type": "string"
-            },
-            "system": {
-              "type": "string",
-              "description": "Optional system message (model quirks live here, not in prompts)"
-            },
-            "api_key_env": {
-              "type": "string"
-            },
-            "timeout_s": {
-              "type": "number",
-              "default": 300
-            }
-          }
-        },
-        "cli": {
-          "type": "object",
-          "required": [
-            "cmd"
-          ],
-          "additionalProperties": false,
-          "properties": {
-            "cmd": {
-              "type": "array",
-              "items": {
-                "type": "string"
-              },
-              "minItems": 1,
-              "description": "Argv; each {prompt} occurrence is substituted"
-            },
-            "stdin": {
-              "type": "boolean",
-              "default": false,
-              "description": "Feed the prompt on stdin instead of substituting {prompt} (for REPL CLIs)"
-            },
-            "timeout_s": {
-              "type": "number",
-              "default": 3600
-            }
-          }
-        }
-      }
-    },
-    "nodes": {
+      "description": "The adapter's kind; defaults to the entry's name, so extra entries (e.g. a second api endpoint) declare theirs"
+     },
+     "base_url": {
+      "type": "string",
+      "description": "OpenAI-compatible base, e.g. http://127.0.0.1:8080/v1"
+     },
+     "model": {
+      "type": "string"
+     },
+     "system": {
+      "type": "string",
+      "description": "Optional system message (model quirks live here, not in prompts)"
+     },
+     "api_key_env": {
+      "type": "string"
+     },
+     "timeout_s": {
+      "type": "number",
+      "default": 3600
+     },
+     "cmd": {
       "type": "array",
-      "minItems": 1,
       "items": {
-        "type": "object",
-        "required": [
-          "name",
-          "adapter",
-          "prompt"
-        ],
-        "additionalProperties": false,
-        "properties": {
-          "name": {
-            "type": "string",
-            "pattern": "^[a-z0-9_-]+$"
-          },
-          "adapter": {
-            "enum": [
-              "api",
-              "cli"
-            ]
-          },
-          "role": {
-            "enum": [
-              "draft",
-              "gate",
-              "plain"
-            ],
-            "default": "plain"
-          },
-          "output": {
-            "enum": [
-              "json",
-              "text"
-            ],
-            "default": "text"
-          },
-          "prompt": {
-            "type": "string",
-            "description": "Prompt file path; relative to the config file"
-          },
-          "context": {
-            "type": "object",
-            "description": "Placeholder name -> source, inlined into the prompt before rendering",
-            "propertyNames": {
-              "pattern": "^[a-z0-9_-]+$"
-            },
-            "additionalProperties": {
-              "type": "object",
-              "minProperties": 1,
-              "maxProperties": 1,
-              "properties": {
-                "file": {
-                  "type": "string",
-                  "description": "File content (path relative to the config file), e.g. a SKILL.md"
-                },
-                "persona": {
-                  "const": true,
-                  "description": "The run author's card from the backend (name, bio, style, who_i_am)"
-                },
-                "editorial": {
-                  "type": "string",
-                  "description": "The backend editorial-text lexicon for this language code"
-                },
-                "feeds": {
-                  "type": "object",
-                  "additionalProperties": false,
-                  "description": "Fresh titulars from the run author's registered sources (registry feed_urls); site_search sources are listed for the search lane",
-                  "properties": {
-                    "hours": {
-                      "type": "number",
-                      "default": 48,
-                      "description": "Freshness window"
-                    },
-                    "max_per_source": {
-                      "type": "integer",
-                      "default": 6
-                    }
-                  }
-                },
-                "websearch": {
-                  "type": "object",
-                  "required": [
-                    "queries_from"
-                  ],
-                  "additionalProperties": false,
-                  "description": "Run the searches a prior json node proposed ({\"queries\": [...]}) and inline results plus fenced page reads",
-                  "properties": {
-                    "queries_from": {
-                      "type": "string",
-                      "description": "Name of the earlier node whose output carries the queries"
-                    },
-                    "max_results": {
-                      "type": "integer",
-                      "default": 5,
-                      "description": "Search results per query"
-                    },
-                    "fetch_top": {
-                      "type": "integer",
-                      "default": 4,
-                      "description": "Pages to read across all results"
-                    },
-                    "page_tokens": {
-                      "type": "integer",
-                      "default": 3000,
-                      "description": "Token budget per read page"
-                    },
-                    "urls_from": {
-                      "type": "string",
-                      "description": "Name of the earlier node whose output carries read_urls: source pages to read directly, no search engine in between"
-                    },
-                    "fetch_urls_top": {
-                      "type": "integer",
-                      "default": 3,
-                      "description": "Direct source pages to read"
-                    }
-                  }
-                },
-                "topics": {
-                  "const": true,
-                  "description": "The portal's existing topic slugs from the backend, so finalize reuses exact slugs instead of coining variants"
-                },
-                "articles": {
-                  "type": "object",
-                  "additionalProperties": false,
-                  "description": "Recent published notes (slug: titulo), the pool {{relacionado:<slug>}} draws from",
-                  "properties": {
-                    "limit": {
-                      "type": "integer",
-                      "default": 15
-                    }
-                  }
-                }
-              }
-            }
-          },
-          "respin": {
-            "type": "object",
-            "required": [
-              "prompt",
-              "target"
-            ],
-            "additionalProperties": false,
-            "description": "Gate nodes only: on a non-publish verdict, rewrite the target node's output with this prompt (placeholders {notes} + the running context) and re-run the gate, up to passes times",
-            "properties": {
-              "prompt": {
-                "type": "string",
-                "description": "Rewrite prompt file; relative to the config file"
-              },
-              "target": {
-                "type": "string",
-                "description": "Earlier node whose output the rewrite replaces"
-              },
-              "passes": {
-                "type": "integer",
-                "minimum": 1,
-                "default": 2
-              }
-            }
-          }
-        }
-      }
-    },
-    "websearch": {
+       "type": "string"
+      },
+      "minItems": 1,
+      "description": "Argv; each {prompt} occurrence is substituted"
+     },
+     "stdin": {
+      "type": "boolean",
+      "default": false,
+      "description": "Feed the prompt on stdin instead of substituting {prompt} (for REPL CLIs)"
+     }
+    }
+   }
+  },
+  "nodes": {
+   "type": "array",
+   "minItems": 1,
+   "items": {
+    "type": "object",
+    "required": [
+     "name",
+     "adapter",
+     "prompt"
+    ],
+    "additionalProperties": false,
+    "properties": {
+     "name": {
+      "type": "string",
+      "pattern": "^[a-z0-9_-]+$"
+     },
+     "adapter": {
+      "type": "string",
+      "description": "A configured adapters entry"
+     },
+     "role": {
+      "enum": [
+       "draft",
+       "gate",
+       "plain"
+      ],
+      "default": "plain"
+     },
+     "output": {
+      "enum": [
+       "json",
+       "text"
+      ],
+      "default": "text"
+     },
+     "prompt": {
+      "type": "string",
+      "description": "Prompt file path; relative to the config file"
+     },
+     "context": {
       "type": "object",
-      "additionalProperties": false,
-      "description": "The websearch CLI the websearch context source runs (search + fenced page reads)",
-      "properties": {
-        "cmd": {
-          "type": "array",
-          "items": {
-            "type": "string"
-          },
-          "minItems": 1,
-          "default": [
-            "websearch"
-          ],
-          "description": "Argv of the websearch CLI"
+      "description": "Placeholder name -> source, inlined into the prompt before rendering",
+      "propertyNames": {
+       "pattern": "^[a-z0-9_-]+$"
+      },
+      "additionalProperties": {
+       "type": "object",
+       "minProperties": 1,
+       "maxProperties": 1,
+       "properties": {
+        "file": {
+         "type": "string",
+         "description": "File content (path relative to the config file), e.g. a SKILL.md"
         },
-        "timeout_s": {
-          "type": "number",
-          "default": 180
-        }
-      }
-    },
-    "toolkit": {
-      "type": "object",
-      "additionalProperties": false,
-      "description": "The censurado.py toolkit the publisher shells out to (tweet-card auto-fetch). Default: the repo's own cli/censurado.py",
-      "properties": {
-        "cmd": {
-          "type": "array",
-          "items": {
-            "type": "string"
-          },
-          "minItems": 1
+        "persona": {
+         "const": true,
+         "description": "The run author's card from the backend (name, bio, style, who_i_am)"
         },
-        "timeout_s": {
-          "type": "number",
-          "default": 60
-        }
-      }
-    },
-    "batch": {
-      "type": "object",
-      "additionalProperties": false,
-      "description": "The daily batch: candidates per author, the jefe de redaccion selects, articles fan out in parallel and publish in portada order",
-      "properties": {
-        "concurrency": {
-          "type": "integer",
-          "minimum": 1,
-          "default": 3,
-          "description": "Parallel article writes (match the llama.cpp slots)"
-        },
-        "used_urls_cap": {
-          "type": "integer",
-          "minimum": 1,
-          "default": 50,
-          "description": "Per-author used-URL registry size; oldest fall off"
-        },
-        "candidates_prompt": {
-          "type": "string",
-          "default": "prompts/candidates.md"
-        },
-        "jefe_prompt": {
-          "type": "string",
-          "default": "prompts/jefe.md"
+        "editorial": {
+         "type": "string",
+         "description": "The backend editorial-text lexicon for this language code"
         },
         "feeds": {
-          "type": "object",
-          "description": "Feeds options for the candidates stage",
-          "additionalProperties": false,
-          "properties": {
-            "hours": {
-              "type": "number"
-            },
-            "max_per_source": {
-              "type": "integer"
-            }
+         "type": "object",
+         "additionalProperties": false,
+         "description": "Fresh titulars from the run author's registered sources (registry feed_urls); site_search sources are listed for the search lane",
+         "properties": {
+          "hours": {
+           "type": "number",
+           "default": 48,
+           "description": "Freshness window"
+          },
+          "max_per_source": {
+           "type": "integer",
+           "default": 6
           }
+         }
+        },
+        "websearch": {
+         "type": "object",
+         "required": [
+          "queries_from"
+         ],
+         "additionalProperties": false,
+         "description": "Run the searches a prior json node proposed ({\"queries\": [...]}) and inline results plus fenced page reads",
+         "properties": {
+          "queries_from": {
+           "type": "string",
+           "description": "Name of the earlier node whose output carries the queries"
+          },
+          "max_results": {
+           "type": "integer",
+           "default": 5,
+           "description": "Search results per query"
+          },
+          "fetch_top": {
+           "type": "integer",
+           "default": 4,
+           "description": "Pages to read across all results"
+          },
+          "page_tokens": {
+           "type": "integer",
+           "default": 3000,
+           "description": "Token budget per read page"
+          },
+          "urls_from": {
+           "type": "string",
+           "description": "Name of the earlier node whose output carries read_urls: source pages to read directly, no search engine in between"
+          },
+          "fetch_urls_top": {
+           "type": "integer",
+           "default": 3,
+           "description": "Direct source pages to read"
+          }
+         }
+        },
+        "topics": {
+         "const": true,
+         "description": "The portal's existing topic slugs from the backend, so finalize reuses exact slugs instead of coining variants"
+        },
+        "articles": {
+         "type": "object",
+         "additionalProperties": false,
+         "description": "Recent published notes (slug: titulo), the pool {{relacionado:<slug>}} draws from",
+         "properties": {
+          "limit": {
+           "type": "integer",
+           "default": 15
+          }
+         }
         }
+       }
       }
+     },
+     "respin": {
+      "type": "object",
+      "required": [
+       "prompt",
+       "target"
+      ],
+      "additionalProperties": false,
+      "description": "Gate nodes only: on a non-publish verdict, rewrite the target node's output with this prompt (placeholders {notes} + the running context) and re-run the gate, up to passes times",
+      "properties": {
+       "prompt": {
+        "type": "string",
+        "description": "Rewrite prompt file; relative to the config file"
+       },
+       "target": {
+        "type": "string",
+        "description": "Earlier node whose output the rewrite replaces"
+       },
+       "passes": {
+        "type": "integer",
+        "minimum": 1,
+        "default": 2
+       }
+      }
+     },
+     "model": {
+      "type": "string",
+      "description": "Per-node model override (api-kind adapters only)"
+     }
     }
+   }
+  },
+  "websearch": {
+   "type": "object",
+   "additionalProperties": false,
+   "description": "The websearch CLI the websearch context source runs (search + fenced page reads)",
+   "properties": {
+    "cmd": {
+     "type": "array",
+     "items": {
+      "type": "string"
+     },
+     "minItems": 1,
+     "default": [
+      "websearch"
+     ],
+     "description": "Argv of the websearch CLI"
+    },
+    "timeout_s": {
+     "type": "number",
+     "default": 180
+    }
+   }
+  },
+  "toolkit": {
+   "type": "object",
+   "additionalProperties": false,
+   "description": "The censurado.py toolkit the publisher shells out to (tweet-card auto-fetch). Default: the repo's own cli/censurado.py",
+   "properties": {
+    "cmd": {
+     "type": "array",
+     "items": {
+      "type": "string"
+     },
+     "minItems": 1
+    },
+    "timeout_s": {
+     "type": "number",
+     "default": 60
+    }
+   }
+  },
+  "batch": {
+   "type": "object",
+   "additionalProperties": false,
+   "description": "The daily batch: candidates per author, the jefe de redaccion selects, articles fan out in parallel and publish in portada order",
+   "properties": {
+    "concurrency": {
+     "type": "integer",
+     "minimum": 1,
+     "default": 3,
+     "description": "Parallel article writes (match the llama.cpp slots)"
+    },
+    "used_urls_cap": {
+     "type": "integer",
+     "minimum": 1,
+     "default": 50,
+     "description": "Per-author used-URL registry size; oldest fall off"
+    },
+    "candidates_prompt": {
+     "type": "string",
+     "default": "prompts/candidates.md"
+    },
+    "jefe_prompt": {
+     "type": "string",
+     "default": "prompts/jefe.md"
+    },
+    "feeds": {
+     "type": "object",
+     "description": "Feeds options for the candidates stage",
+     "additionalProperties": false,
+     "properties": {
+      "hours": {
+       "type": "number"
+      },
+      "max_per_source": {
+       "type": "integer"
+      }
+     }
+    }
+   }
   }
+ }
 }

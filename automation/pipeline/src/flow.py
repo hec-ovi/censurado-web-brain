@@ -21,7 +21,13 @@ def fetch_context(cfg: dict, node: dict, inputs: dict, outputs: dict) -> dict:
 @DBOS.step(retries_allowed=True, max_attempts=3, interval_seconds=1.0, backoff_rate=2.0)
 def run_node(cfg: dict, node: dict, prompt: str) -> str:
     adapter_cfg = cfg["adapters"][node["adapter"]]
-    adapter = ApiAdapter(adapter_cfg) if node["adapter"] == "api" else CliAdapter(adapter_cfg)
+    kind = adapter_cfg.get("kind", node["adapter"])
+    if kind == "api":
+        if node.get("model"):
+            adapter_cfg = {**adapter_cfg, "model": node["model"]}
+        adapter = ApiAdapter(adapter_cfg)
+    else:
+        adapter = CliAdapter(adapter_cfg)
     return adapter.complete(prompt, want_json=node["output"] == "json")
 
 

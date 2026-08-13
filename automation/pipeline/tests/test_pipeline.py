@@ -178,7 +178,7 @@ def servers():
 
 
 def write_config(tmp: Path, api_port: int, backend_port: int, nodes=None, cli_cmd=None,
-                 cli_stdin=False, websearch=None, batch=None) -> Path:
+                 cli_stdin=False, websearch=None, batch=None, extra_adapters=None) -> Path:
     cfg = {
         "run_dir": "runs",
         "backend": {"base_url": f"http://127.0.0.1:{backend_port}", "token_env": "TEST_TOKEN"},
@@ -188,6 +188,7 @@ def write_config(tmp: Path, api_port: int, backend_port: int, nodes=None, cli_cm
             "api": {"base_url": f"http://127.0.0.1:{api_port}/v1", "model": "fake"},
             **({"cli": {"cmd": cli_cmd, **({"stdin": True} if cli_stdin else {})}}
                if cli_cmd else {}),
+            **(extra_adapters or {}),
         },
         "nodes": nodes or [
             {"name": "draft", "adapter": "api", "role": "draft", "output": "json",
@@ -234,6 +235,50 @@ def test_publishes_through_the_gate(tmp_path, servers):
     assert meta["card"] == {"type": "text"}
     art = tmp_path / "runs" / "run-pub"
     assert (art / "draft.json").is_file() and (art / "evaluate.json").is_file()
+
+
+def test_second_api_adapter_and_node_model_override(tmp_path, servers):
+    # A named api-kind adapter (the OpenRouter lane) can drive one node with its
+    # own model, and a node-level "model" overrides the adapter's default; the
+    # other nodes stay on the local default. The payload the endpoint receives is
+    # the proof.
+    api_port, backend_port = servers
+    nodes = [
+        {"name": "draft", "adapter": "api", "role": "draft", "output": "json",
+         "prompt": str(PROMPTS / "draft.md")},
+        {"name": "evaluate", "adapter": "gates", "model": "fake-max", "role": "gate",
+         "output": "json", "prompt": str(PROMPTS / "evaluate.md")},
+    ]
+    gates = {"gates": {"kind": "api", "base_url": f"http://127.0.0.1:{api_port}/v1",
+                       "model": "fake-big"}}
+    p = run_pipeline(write_config(tmp_path, api_port, backend_port, nodes=nodes,
+                                  extra_adapters=gates), "--run-id", "run-mixed")
+    assert p.returncode == 0, p.stderr
+    models = {c["messages"][-1]["content"][:30]: c["model"] for c in FakeApi.calls}
+    gate_models = [c["model"] for c in FakeApi.calls
+                   if "Actua como editor de mesa" in c["messages"][-1]["content"]]
+    assert gate_models == ["fake-max"], models
+    draft_models = [c["model"] for c in FakeApi.calls
+                    if "Actua como editor de mesa" not in c["messages"][-1]["content"]]
+    assert draft_models == ["fake"], models
+
+
+def test_config_rejects_bad_adapter_kind_and_cli_model_override(tmp_path, servers):
+    api_port, backend_port = servers
+    bad_kind = write_config(tmp_path, api_port, backend_port,
+                            extra_adapters={"raro": {"kind": "grpc", "base_url": "x", "model": "y"}})
+    p = run_pipeline(bad_kind)
+    assert p.returncode == 2 and "adapters.raro.kind" in p.stderr
+
+    fake_cli = tmp_path / "fake-agent.py"
+    fake_cli.write_text("print('x')\n")
+    nodes = [
+        {"name": "draft", "adapter": "cli", "model": "no-va", "role": "draft",
+         "output": "json", "prompt": str(PROMPTS / "draft.md")},
+    ]
+    p = run_pipeline(write_config(tmp_path, api_port, backend_port, nodes=nodes,
+                                  cli_cmd=[sys.executable, str(fake_cli), "{prompt}"]))
+    assert p.returncode == 2 and "only an api-kind adapter takes a model override" in p.stderr
 
 
 def test_gate_rejects_without_publishing(tmp_path, servers):
