@@ -294,7 +294,16 @@ def cmd_topics(argv: list[str]) -> int:
     listado = "\n".join(f"- {t['value']} ({t['count']} notas)" for t in board)
     prompt = render(Path(cfg.data["nodes"][0]["prompt_path"]).parent.joinpath(
         "topics-cleanse.md").read_text(), {"temas": listado})
-    raw = ApiAdapter(cfg.data["adapters"]["api"]).complete(prompt, want_json=True)
+    # One huge single call (the whole topic board): it gets a task-sized
+    # timeout and a second attempt instead of the per-node default.
+    adapter_cfg = dict(cfg.data["adapters"]["api"])
+    adapter_cfg["timeout_s"] = max(900, int(adapter_cfg.get("timeout_s") or 0))
+    adapter = ApiAdapter(adapter_cfg)
+    from src.errors import PipelineError as _PE  # noqa: F401
+    try:
+        raw = adapter.complete(prompt, want_json=True)
+    except PipelineError:
+        raw = adapter.complete(prompt, want_json=True)
     (art_dir / "mapa.txt").write_text(raw)
     out = parse_json_output(raw)
     known = {t["value"] for t in board}
