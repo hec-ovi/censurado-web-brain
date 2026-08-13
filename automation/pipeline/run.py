@@ -8,6 +8,8 @@ Three invocations:
 """
 import argparse
 import json
+import os
+import subprocess
 import sys
 import time
 import uuid
@@ -242,9 +244,95 @@ def cmd_batch_approve(argv: list[str]) -> int:
     return 0 if all(p["ok"] for p in published) else 5
 
 
+def cmd_topics(argv: list[str]) -> int:
+    """Run the topic-normalization task: read the live topic board, have the
+    configured model cluster true duplicates ({"mapa": {variante: canonico}}),
+    and apply the remap through the newsroom cleanse CLI (permalinks and content
+    hashes stay stable; only tag sets move)."""
+    ap = argparse.ArgumentParser(prog="run.py topics",
+                                 description="Normalize the topic board: the model maps "
+                                             "duplicate tags to one canonical slug, the "
+                                             "newsroom cleanse applies the remap")
+    ap.add_argument("--config", required=True)
+    ap.add_argument("--run-id", help="Task id for artifacts and events")
+    ap.add_argument("--dry-run", action="store_true",
+                    help="Plan the map and print it; write nothing")
+    args = ap.parse_args(argv)
+
+    cfg = load_config(args.config)
+    if cfg is None:
+        return 2
+    cfg.run_dir.mkdir(parents=True, exist_ok=True)
+    run_id = args.run_id or "temas-" + uuid.uuid4().hex[:12]
+    art_dir = cfg.run_dir / run_id
+    art_dir.mkdir(parents=True, exist_ok=True)
+    emit_event(cfg.run_dir, {"event": "topics-start", "run_id": run_id})
+
+    import httpx
+    from src.adapter_api import ApiAdapter
+    from src.render import parse_json_output, render
+
+    backend = cfg.data["backend"]
+    base = backend["base_url"].rstrip("/")
+    headers = {"Authorization": f"Bearer {os.environ[backend['token_env']]}"}
+    try:
+        facets = httpx.get(f"{base}/articles:facets", headers=headers, timeout=30).json()
+    except httpx.HTTPError as e:
+        print(f"PublishError: facets: {e}", file=sys.stderr)
+        emit_event(cfg.run_dir, {"event": "topics", "run_id": run_id,
+                                 "status": "failed", "exit_code": 5, "error": str(e)[:300]})
+        return 5
+    board = facets.get("topics") or []
+    result = {"status": "topics-cleansed", "run_id": run_id, "artifacts": str(art_dir),
+              "tags_before": len(board), "tags_after": len(board),
+              "articles_changed": 0, "applied": 0}
+    if len(board) < 2:
+        emit_event(cfg.run_dir, {"event": "topics", "run_id": run_id, "status": "published"})
+        print(json.dumps(result, ensure_ascii=False))
+        return 0
+
+    listado = "\n".join(f"- {t['value']} ({t['count']} notas)" for t in board)
+    prompt = render(Path(cfg.data["nodes"][0]["prompt_path"]).parent.joinpath(
+        "topics-cleanse.md").read_text(), {"temas": listado})
+    raw = ApiAdapter(cfg.data["adapters"]["api"]).complete(prompt, want_json=True)
+    (art_dir / "mapa.txt").write_text(raw)
+    out = parse_json_output(raw)
+    known = {t["value"] for t in board}
+    mapa = {k: v.strip() for k, v in (out.get("mapa") or {}).items()
+            if isinstance(v, str) and k in known and v.strip() and v.strip() != k}
+    map_path = art_dir / "mapa.json"
+    map_path.write_text(json.dumps(mapa, ensure_ascii=False, indent=1))
+    if not mapa:
+        emit_event(cfg.run_dir, {"event": "topics", "run_id": run_id, "status": "published"})
+        print(json.dumps(result, ensure_ascii=False))
+        return 0
+
+    cleanse_cmd = [sys.executable, "-m", "newsroom", "topics", "cleanse",
+                   "--map-file", str(map_path)] + ([] if args.dry_run else ["--apply"])
+    proc = subprocess.run(cleanse_cmd, capture_output=True, text=True, timeout=600,
+                          cwd=str(Path(__file__).resolve().parents[2]))
+    (art_dir / "cleanse.txt").write_text(proc.stdout + proc.stderr)
+    if proc.returncode != 0:
+        emit_event(cfg.run_dir, {"event": "topics", "run_id": run_id, "status": "failed",
+                                 "exit_code": proc.returncode,
+                                 "error": (proc.stderr or proc.stdout)[:300]})
+        print(f"PublishError: cleanse exit {proc.returncode}", file=sys.stderr)
+        return 5
+    summary = json.loads(proc.stdout.strip().splitlines()[-1])
+    result.update({"tags_before": summary.get("tags_before", len(board)),
+                   "tags_after": summary.get("tags_after", len(board)),
+                   "articles_changed": summary.get("articles_changed", 0),
+                   "applied": summary.get("applied", 0),
+                   "dry_run": summary.get("dry_run", args.dry_run)})
+    emit_event(cfg.run_dir, {"event": "topics", "run_id": run_id, "status": "published"})
+    print(json.dumps(result, ensure_ascii=False))
+    return 0
+
+
 def main() -> int:
     subcommands = {"approve": cmd_approve, "events": cmd_events,
-                   "batch": cmd_batch, "batch-approve": cmd_batch_approve}
+                   "batch": cmd_batch, "batch-approve": cmd_batch_approve,
+                   "topics": cmd_topics}
     if len(sys.argv) > 1 and sys.argv[1] in subcommands:
         return subcommands[sys.argv[1]](sys.argv[2:])
     return cmd_run(sys.argv[1:])

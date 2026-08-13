@@ -120,7 +120,7 @@ def test_catch_up_runs_pending_and_collapses_same_setup(fake_backend):
         sched(slug="e", runs=[{"run_id": "e-20260812-0730", "status": "queued"}]),
     ]
     calls = []
-    executor = Executor(backend, Path("cfg.json"), llama_probe=lambda: True,
+    executor = Executor(backend, Path("cfg.json"), llama_probe=lambda: True, remote_probe=lambda: "nokey",
                         runner=lambda s, r: (calls.append((s["slug"], r)), ("ok", "listo"))[1])
     now = WED.replace(hour=10, minute=0)
     assert executor.catch_up(now) == 2, "one batch covers a+b+e (same setup); c fires alone"
@@ -214,7 +214,7 @@ def test_tick_queues_then_drain_records_running_and_outcome(fake_backend):
         calls.append((schedule["slug"], run_id))
         return "ok", "5/8 published"
 
-    executor = Executor(backend, Path("cfg.json"), runner=runner, llama_probe=lambda: True)
+    executor = Executor(backend, Path("cfg.json"), runner=runner, llama_probe=lambda: True, remote_probe=lambda: "nokey")
     assert executor.tick(WED) == 1
     executor.drain()
     assert calls == [("edicion", "edicion-20260812-0730")]
@@ -241,7 +241,7 @@ def test_close_firings_queue_and_run_in_arrival_order(fake_backend):
     store["schedules"].append(sched(slug="beta"))
     calls = []
 
-    executor = Executor(backend, Path("cfg.json"), llama_probe=lambda: True,
+    executor = Executor(backend, Path("cfg.json"), llama_probe=lambda: True, remote_probe=lambda: "nokey",
                         runner=lambda s, r: (calls.append(r), ("ok", "done"))[1])
     assert executor.tick(WED) == 2
     queued = [(slug, r["status"]) for slug, r in store["runs"]]
@@ -265,9 +265,10 @@ def test_heartbeat_reports_clock_health_and_the_effective_config(fake_backend, t
     }))
     store["settings"] = {"stages": {"evaluate": {"lane": "openrouter"}}}
     executor = Executor(backend, cfg, runner=lambda s, r: ("ok", ""),
-                        llama_probe=lambda: False)
+                        llama_probe=lambda: False, remote_probe=lambda: "ok")
     executor.tick(WED)
     assert store["status"]["llama_ok"] is False
+    assert store["status"]["remote_state"] == "ok"
     assert store["status"]["running"] is None
     assert store["status"]["queued"] == []
     assert store["status"]["at"].startswith("2026-08-12T07:30")
@@ -287,7 +288,7 @@ def test_tick_skips_not_due_and_records_failures(fake_backend):
     store["schedules"].append(sched(slug="tarde", times=["18:00"]))
     store["schedules"].append(sched(slug="falla"))
 
-    executor = Executor(backend, Path("cfg.json"), llama_probe=lambda: True,
+    executor = Executor(backend, Path("cfg.json"), llama_probe=lambda: True, remote_probe=lambda: "nokey",
                         runner=lambda s, r: ("failed", "exit 4: adapter down"))
     assert executor.tick(WED) == 1
     executor.drain()
@@ -299,7 +300,7 @@ def test_tick_skips_not_due_and_records_failures(fake_backend):
 
 def test_unreachable_backend_is_survived():
     executor = Executor(Backend("http://127.0.0.1:9", "tok", timeout_s=1), Path("cfg.json"),
-                        runner=lambda s, r: ("ok", ""), llama_probe=lambda: True)
+                        runner=lambda s, r: ("ok", ""), llama_probe=lambda: True, remote_probe=lambda: "nokey")
     assert executor.tick(WED) == 0
 
 

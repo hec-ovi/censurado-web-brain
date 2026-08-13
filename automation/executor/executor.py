@@ -50,6 +50,9 @@ def summarize(stdout: str) -> str:
             return f"{published}/{len(articles)} publicadas"
         if result.get("status") == "batch-previewed":
             return f"{len(articles)} en preview"
+        if result.get("status") == "topics-cleansed":
+            return (f"{result.get('tags_before', '?')}→{result.get('tags_after', '?')} temas, "
+                    f"{result.get('applied', 0)} notas")
         return result.get("status", "listo")
     return "listo"
 
@@ -61,12 +64,14 @@ class Executor:
     a real batch or a live model server."""
 
     def __init__(self, backend: Backend, config_path: Path,
-                 batch_timeout_s: int = 7200, runner=None, llama_probe=None):
+                 batch_timeout_s: int = 7200, runner=None, llama_probe=None,
+                 remote_probe=None):
         self.backend = backend
         self.config_path = config_path
         self.batch_timeout_s = batch_timeout_s
         self.runner = runner or self._run_batch
         self.llama_probe = llama_probe or self._probe_llama
+        self.remote_probe = remote_probe or self._probe_remote
         self.queue: deque = deque()
         self.current: str | None = None
         self.lock = threading.Lock()
@@ -121,7 +126,7 @@ class Executor:
             schedules = self.backend.schedules()
         except BackendError as e:
             print(f"[executor] backend unreachable at catch-up: {e}", file=sys.stderr)
-            return 0
+            return -1
         pending = []
         for schedule in schedules:
             if not schedule.get("enabled") or schedule.get("deleted"):
@@ -139,7 +144,8 @@ class Executor:
             pending.append((schedule, run_id))
         groups: dict = {}
         for schedule, run_id in pending:
-            key = (schedule.get("mode", "preview"), schedule.get("prompt", ""),
+            key = (schedule.get("task", "batch"), schedule.get("mode", "preview"),
+                   schedule.get("prompt", ""),
                    tuple(sorted(schedule.get("authors") or [])))
             groups.setdefault(key, []).append((schedule, run_id))
         fired = 0
@@ -179,11 +185,14 @@ class Executor:
             queued = [r for _, r, _ in self.queue]
             current = self.current
         effective = self._effective_state()
-        # The probe targets the lane that actually runs (panel overrides included).
-        self._local_base = ((effective.get("lanes") or {}).get("local") or {}).get("base_url", "")
+        # The probes target the lanes that actually run (panel values included).
+        lanes = effective.get("lanes") or {}
+        self._local_base = (lanes.get("local") or {}).get("base_url", "")
+        self._remote_lane = lanes.get("openrouter") or {}
         status = {
             "at": now.astimezone().isoformat(timespec="seconds"),
             "llama_ok": bool(self.llama_probe()),
+            "remote_state": self.remote_probe(),
             "running": current,
             "queued": queued,
             "effective": effective,
@@ -243,6 +252,36 @@ class Executor:
                 return resp.status == 200
         except OSError:
             return False
+
+    def _probe_remote(self) -> str:
+        """The remote lane's verdict: "ok" (reachable, key accepted), "auth"
+        (reachable, key rejected), "down" (unreachable), "nokey" (nothing to
+        authenticate with). OpenRouter verifies the key on GET /key; every other
+        OpenAI-compatible provider (OpenAI, xAI, Groq, DeepSeek...) authenticates
+        GET /models the same Bearer way."""
+        lane = getattr(self, "_remote_lane", {}) or {}
+        base = (lane.get("base_url") or "").rstrip("/")
+        if not base:
+            return "down"
+        key = ""
+        try:
+            settings = self.backend.settings()
+            key = ((settings.get("lanes") or {}).get("openrouter") or {}).get("api_key", "")
+        except BackendError:
+            pass
+        if not key:
+            key = os.environ.get("OPENROUTER_API_KEY", "")
+        if not key:
+            return "nokey"
+        path = "/key" if "openrouter.ai" in base else "/models"
+        req = urllib.request.Request(base + path, headers={"Authorization": f"Bearer {key}"})
+        try:
+            with urllib.request.urlopen(req, timeout=5) as resp:
+                return "ok" if resp.status == 200 else "down"
+        except urllib.error.HTTPError as e:
+            return "auth" if e.code in (401, 403) else "down"
+        except OSError:
+            return "down"
 
     # ---- the worker ----------------------------------------------------------
 
@@ -307,15 +346,19 @@ class Executor:
         return out
 
     def _run_batch(self, schedule: dict, run_id: str) -> tuple[str, str]:
-        cmd = [sys.executable, str(RUN_PY), "batch",
-               "--config", str(self._effective_config()),
-               "--mode", schedule.get("mode", "preview"),
-               "--run-id", run_id]
-        authors = schedule.get("authors") or []
-        if authors:
-            cmd += ["--authors", ",".join(authors)]
-        if schedule.get("prompt"):
-            cmd += ["--directive", schedule["prompt"]]
+        if schedule.get("task") == "topics":
+            cmd = [sys.executable, str(RUN_PY), "topics",
+                   "--config", str(self._effective_config()), "--run-id", run_id]
+        else:
+            cmd = [sys.executable, str(RUN_PY), "batch",
+                   "--config", str(self._effective_config()),
+                   "--mode", schedule.get("mode", "preview"),
+                   "--run-id", run_id]
+            authors = schedule.get("authors") or []
+            if authors:
+                cmd += ["--authors", ",".join(authors)]
+            if schedule.get("prompt"):
+                cmd += ["--directive", schedule["prompt"]]
         try:
             proc = subprocess.run(cmd, capture_output=True, text=True, timeout=self.batch_timeout_s)
         except subprocess.TimeoutExpired:
@@ -337,7 +380,12 @@ def main() -> int:
     executor = Executor(Backend(base_url, token), config, batch_timeout_s=timeout_s)
     threading.Thread(target=executor.worker, daemon=True).start()
     print(f"[executor] up: backend {base_url}, config {config}")
-    executor.catch_up()
+    # The backend may still be booting beside us; the catch-up scan retries
+    # briefly so a compose-up never silently skips its pending runs.
+    for _ in range(6):
+        if executor.catch_up() >= 0:
+            break
+        time.sleep(5)
     while True:
         executor.tick()
         # Sleep to just past the next minute boundary so each wall-clock minute
