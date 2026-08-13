@@ -67,6 +67,7 @@ The code repositories, all under [github.com/hec-ovi](https://github.com/hec-ovi
 | `publish`   | [censurado-web-backend](https://github.com/hec-ovi/censurado-web-backend) | Write + read API, media store, the only sqlite writer, owns all content data (authors, sources, articles, layout), AND serves the operator admin panel (gated SPA over Articles, Portada, Autores, Temas, Sources, Status) | 127.0.0.1:8082 |
 | `generate`  | [censurado-web](https://github.com/hec-ovi/censurado-web) | Static-site builder, watches the db and rebuilds    | none |
 | `site`      | nginx                       | Serves the generated static portal                  | **8123** (`SITE_PORT`) |
+| `executor`  | this repo (`automation/executor/`) | The schedule executor: fires edition batches from the backend's schedule registry (panel tab: Automation) | none (host network) |
 | `comfyui`   | [comfyui-strix-docker](https://github.com/hec-ovi/comfyui-strix-docker) | Image generation, the art director's render backend | 127.0.0.1:8188 |
 
 Only `site` is exposed on `0.0.0.0`. Everything operational binds `127.0.0.1`; reach it on the host or over an SSH tunnel. The `publish` image builds from `censurado-web-backend`; `generate` runs the pinned `golang` image over both `censurado-web` (the generator) and `censurado-web-backend` (the shared `domain`/`store` libraries it imports), mounted read-only.
@@ -123,7 +124,7 @@ the default. The first run builds the images and downloads the Go module graph, 
 later runs are fast:
 
 ```bash
-./run.sh up                # fast lane: publish + generate + site (no comfyui), detached
+./run.sh up                # fast lane: publish + generate + site + executor (no comfyui), detached
 docker compose ps          # everything Up; `generate` may take a minute
 ```
 
