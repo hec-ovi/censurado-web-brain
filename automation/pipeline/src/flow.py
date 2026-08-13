@@ -50,14 +50,21 @@ def publish_piece(cfg: dict, piece: dict, inputs: dict, run_id: str) -> dict:
     return Publisher(cfg).publish(piece, inputs, idempotency_key=run_id)
 
 
+_CORRECTOR_OWNS = ("titular", "titulo", "título", "bajada", "standfirst")
+
+
 def _verdict(out, raw: str) -> tuple[str, str]:
     """The gate's decision. Canonical shape: typed observations, the CODE decides (any
     'bloqueante' blocks; 'pulido' rides to the corrector). A plain verdict/notes object
-    is also honored."""
+    is also honored. Observations about the titular or the bajada never block: the
+    corrector rewrites both from the acta, so the reader never sees the draft's ones;
+    the full observation list still reaches the corrector either way."""
     if isinstance(out, dict) and "observaciones" in out:
         obs = out.get("observaciones") or []
         blocking = [str(o.get("detalle", "")) for o in obs
-                    if isinstance(o, dict) and o.get("nivel") == "bloqueante"]
+                    if isinstance(o, dict) and o.get("nivel") == "bloqueante"
+                    and not any(w in str(o.get("detalle", "")).lower()
+                                for w in _CORRECTOR_OWNS)]
         return ("revise" if blocking else "publish"), "\n".join(blocking)
     if isinstance(out, dict):
         return str(out.get("verdict", "")).lower(), str(out.get("notes", ""))

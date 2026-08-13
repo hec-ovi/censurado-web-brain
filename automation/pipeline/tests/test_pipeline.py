@@ -33,12 +33,15 @@ class FakeApi(BaseHTTPRequestHandler):
         prompt = body["messages"][-1]["content"]
         if "Actua como editor de mesa" in prompt:
             type(self).gate_calls += 1
-            if type(self).behavior == "respin-once":
-                revise = type(self).gate_calls == 1
+            if type(self).behavior == "title-nit":
+                obs = [{"nivel": "bloqueante", "detalle": "el titular usa un verbo debil"}]
             else:
-                revise = type(self).behavior != "publish"
-            obs = ([{"nivel": "bloqueante", "detalle": "motivo"}] if revise
-                   else [{"nivel": "pulido", "detalle": "brillo"}])
+                if type(self).behavior == "respin-once":
+                    revise = type(self).gate_calls == 1
+                else:
+                    revise = type(self).behavior != "publish"
+                obs = ([{"nivel": "bloqueante", "detalle": "motivo"}] if revise
+                       else [{"nivel": "pulido", "detalle": "brillo"}])
             content = json.dumps({"observaciones": obs})
         elif "EXACTAMENTE" in prompt:
             content = json.dumps({**DRAFT, "title": "Titulo corregido"}, ensure_ascii=False)
@@ -421,6 +424,16 @@ def test_tweet_markers_attach_their_cards_on_publish(tmp_path, servers):
     posted = FakeBackend.posts[0]["body"]
     assert "{{tweet:123}}" in posted["body"]
     assert posted["metadata"]["tweets"] == [{"id": "123", "handle": "prueba", "text": "hola"}]
+
+
+def test_title_observations_route_to_the_corrector(tmp_path, servers):
+    api_port, backend_port = servers
+    FakeApi.behavior = "title-nit"
+    p = run_pipeline(write_config(tmp_path, api_port, backend_port))
+    assert p.returncode == 0, p.stderr
+    assert json.loads(p.stdout.strip().splitlines()[-1])["status"] == "published"
+    assert FakeApi.gate_calls == 1
+    assert len(FakeBackend.posts) == 1
 
 
 def test_gate_respin_rewrites_and_passes(tmp_path, servers):
