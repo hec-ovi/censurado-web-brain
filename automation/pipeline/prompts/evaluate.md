@@ -8,8 +8,10 @@ Acta de investigacion:
 
 Borrador (JSON): {draft}
 
-Revisa el borrador COMPLETO en una sola pasada y junta TODAS las observaciones que lo separan de esa vara, cada una concreta y accionable (que ajustar, donde, y que dice el acta o la carta).
+Revisa el borrador COMPLETO en una sola pasada y junta TODAS tus observaciones, cada una concreta y accionable (que ajustar, donde, y que dice el acta o la carta).
+
+Tu decision distingue dos niveles. "revise" se reserva para la nota que fallaria ante el lector: una cifra, cita o afirmacion distinta de lo que el acta registra, una voz que no es la de la carta, o un pasaje que deja al lector sin entender que paso. La nota que informa bien y suena al autor se publica: "publish", y tus observaciones de pulido (un titular mas filoso, una bajada mas complementaria, una frase que sobra) van en notes para que el corrector final las aplique.
 
 Responde SOLO con un objeto JSON con estas claves:
-- "verdict": "publish" cuando la nota llega a la vara, "revise" cuando queda alguna observacion
-- "notes": la lista COMPLETA de observaciones en un solo texto, una por linea; vacia cuando esta lista
+- "verdict": "publish" para la nota que informa bien en la voz del autor, "revise" para la que fallaria ante el lector
+- "notes": todas tus observaciones en un solo texto, una por linea; vacia si no tenes ninguna

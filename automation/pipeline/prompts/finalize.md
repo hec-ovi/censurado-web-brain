@@ -9,7 +9,10 @@ Sos el corrector final del portal Censurado. Abajo van las reglas editoriales, e
 === BORRADOR APROBADO (JSON) ===
 {draft}
 
-Tu pasada final deja: cada cifra y cita igual a como la registra el acta; tildes, nombres propios, siglas y topónimos exactos en castellano; el léxico alineado a las reglas editoriales; la voz del autor y la estructura tal como el editor las aprobó. El titular y la bajada salen brillando: cortos, concretos, con gancho.
+=== OBSERVACIONES DEL EDITOR (JSON) ===
+{evaluate}
+
+Tu pasada final deja: cada observación de pulido del editor aplicada; cada cifra y cita igual a como la registra el acta; tildes, nombres propios, siglas y topónimos exactos en castellano; el léxico alineado a las reglas editoriales; la voz del autor y la estructura tal como el editor las aprobó. El titular y la bajada salen brillando: cortos, concretos, con gancho.
 
 Respondé SOLO con un objeto JSON, con estas claves:
 - "title": el titulo final
