@@ -12,6 +12,7 @@ class ApiAdapter:
         self.model = cfg["model"]
         self.system = cfg.get("system")
         self.timeout = cfg.get("timeout_s", 300)
+        self.temperature = cfg.get("temperature")
         self.headers = {}
         # A direct api_key (e.g. merged in from the panel's settings) wins over
         # the env-named one; either way the key never logs.
@@ -25,6 +26,8 @@ class ApiAdapter:
             messages.append({"role": "system", "content": self.system})
         messages.append({"role": "user", "content": prompt})
         payload: dict = {"model": self.model, "messages": messages}
+        if self.temperature is not None:
+            payload["temperature"] = self.temperature
         if want_json:
             payload["response_format"] = {"type": "json_object"}
         try:

@@ -57,6 +57,11 @@ class FakeApi(BaseHTTPRequestHandler):
                  "fuente": "https://fuente.test/nota-1?utm_source=rss"},
                 {"titulo": "Historia dos", "descripcion": "La segunda.",
                  "fuente": "https://fuente.test/nota-2"}]}, ensure_ascii=False)
+        elif "Un primer pase propuso" in prompt:
+            content = json.dumps({"grupos": [["javier-milei", "milei"]]})
+        elif "tablero de temas vigente" in prompt:
+            content = json.dumps({"grupos": [["javier-milei", "milei"],
+                                             ["desmonte", "destilacion"]]})
         elif "jefe de redacción" in prompt:
             content = json.dumps({"seleccion": [
                 {"autor": "autor-test", "titulo": "Historia uno", "descripcion": "La primera.",
@@ -79,6 +84,16 @@ class FakeBackend(BaseHTTPRequestHandler):
     posts: list = []
     author_upserts: list = []
     used_urls: list = []
+    puts: list = []
+
+    def do_PUT(self):
+        body = json.loads(self.rfile.read(int(self.headers.get("Content-Length", 0))))
+        type(self).puts.append({"path": self.path, "body": body})
+        out = json.dumps(body).encode()
+        self.send_response(200)
+        self.send_header("Content-Type", "application/json")
+        self.end_headers()
+        self.wfile.write(out)
 
     def _upsert_author(self, body):
         type(self).author_upserts.append(body)
@@ -118,8 +133,22 @@ class FakeBackend(BaseHTTPRequestHandler):
             ]}).encode()
         elif self.path.startswith("/topics"):
             out = json.dumps({"topics": [{"slug": "tema-existente"}]}).encode()
-        elif self.path == "/articles":
-            out = json.dumps({"articles": [{"slug": "nota-vieja", "title": "Nota vieja"}]}).encode()
+        elif self.path.startswith("/articles:facets"):
+            out = json.dumps({"topics": [
+                {"value": "javier-milei", "count": 5}, {"value": "milei", "count": 2},
+                {"value": "desmonte", "count": 3}, {"value": "destilacion", "count": 1},
+                {"value": "otro-tema", "count": 1}]}).encode()
+        elif self.path.split("?")[0] == "/articles":
+            out = json.dumps({"articles": [{"slug": "nota-vieja", "title": "Nota vieja",
+                                            "topics": ["milei", "otro-tema"]}]}).encode()
+        elif self.path.startswith("/articles/"):
+            out = json.dumps({"slug": self.path.rsplit("/", 1)[-1],
+                              "content_hash": "deadbeefcafebabe",
+                              "title": "Nota vieja", "body": "Cuerpo.",
+                              "author": "autor-test", "section": "world",
+                              "topics": ["milei", "otro-tema"],
+                              "published_at": "2026-08-13T12:00:00Z",
+                              "metadata": {}}).encode()
         elif self.path.startswith("/authors"):
             out = json.dumps([{"handle": "autor-test", "name": "Autor Test", "bio": "bio-prueba",
                                "style": "estilo-prueba: tercera persona.",
@@ -166,6 +195,7 @@ class FakeFeed(BaseHTTPRequestHandler):
 def servers():
     FakeApi.behavior, FakeApi.calls, FakeApi.gate_calls = "publish", [], 0
     FakeBackend.posts, FakeBackend.author_upserts, FakeBackend.used_urls = [], [], []
+    FakeBackend.puts = []
     api = ThreadingHTTPServer(("127.0.0.1", 0), FakeApi)
     backend = ThreadingHTTPServer(("127.0.0.1", 0), FakeBackend)
     feed = ThreadingHTTPServer(("127.0.0.1", 0), FakeFeed)
@@ -211,8 +241,8 @@ def run_pipeline(cfg: Path, *extra: str):
         capture_output=True, text=True, env=env, cwd=ROOT, timeout=120)
 
 
-def run_sub(cfg: Path, sub: str, *extra: str):
-    env = dict(os.environ, TEST_TOKEN="tok-test")
+def run_sub(cfg: Path, sub: str, *extra: str, env_extra: dict | None = None):
+    env = dict(os.environ, TEST_TOKEN="tok-test", **(env_extra or {}))
     return subprocess.run(
         [sys.executable, str(RUN), sub, "--config", str(cfg), *extra],
         capture_output=True, text=True, env=env, cwd=ROOT, timeout=300)
@@ -643,3 +673,24 @@ def test_same_run_id_replays_without_double_publish(tmp_path, servers):
     assert second.returncode == 0, second.stderr
     assert json.loads(second.stdout.strip().splitlines()[-1])["slug"] == "nota-prueba"
     assert len(FakeBackend.posts) == 1
+
+
+def test_topics_confirms_the_map_and_cleanses_the_board(tmp_path, servers):
+    # The clustering pass proposes two groups; the confirm pass keeps only the
+    # real one, and the cleanse applies it over PUT /articles/{slug}.
+    api_port, backend_port = servers
+    cfg = write_config(tmp_path, api_port, backend_port)
+    p = run_sub(cfg, "topics", "--run-id", "temas-test",
+                env_extra={"NEWSROOM_PUBLISH_BASE_URL": f"http://127.0.0.1:{backend_port}",
+                           "NEWSROOM_OPERATOR_TOKEN": "tok-test"})
+    assert p.returncode == 0, p.stderr
+    result = json.loads(p.stdout.strip().splitlines()[-1])
+    assert result["status"] == "topics-cleansed"
+    assert result["articles_changed"] == 1 and result["applied"] == 1
+    topic_calls = [c for c in FakeApi.calls if "temas" in c["messages"][-1]["content"]]
+    assert all(c["temperature"] == 0.2 for c in topic_calls)
+    mapa = json.loads((tmp_path / "runs" / "temas-test" / "mapa.json").read_text())
+    assert mapa == {"milei": "javier-milei"}
+    put = FakeBackend.puts[-1]
+    assert put["path"] == "/articles/nota-vieja"
+    assert put["body"]["topics"] == ["javier-milei", "otro-tema"]

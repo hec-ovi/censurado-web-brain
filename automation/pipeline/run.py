@@ -246,9 +246,9 @@ def cmd_batch_approve(argv: list[str]) -> int:
 
 def cmd_topics(argv: list[str]) -> int:
     """Run the topic-normalization task: read the live topic board, have the
-    configured model cluster true duplicates ({"mapa": {variante: canonico}}),
-    and apply the remap through the newsroom cleanse CLI (permalinks and content
-    hashes stay stable; only tag sets move)."""
+    configured model cluster true duplicates ({"grupos": [[canonico,
+    variantes...]]}), and apply the remap through the newsroom cleanse CLI
+    (permalinks and content hashes stay stable; only tag sets move)."""
     ap = argparse.ArgumentParser(prog="run.py topics",
                                  description="Normalize the topic board: the model maps "
                                              "duplicate tags to one canonical slug, the "
@@ -291,24 +291,75 @@ def cmd_topics(argv: list[str]) -> int:
         print(json.dumps(result, ensure_ascii=False))
         return 0
 
-    listado = "\n".join(f"- {t['value']} ({t['count']} notas)" for t in board)
-    prompt = render(Path(cfg.data["nodes"][0]["prompt_path"]).parent.joinpath(
-        "topics-cleanse.md").read_text(), {"temas": listado})
-    # One huge single call (the whole topic board): it gets a task-sized
-    # timeout and a second attempt instead of the per-node default.
+    # The whole board in one call invites runaway generations on large boards;
+    # alphabetical chunks keep each call small and graphía variants adjacent.
+    prompts_dir = Path(cfg.data["nodes"][0]["prompt_path"]).parent
+    tmpl = prompts_dir.joinpath("topics-cleanse.md").read_text()
+    chunk_size = 150
+    board_sorted = sorted(board, key=lambda t: t["value"])
+    chunks = [board_sorted[i:i + chunk_size]
+              for i in range(0, len(board_sorted), chunk_size)]
     adapter_cfg = dict(cfg.data["adapters"]["api"])
     adapter_cfg["timeout_s"] = max(900, int(adapter_cfg.get("timeout_s") or 0))
+    # Clustering is classification, not writing: near-greedy sampling keeps the
+    # groups stable between runs.
+    adapter_cfg["temperature"] = 0.2
     adapter = ApiAdapter(adapter_cfg)
-    from src.errors import PipelineError as _PE  # noqa: F401
-    try:
-        raw = adapter.complete(prompt, want_json=True)
-    except PipelineError:
-        raw = adapter.complete(prompt, want_json=True)
-    (art_dir / "mapa.txt").write_text(raw)
-    out = parse_json_output(raw)
-    known = {t["value"] for t in board}
-    mapa = {k: v.strip() for k, v in (out.get("mapa") or {}).items()
-            if isinstance(v, str) and k in known and v.strip() and v.strip() != k}
+    counts = {t["value"]: t["count"] for t in board}
+    known = set(counts)
+    raws: list[str] = []
+
+    def _ask(prompt: str) -> dict:
+        try:
+            raw = adapter.complete(prompt, want_json=True)
+        except PipelineError:
+            raw = adapter.complete(prompt, want_json=True)
+        raws.append(raw)
+        return parse_json_output(raw)
+
+    def _merge_groups(out: dict, into: dict[str, str]) -> None:
+        for grupo in out.get("grupos") or []:
+            if not isinstance(grupo, list):
+                continue
+            slugs = [s.strip() for s in grupo if isinstance(s, str) and s.strip()]
+            if len(slugs) < 2:
+                continue
+            into.update({v: slugs[0] for v in slugs[1:] if v != slugs[0]})
+
+    def _resolve(mapa_raw: dict[str, str]) -> dict[str, str]:
+        def _canon(slug: str) -> str:
+            # Follow chains (a->b, b->c => c); a revisit means a cycle, stop there.
+            seen, cur = {slug}, slug
+            while cur in mapa_raw and mapa_raw[cur] not in seen:
+                cur = mapa_raw[cur]
+                seen.add(cur)
+            return cur
+        # Variant and canonical must both live on the board; anything else is
+        # model invention and stays off the map.
+        return {k: c for k in mapa_raw
+                if k in known and (c := _canon(k)) != k and c in known}
+
+    proposed: dict[str, str] = {}
+    for chunk in chunks:
+        listado = "\n".join(f"- {t['value']} ({t['count']} notas)" for t in chunk)
+        _merge_groups(_ask(render(tmpl, {"temas": listado})), proposed)
+    mapa = _resolve(proposed)
+
+    if mapa:
+        # Second look: judging the short list of proposed groups catches the
+        # false merges the clustering pass lets through.
+        grupos: dict[str, list[str]] = {}
+        for variante, canon in sorted(mapa.items()):
+            grupos.setdefault(canon, []).append(variante)
+        lineas = "\n".join(
+            "- " + ", ".join(f"{s} ({counts[s]} notas)" for s in [canon] + vs)
+            for canon, vs in sorted(grupos.items()))
+        confirm_tmpl = prompts_dir.joinpath("topics-confirm.md").read_text()
+        confirmed: dict[str, str] = {}
+        _merge_groups(_ask(render(confirm_tmpl, {"grupos": lineas})), confirmed)
+        mapa = _resolve(confirmed)
+
+    (art_dir / "mapa.txt").write_text("\n\n".join(raws))
     map_path = art_dir / "mapa.json"
     map_path.write_text(json.dumps(mapa, ensure_ascii=False, indent=1))
     if not mapa:
