@@ -51,6 +51,14 @@ def publish_piece(cfg: dict, piece: dict, inputs: dict, run_id: str) -> dict:
 
 
 def _verdict(out, raw: str) -> tuple[str, str]:
+    """The gate's decision. Canonical shape: typed observations, the CODE decides (any
+    'bloqueante' blocks; 'pulido' rides to the corrector). A plain verdict/notes object
+    is also honored."""
+    if isinstance(out, dict) and "observaciones" in out:
+        obs = out.get("observaciones") or []
+        blocking = [str(o.get("detalle", "")) for o in obs
+                    if isinstance(o, dict) and o.get("nivel") == "bloqueante"]
+        return ("revise" if blocking else "publish"), "\n".join(blocking)
     if isinstance(out, dict):
         return str(out.get("verdict", "")).lower(), str(out.get("notes", ""))
     return "", raw[:200]

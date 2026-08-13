@@ -28,7 +28,7 @@ Run one article end to end as a durable DBOS workflow: each editorial node is on
 ## Errors (closed set, as exit codes of `run.py`)
 
 - `2` CONFIG_INVALID (also bad usage)
-- `3` REJECTED: a gate node returned a verdict other than `publish` (an outcome, not a failure)
+- `3` REJECTED: the gate blocked the run (an outcome, not a failure). Canonical gate output is `{"observaciones": [{"nivel": "bloqueante"|"pulido", "detalle": "..."}]}`: the code blocks when any `bloqueante` exists and passes `pulido` items along to later nodes; a plain `{"verdict", "notes"}` object is also honored.
 - `4` ADAPTER_FAILED: a node failed after 3 attempts
 - `5` PUBLISH_FAILED: the backend refused after 3 attempts
 - `1` any other failure

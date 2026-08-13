@@ -34,10 +34,12 @@ class FakeApi(BaseHTTPRequestHandler):
         if "Actua como editor de mesa" in prompt:
             type(self).gate_calls += 1
             if type(self).behavior == "respin-once":
-                verdict = "revise" if type(self).gate_calls == 1 else "publish"
+                revise = type(self).gate_calls == 1
             else:
-                verdict = "publish" if type(self).behavior == "publish" else "revise"
-            content = json.dumps({"verdict": verdict, "notes": "motivo"})
+                revise = type(self).behavior != "publish"
+            obs = ([{"nivel": "bloqueante", "detalle": "motivo"}] if revise
+                   else [{"nivel": "pulido", "detalle": "brillo"}])
+            content = json.dumps({"observaciones": obs})
         elif "EXACTAMENTE" in prompt:
             content = json.dumps({**DRAFT, "title": "Titulo corregido"}, ensure_ascii=False)
         elif "MARCA-CONSULTAS" in prompt:

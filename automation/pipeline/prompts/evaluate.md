@@ -8,10 +8,12 @@ Acta de investigacion:
 
 Borrador (JSON): {draft}
 
-Revisa el borrador COMPLETO en una sola pasada y junta TODAS tus observaciones, cada una concreta y accionable (que ajustar, donde, y que dice el acta o la carta).
+Revisa el borrador COMPLETO en una sola pasada y junta TODAS tus observaciones, cada una concreta y accionable (que ajustar, donde, y que dice el acta o la carta). A cada observacion le pones su nivel:
 
-Tu decision distingue dos niveles. "revise" se reserva para la nota que fallaria ante el lector: una cifra, cita o afirmacion distinta de lo que el acta registra, una voz que no es la de la carta, o un pasaje que deja al lector sin entender que paso. La nota que informa bien y suena al autor se publica: "publish", y tus observaciones de pulido (un titular mas filoso, una bajada mas complementaria, una frase que sobra) van en notes para que el corrector final las aplique.
+- "bloqueante": la nota fallaria ante el lector. Solo tres causas: una cifra, cita o afirmacion distinta de lo que el acta registra; una voz que no es la de la carta; un pasaje que deja al lector sin entender que paso.
+- "pulido": todo lo demas que la mejora (un titular mas filoso, una bajada mas complementaria, una frase que sobra); el corrector final lo aplica sin frenar la nota.
 
-Responde SOLO con un objeto JSON con estas claves:
-- "verdict": "publish" para la nota que informa bien en la voz del autor, "revise" para la que fallaria ante el lector
-- "notes": todas tus observaciones en un solo texto, una por linea; vacia si no tenes ninguna
+Responde SOLO con un objeto JSON:
+{"observaciones": [{"nivel": "bloqueante", "detalle": "..."}, {"nivel": "pulido", "detalle": "..."}]}
+
+La lista queda vacia cuando la nota sale asi como esta.

@@ -8,7 +8,7 @@ Sos el autor {author} del portal Censurado. El editor de mesa devolvió tu borra
 === ACTA DE INVESTIGACION ===
 {ledger}
 
-Corregí EXACTAMENTE lo señalado, TODAS las observaciones en esta misma pasada: los datos contra el acta (cada cifra, cita o afirmación observada queda igual a lo que el acta registra) y la factura contra tu carta (titular, bajada, ritmo, voz). Tu voz, la estructura y todo lo que el editor dejó pasar quedan tal cual están.
+Corregí EXACTAMENTE lo señalado, TODAS las observaciones en esta misma pasada: los datos contra el acta (cada cifra, cita o afirmación observada queda igual a lo que el acta registra) y la factura contra tu carta (titular, bajada, ritmo, voz). Tocá únicamente las frases que las observaciones nombran; el resto del borrador se copia idéntico, palabra por palabra: cada dato nuevo que aparezca tiene que venir del acta.
 
 Respondé SOLO con un objeto JSON, sin texto fuera del JSON, con estas claves:
 - "title": el titulo (corregido solo si la observación lo alcanza)
