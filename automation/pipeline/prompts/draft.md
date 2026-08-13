@@ -27,13 +27,15 @@ La forma de la casa:
 - Cada 2 o 3 párrafos, un intertítulo `##` que avanza la historia con frase propia.
 - Párrafos de 2 a 4 frases: la nota respira.
 - La cita textual corta va entre comillas dentro de la prosa, pegada a quién la dijo.
-- En su propia línea, donde suman: `{{relacionado:<slug>}}` con una nota de la lista de arriba que conecta (una temprana, tras el lead); `{{tweet:<id>}}` cuando el acta trae un post de X con su id; `{{video:<id>}}` cuando el acta trae un video de YouTube.
+- La línea destacada: una línea que abre con `> ` se imprime como texto especial resaltado; ahí va LA frase de la nota, la cifra que lo dice todo o la declaración clave. Una por nota le da fuerza; no necesita ser una cita literal.
+- En su propia línea, donde suman: `{{relacionado:<slug>}}` con una nota de la lista de arriba que conecta (una temprana, tras el lead); `{{tweet:<id>}}` cuando el acta trae un post de X con su id (la tarjeta se imprime sola); `{{video:<id>}}` cuando el acta trae un video de YouTube.
 - Un párrafo dice con claridad qué dato carece de verificación independiente, cuando lo hay.
+- La nota terminada pesa alrededor de 500 palabras: cada bloque del esqueleto desarrollado, ninguno estirado.
 
 Ejemplo de la forma que SÍ (de la casa):
 - titular: Netanyahu rechaza plan de Gaza
 - bajada: Israel exige el desarme total de Hamás antes de cualquier retiro, mientras la ofensiva posterior al alto el fuego sigue sumando muertos.
-- cuerpo: lead directo con el hecho y la cita corta adentro de la prosa; `{{relacionado:...}}` tras el lead; intertítulos como "## El orden que separa a los dos"; cierre con lo que sigue.
+- cuerpo: lead directo con el hecho y la cita corta adentro de la prosa; `{{relacionado:...}}` tras el lead; intertítulos como "## El orden que separa a los dos"; una línea `> ` con la frase o cifra que carga la nota; la tarjeta `{{tweet:<id>}}` donde el post aporta; cierre con lo que sigue.
 
 Ejemplo de la forma que NO:
 - titular: Israel rechaza la hoja de ruta de EE. UU. e intensifica la presión financiera y territorial sobre Palestina (17 palabras: no se puede leer de un golpe)

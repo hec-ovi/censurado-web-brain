@@ -194,7 +194,10 @@ def test_publishes_through_the_gate(tmp_path, servers):
     assert len(FakeBackend.posts) == 1
     assert FakeBackend.posts[0]["idem"] == "run-pub"
     assert FakeBackend.posts[0]["auth"] == "Bearer tok-test"
-    assert FakeBackend.posts[0]["body"]["metadata"]["description"] == "Una frase."
+    meta = FakeBackend.posts[0]["body"]["metadata"]
+    assert meta["description"] == "Una frase."
+    assert meta["author_name"] == "Autor Test" and meta["author_bio"] == "bio-prueba"
+    assert meta["card"] == {"type": "text"}
     art = tmp_path / "runs" / "run-pub"
     assert (art / "draft.json").is_file() and (art / "evaluate.json").is_file()
 

@@ -16,6 +16,9 @@ Armá el acta de investigación de la nota, solo con lo que el material realment
 ## Citas textuales
 - cita corta entre comillas, quién la dijo, fuente (URL)
 
+## Posts de X
+- cuando el material trae un post de X: el id numérico del post, @cuenta, y qué dice (URL); el id es lo que permite incrustar la tarjeta en la nota
+
 ## Cronología
 - fecha: qué pasó (URL)
 

@@ -30,6 +30,26 @@ class Publisher:
             h["Idempotency-Key"] = idempotency_key
         return h
 
+    def _byline(self, handle: str) -> dict:
+        """The registry byline the portal renders (face, name, bio), same keys the CLI fills."""
+        try:
+            r = httpx.get(f"{self.base}/authors", headers=self._headers(), timeout=self.timeout)
+            rows = r.json()
+        except (httpx.HTTPError, ValueError):
+            return {}
+        rows = rows.get("authors", rows) if isinstance(rows, dict) else rows
+        for a in rows:
+            if a.get("handle") == handle:
+                meta = {}
+                if a.get("name"):
+                    meta["author_name"] = a["name"]
+                if a.get("bio") or a.get("about"):
+                    meta["author_bio"] = a.get("bio") or a.get("about")
+                if a.get("avatar"):
+                    meta["author_avatar"] = a["avatar"]
+                return meta
+        return {}
+
     def _tweet_snapshots(self, body: str) -> list[dict]:
         """Fetch the card for every {{tweet:<id>}} the body embeds, through the toolkit's
         `tweet` verb (the same auto-fetch `preview` does). A card that cannot be fetched is
@@ -57,14 +77,13 @@ class Publisher:
         }
         if isinstance(piece.get("topics"), list):
             body["topics"] = piece["topics"]
-        meta: dict = {}
+        meta: dict = {"card": {"type": "text"}, **self._byline(inputs["author"])}
         if piece.get("standfirst"):
             meta["description"] = piece["standfirst"]
         tweets = self._tweet_snapshots(piece.get("body", ""))
         if tweets:
             meta["tweets"] = tweets
-        if meta:
-            body["metadata"] = meta
+        body["metadata"] = meta
         try:
             r = httpx.post(f"{self.base}/articles", json=body,
                            headers=self._headers(idempotency_key), timeout=self.timeout)
