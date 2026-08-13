@@ -34,7 +34,8 @@ class FakeApi(BaseHTTPRequestHandler):
             content = json.dumps({"verdict": "publish" if type(self).behavior == "publish"
                                   else "revise", "notes": "motivo"})
         elif "MARCA-CONSULTAS" in prompt:
-            content = json.dumps({"queries": ["consulta de prueba"]})
+            content = json.dumps({"queries": ["consulta de prueba"],
+                                  "read_urls": ["https://fuente.test/nota-1"]})
         else:
             content = json.dumps(DRAFT, ensure_ascii=False)
         out = json.dumps({"choices": [{"message": {"content": content}}]}).encode()
@@ -77,7 +78,10 @@ class FakeBackend(BaseHTTPRequestHandler):
         elif self.path.startswith("/authors"):
             out = json.dumps([{"handle": "autor-test", "name": "Autor Test", "bio": "bio-prueba",
                                "style": "estilo-prueba: tercera persona.",
-                               "metadata": {"who_i_am": "soy una prueba"}}]).encode()
+                               "metadata": {"who_i_am": "soy una prueba",
+                                            "profile_topics": ["tema-perfil"],
+                                            "few_shots_pos": [{"prompt": "p", "good": "EJEMPLO-SI"}],
+                                            "few_shots_neg": [{"prompt": "p", "bad": "EJEMPLO-NO"}]}}]).encode()
         elif self.path.startswith("/editorial-text"):
             out = json.dumps({"entries": [
                 {"key": "regla.uno", "value": "sin muletillas", "deleted": False}]}).encode()
@@ -247,6 +251,8 @@ def test_context_sources_reach_the_prompt(tmp_path, servers):
     draft_prompt = FakeApi.calls[0]["messages"][-1]["content"]
     assert "CONTENIDO-DEL-MANUAL" in draft_prompt
     assert "estilo-prueba" in draft_prompt and "soy una prueba" in draft_prompt
+    assert "EJEMPLO-SI" in draft_prompt and "EJEMPLO-NO" in draft_prompt
+    assert "tema-perfil" in draft_prompt
     assert "regla.uno: sin muletillas" in draft_prompt
     assert len(FakeBackend.posts) == 1
 
@@ -298,7 +304,7 @@ def test_websearch_context_runs_the_proposed_queries(tmp_path, servers):
         " 'snippet': 'resumen'}]}}))\n"
         "else:\n"
         "    print(json.dumps({'ok': True, 'data': {'pages': [\n"
-        "        {'content': 'CONTENIDO-WEB-DE-PRUEBA', 'blocked': False}]}}))\n")
+        "        {'content': 'CONTENIDO-DE ' + sys.argv[2], 'blocked': False}]}}))\n")
     qprompt = tmp_path / "consultas.md"
     qprompt.write_text("MARCA-CONSULTAS para {topic}")
     dprompt = tmp_path / "draft-con-web.md"
@@ -306,7 +312,9 @@ def test_websearch_context_runs_the_proposed_queries(tmp_path, servers):
     nodes = [
         {"name": "queries", "adapter": "api", "output": "json", "prompt": str(qprompt)},
         {"name": "draft", "adapter": "api", "role": "draft", "output": "json",
-         "prompt": str(dprompt), "context": {"web": {"websearch": {"queries_from": "queries"}}}},
+         "prompt": str(dprompt),
+         "context": {"web": {"websearch": {"queries_from": "queries",
+                                           "urls_from": "queries"}}}},
         {"name": "evaluate", "adapter": "api", "role": "gate", "output": "json",
          "prompt": str(PROMPTS / "evaluate.md")},
     ]
@@ -315,7 +323,8 @@ def test_websearch_context_runs_the_proposed_queries(tmp_path, servers):
     p = run_pipeline(cfg)
     assert p.returncode == 0, p.stderr
     draft_prompt = FakeApi.calls[1]["messages"][-1]["content"]
-    assert "CONTENIDO-WEB-DE-PRUEBA" in draft_prompt
+    assert "CONTENIDO-DE https://fuente.test/nota-1" in draft_prompt
+    assert "CONTENIDO-DE https://externo.test/nota" in draft_prompt
     assert "externo.test" in draft_prompt
 
 

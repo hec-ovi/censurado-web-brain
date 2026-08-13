@@ -141,9 +141,12 @@ class PipelineConfig:
                     elif kind == "websearch":
                         if not isinstance(val, dict) or not isinstance(val.get("queries_from"), str):
                             v.append(f"{ctag}.websearch: queries_from (a prior node name) is required")
-                        elif val["queries_from"] == name or val["queries_from"] not in names:
-                            v.append(f"{ctag}.websearch.queries_from: "
-                                     f"'{val['queries_from']}' is not an earlier node")
+                        else:
+                            for field in ("queries_from", "urls_from"):
+                                ref = val.get(field)
+                                if ref is not None and (ref == name or ref not in names):
+                                    v.append(f"{ctag}.websearch.{field}: "
+                                             f"'{ref}' is not an earlier node")
                     else:
                         v.append(f"{ctag}: unknown source '{kind}'")
         if nodes and drafts != 1:

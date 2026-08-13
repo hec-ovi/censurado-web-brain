@@ -55,6 +55,14 @@ class ContextFetcher:
                          f"Carta de estilo:\n{a.get('style', '')}"]
                 if meta.get("who_i_am"):
                     parts.append(f"Quien soy:\n{meta['who_i_am']}")
+                if meta.get("profile_topics"):
+                    parts.append("Temas del perfil: " + ", ".join(meta["profile_topics"]))
+                for key, label in (("few_shots_pos", "Ejemplos de tu voz (asi SI)"),
+                                   ("few_shots_neg", "Ejemplos de lo que NO sos (asi NO)")):
+                    shots = meta.get(key) or []
+                    if shots:
+                        texts = [s.get("good") or s.get("bad") or "" for s in shots]
+                        parts.append(f"{label}:\n" + "\n---\n".join(t for t in texts if t))
                 return "\n\n".join(parts)
         raise AdapterError(f"author '{handle}' not found in the backend")
 
@@ -109,19 +117,29 @@ class ContextFetcher:
         return "\n".join(out)
 
     def _websearch(self, opts: dict, outputs: dict) -> str:
-        """Run the searches a prior node proposed and inline the fenced pages."""
+        """Run the searches a prior node proposed, read its picked source pages directly,
+        and inline everything fenced."""
         source_node = opts["queries_from"]
         raw = outputs.get(source_node)
         if raw is None:
             raise AdapterError(f"websearch: node '{source_node}' produced no output yet")
         try:
-            queries = json.loads(raw).get("queries")
-        except (json.JSONDecodeError, AttributeError) as e:
+            proposed = json.loads(raw)
+        except json.JSONDecodeError as e:
             raise AdapterError(f"websearch: node '{source_node}' output is not JSON") from e
+        queries = proposed.get("queries") if isinstance(proposed, dict) else None
         if not isinstance(queries, list) or not all(isinstance(q, str) and q for q in queries):
             raise AdapterError(f"websearch: node '{source_node}' has no \"queries\" string list")
+        urls = []
+        if opts.get("urls_from"):
+            picked = outputs.get(opts["urls_from"])
+            chosen = json.loads(picked).get("read_urls") if picked else None
+            if isinstance(chosen, list):
+                urls = [u for u in chosen
+                        if isinstance(u, str) and u.startswith(("http://", "https://"))]
         return WebSearcher(self.websearch_cfg).research(
-            queries,
+            queries, urls=urls,
             max_results=opts.get("max_results", 5),
             fetch_top=opts.get("fetch_top", 4),
+            fetch_urls_top=opts.get("fetch_urls_top", 3),
             page_tokens=opts.get("page_tokens", 3000))

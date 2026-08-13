@@ -201,6 +201,15 @@
                       "type": "integer",
                       "default": 3000,
                       "description": "Token budget per read page"
+                    },
+                    "urls_from": {
+                      "type": "string",
+                      "description": "Name of the earlier node whose output carries read_urls: source pages to read directly, no search engine in between"
+                    },
+                    "fetch_urls_top": {
+                      "type": "integer",
+                      "default": 3,
+                      "description": "Direct source pages to read"
                     }
                   }
                 }
