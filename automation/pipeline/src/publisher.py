@@ -1,28 +1,22 @@
 """Publish the approved piece to the backend, idempotency-keyed by the run id."""
-import json
 import os
 import re
-import subprocess
-import sys
-from pathlib import Path
 
 import httpx
 
 from .errors import PublishError
+from .toolkit import run_verb
 
 _TWEET_MARKER = re.compile(r"\{\{tweet:([0-9]+)\}\}")
 
 
 class Publisher:
     def __init__(self, cfg: dict):
+        self.cfg = cfg
         backend = cfg["backend"]
         self.base = backend["base_url"].rstrip("/")
         self.token = os.environ[backend["token_env"]]
         self.timeout = backend.get("timeout_s", 60)
-        toolkit = cfg.get("toolkit", {})
-        default_cli = str(Path(__file__).resolve().parents[3] / "cli" / "censurado.py")
-        self.toolkit_cmd = toolkit.get("cmd") or [sys.executable, default_cli]
-        self.toolkit_timeout = toolkit.get("timeout_s", 60)
 
     def _headers(self, idempotency_key: str | None = None) -> dict:
         h = {"Authorization": f"Bearer {self.token}"}
@@ -56,16 +50,9 @@ class Publisher:
         skipped and the piece publishes without it."""
         snaps = []
         for tid in sorted(set(_TWEET_MARKER.findall(body or ""))):
-            try:
-                p = subprocess.run([*self.toolkit_cmd, "tweet", tid],
-                                   capture_output=True, text=True,
-                                   timeout=self.toolkit_timeout)
-                if p.returncode == 0:
-                    snap = json.loads(p.stdout)
-                    if isinstance(snap, dict):
-                        snaps.append(snap)
-            except (OSError, subprocess.TimeoutExpired, json.JSONDecodeError):
-                continue
+            snap = run_verb(self.cfg, "tweet", tid)
+            if snap:
+                snaps.append(snap)
         return snaps
 
     def publish(self, piece: dict, inputs: dict, idempotency_key: str) -> dict:
@@ -77,7 +64,13 @@ class Publisher:
         }
         if isinstance(piece.get("topics"), list):
             body["topics"] = piece["topics"]
-        meta: dict = {"card": {"type": "text"}, **self._byline(inputs["author"])}
+        meta: dict = {**self._byline(inputs["author"])}
+        if piece.get("image"):
+            meta["image"] = piece["image"]
+            meta["card"] = {"type": "image", "src": piece["image"],
+                            "alt": piece.get("image_alt", "")}
+        else:
+            meta["card"] = {"type": "text"}
         if piece.get("standfirst"):
             meta["description"] = piece["standfirst"]
         tweets = self._tweet_snapshots(piece.get("body", ""))

@@ -11,6 +11,13 @@
     "cli": { "cmd": ["claude", "-p", "{prompt}"], "timeout_s": 3600 }
   },
   "websearch": { "cmd": ["websearch"], "timeout_s": 180 },
+  "batch": {
+    "concurrency": 3,
+    "used_urls_cap": 50,
+    "candidates_prompt": "prompts/candidates.md",
+    "jefe_prompt": "prompts/jefe.md",
+    "feeds": { "hours": 48, "max_per_source": 6 }
+  },
   "nodes": [
     { "name": "queries", "adapter": "api", "output": "json", "prompt": "prompts/queries.md",
       "context": { "persona": { "persona": true },

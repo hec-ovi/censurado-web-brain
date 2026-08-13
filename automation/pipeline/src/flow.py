@@ -1,6 +1,5 @@
 """The durable workflow: walk the nodes, gate, publish once. Steps are the retry unit."""
 import json
-import re
 from pathlib import Path
 
 from dbos import DBOS
@@ -10,27 +9,8 @@ from .adapter_cli import CliAdapter
 from .context import ContextFetcher
 from .errors import AdapterError
 from .publisher import Publisher
-
-_PLACEHOLDER = re.compile(r"\{([a-z0-9_-]+)\}")
-
-
-def render(template: str, context: dict) -> str:
-    return _PLACEHOLDER.sub(
-        lambda m: str(context[m.group(1)]) if m.group(1) in context else m.group(0), template)
-
-
-def parse_json_output(raw: str) -> dict:
-    text = raw.strip()
-    if text.startswith("```"):
-        text = re.sub(r"^```[a-zA-Z]*\n?", "", text)
-        text = re.sub(r"\n?```$", "", text)
-    a, b = text.find("{"), text.rfind("}")
-    if a < 0 or b <= a:
-        raise AdapterError("no JSON object in node output")
-    try:
-        return json.loads(text[a:b + 1])
-    except json.JSONDecodeError as e:
-        raise AdapterError(f"node output is not valid JSON: {e}") from e
+from .render import parse_json_output, render
+from .toolkit import run_verb
 
 
 @DBOS.step(retries_allowed=True, max_attempts=3, interval_seconds=1.0, backoff_rate=2.0)
@@ -48,6 +28,16 @@ def run_node(cfg: dict, node: dict, prompt: str) -> str:
 @DBOS.step(retries_allowed=True, max_attempts=3, interval_seconds=1.0, backoff_rate=2.0)
 def publish_piece(cfg: dict, piece: dict, inputs: dict, run_id: str) -> dict:
     return Publisher(cfg).publish(piece, inputs, idempotency_key=run_id)
+
+
+@DBOS.step(retries_allowed=False)
+def render_hero(cfg: dict, brief: str, alt: str) -> dict:
+    """Best-effort hero render through the toolkit's `image` verb; {} when ComfyUI is
+    absent or the render fails (the piece publishes text-only, like the CLI lane)."""
+    out = run_verb(cfg, "image", "--prompt", brief, "--alt", alt, timeout=600)
+    if out and out.get("image"):
+        return {"image": out["image"], "image_alt": out.get("image_alt", alt)}
+    return {}
 
 
 _CORRECTOR_OWNS = ("titular", "titulo", "título", "bajada", "standfirst")
@@ -118,6 +108,9 @@ def article_run(cfg: dict, inputs: dict) -> dict:
             if verdict != "publish":
                 return {"status": "rejected", "run_id": run_id, "notes": notes,
                         "artifacts": str(art_dir)}
+    if inputs.get("image_brief") and piece:
+        piece.update(render_hero(cfg, inputs["image_brief"],
+                                 piece.get("standfirst", "") or piece.get("title", "")))
     if inputs.get("mode", "preview") == "preview":
         (art_dir / "piece.json").write_text(json.dumps(
             {"piece": piece, "inputs": {k: inputs[k] for k in ("topic", "author", "section")}},

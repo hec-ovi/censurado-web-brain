@@ -51,6 +51,18 @@ class FakeApi(BaseHTTPRequestHandler):
         elif "MARCA-TUIT" in prompt:
             content = json.dumps({**DRAFT, "body": "Parrafo uno.\n\n{{tweet:123}}\n\nCierre."},
                                  ensure_ascii=False)
+        elif "historias valen la pena" in prompt:
+            content = json.dumps({"candidatos": [
+                {"titulo": "Historia uno", "descripcion": "La primera.",
+                 "fuente": "https://fuente.test/nota-1?utm_source=rss"},
+                {"titulo": "Historia dos", "descripcion": "La segunda.",
+                 "fuente": "https://fuente.test/nota-2"}]}, ensure_ascii=False)
+        elif "jefe de redacción" in prompt:
+            content = json.dumps({"seleccion": [
+                {"autor": "autor-test", "titulo": "Historia uno", "descripcion": "La primera.",
+                 "portada_rank": 1, "imagen": False, "imagen_brief": ""},
+                {"autor": "autor-test", "titulo": "Historia dos", "descripcion": "La segunda.",
+                 "portada_rank": 2, "imagen": False, "imagen_brief": ""}]}, ensure_ascii=False)
         else:
             content = json.dumps(DRAFT, ensure_ascii=False)
         out = json.dumps({"choices": [{"message": {"content": content}}]}).encode()
@@ -65,9 +77,23 @@ class FakeApi(BaseHTTPRequestHandler):
 
 class FakeBackend(BaseHTTPRequestHandler):
     posts: list = []
+    author_upserts: list = []
+    used_urls: list = []
+
+    def _upsert_author(self, body):
+        type(self).author_upserts.append(body)
+        type(self).used_urls = (body.get("metadata") or {}).get("used_urls", [])
+        out = json.dumps(body).encode()
+        self.send_response(200)
+        self.send_header("Content-Type", "application/json")
+        self.end_headers()
+        self.wfile.write(out)
 
     def do_POST(self):
         body = json.loads(self.rfile.read(int(self.headers.get("Content-Length", 0))))
+        if self.path == "/authors":
+            self._upsert_author(body)
+            return
         type(self).posts.append({"body": body, "idem": self.headers.get("Idempotency-Key"),
                                  "auth": self.headers.get("Authorization")})
         out = json.dumps({"id": "1", "slug": "nota-prueba"}).encode()
@@ -100,7 +126,9 @@ class FakeBackend(BaseHTTPRequestHandler):
                                "metadata": {"who_i_am": "soy una prueba",
                                             "profile_topics": ["tema-perfil"],
                                             "few_shots_pos": [{"prompt": "p", "good": "EJEMPLO-SI"}],
-                                            "few_shots_neg": [{"prompt": "p", "bad": "EJEMPLO-NO"}]}}]).encode()
+                                            "few_shots_neg": [{"prompt": "p", "bad": "EJEMPLO-NO"}],
+                                            "beat": "world",
+                                            "used_urls": type(self).used_urls}}]).encode()
         elif self.path.startswith("/editorial-text"):
             out = json.dumps({"entries": [
                 {"key": "regla.uno", "value": "sin muletillas", "deleted": False}]}).encode()
@@ -137,7 +165,7 @@ class FakeFeed(BaseHTTPRequestHandler):
 @pytest.fixture()
 def servers():
     FakeApi.behavior, FakeApi.calls, FakeApi.gate_calls = "publish", [], 0
-    FakeBackend.posts = []
+    FakeBackend.posts, FakeBackend.author_upserts, FakeBackend.used_urls = [], [], []
     api = ThreadingHTTPServer(("127.0.0.1", 0), FakeApi)
     backend = ThreadingHTTPServer(("127.0.0.1", 0), FakeBackend)
     feed = ThreadingHTTPServer(("127.0.0.1", 0), FakeFeed)
@@ -150,11 +178,12 @@ def servers():
 
 
 def write_config(tmp: Path, api_port: int, backend_port: int, nodes=None, cli_cmd=None,
-                 cli_stdin=False, websearch=None) -> Path:
+                 cli_stdin=False, websearch=None, batch=None) -> Path:
     cfg = {
         "run_dir": "runs",
         "backend": {"base_url": f"http://127.0.0.1:{backend_port}", "token_env": "TEST_TOKEN"},
         **({"websearch": websearch} if websearch else {}),
+        **({"batch": batch} if batch else {}),
         "adapters": {
             "api": {"base_url": f"http://127.0.0.1:{api_port}/v1", "model": "fake"},
             **({"cli": {"cmd": cli_cmd, **({"stdin": True} if cli_stdin else {})}}
@@ -185,7 +214,7 @@ def run_sub(cfg: Path, sub: str, *extra: str):
     env = dict(os.environ, TEST_TOKEN="tok-test")
     return subprocess.run(
         [sys.executable, str(RUN), sub, "--config", str(cfg), *extra],
-        capture_output=True, text=True, env=env, cwd=ROOT, timeout=60)
+        capture_output=True, text=True, env=env, cwd=ROOT, timeout=300)
 
 
 def test_publishes_through_the_gate(tmp_path, servers):
@@ -468,6 +497,89 @@ def test_websearch_context_must_name_an_earlier_node(tmp_path, servers):
     p = run_pipeline(write_config(tmp_path, api_port, backend_port, nodes=nodes))
     assert p.returncode == 2
     assert "not an earlier node" in p.stderr
+
+
+BATCH = {"concurrency": 1, "used_urls_cap": 3,
+         "candidates_prompt": str(PROMPTS / "candidates.md"),
+         "jefe_prompt": str(PROMPTS / "jefe.md")}
+
+
+def test_registry_caps_and_rotates(tmp_path, servers, monkeypatch):
+    monkeypatch.syspath_prepend(str(RUN.parent))
+    from src.registry import UsedUrls, normalize_url
+    monkeypatch.setenv("TEST_TOKEN", "tok-test")
+    assert normalize_url("HTTPS://Sitio.Test/Nota/?utm_source=rss&x=1#frag") == \
+        "https://sitio.test/Nota?x=1"
+    _, backend_port = servers
+    reg = UsedUrls({"base_url": f"http://127.0.0.1:{backend_port}",
+                    "token_env": "TEST_TOKEN"}, cap=3)
+    reg.register("autor-test", ["https://a.test/1", "https://a.test/2"])
+    assert FakeBackend.used_urls == ["https://a.test/1", "https://a.test/2"]
+    reg.register("autor-test", ["https://a.test/3", "https://a.test/4"])
+    assert FakeBackend.used_urls == ["https://a.test/3", "https://a.test/4",
+                                     "https://a.test/1"]
+
+
+def test_feeds_context_omits_used_titulars(tmp_path, servers):
+    api_port, backend_port = servers
+    FakeBackend.used_urls = ["https://fuente.test/nota-1"]
+    prompt = tmp_path / "draft-filtrado.md"
+    prompt.write_text("Titulares:\n{titulares}\n\nNota de {topic}.")
+    nodes = [
+        {"name": "draft", "adapter": "api", "role": "draft", "output": "json",
+         "prompt": str(prompt), "context": {"titulares": {"feeds": {"hours": 48}}}},
+        {"name": "evaluate", "adapter": "api", "role": "gate", "output": "json",
+         "prompt": str(PROMPTS / "evaluate.md")},
+    ]
+    p = run_pipeline(write_config(tmp_path, api_port, backend_port, nodes=nodes))
+    assert p.returncode == 0, p.stderr
+    sent = FakeApi.calls[0]["messages"][-1]["content"]
+    assert "TITULAR-DE-PRUEBA" not in sent
+    assert "omitidos" in sent
+
+
+def test_batch_preview_holds_the_edition(tmp_path, servers):
+    api_port, backend_port = servers
+    cfg = write_config(tmp_path, api_port, backend_port, batch=BATCH)
+    p = run_sub(cfg, "batch", "--run-id", "lote-1")
+    assert p.returncode == 0, p.stderr
+    result = json.loads(p.stdout.strip().splitlines()[-1])
+    assert result["status"] == "batch-previewed"
+    assert [a["status"] for a in result["articles"]] == ["previewed", "previewed"]
+    lote = tmp_path / "runs" / "lote-1"
+    assert (lote / "plan.json").is_file()
+    assert (lote / "candidates-autor-test.json").is_file()
+    assert (tmp_path / "runs" / "lote-1-n1" / "piece.json").is_file()
+    assert FakeBackend.posts == []
+    assert FakeBackend.used_urls == ["https://fuente.test/nota-2",
+                                     "https://fuente.test/nota-1"]
+
+
+def test_batch_auto_publishes_in_portada_order(tmp_path, servers):
+    api_port, backend_port = servers
+    cfg = write_config(tmp_path, api_port, backend_port, batch=BATCH)
+    p = run_sub(cfg, "batch", "--run-id", "lote-auto", "--mode", "auto")
+    assert p.returncode == 0, p.stderr
+    result = json.loads(p.stdout.strip().splitlines()[-1])
+    assert result["status"] == "batch-published"
+    assert len(FakeBackend.posts) == 2
+    assert FakeBackend.posts[0]["idem"] == "lote-auto-n2"
+    assert FakeBackend.posts[1]["idem"] == "lote-auto-n1"
+
+
+def test_batch_resume_reuses_the_plan(tmp_path, servers):
+    api_port, backend_port = servers
+    cfg = write_config(tmp_path, api_port, backend_port, batch=BATCH)
+    first = run_sub(cfg, "batch", "--run-id", "lote-re")
+    assert first.returncode == 0, first.stderr
+    candidate_calls = sum("historias valen la pena" in c["messages"][-1]["content"]
+                          for c in FakeApi.calls)
+    second = run_sub(cfg, "batch", "--run-id", "lote-re")
+    assert second.returncode == 0, second.stderr
+    after = sum("historias valen la pena" in c["messages"][-1]["content"]
+                for c in FakeApi.calls)
+    assert after == candidate_calls
+    assert FakeBackend.posts == []
 
 
 def test_same_run_id_replays_without_double_publish(tmp_path, servers):

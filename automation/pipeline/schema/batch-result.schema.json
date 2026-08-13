@@ -1,0 +1,69 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Batch result (stdout JSON of run.py batch; also <run_dir>/<batch_id>/result.json)",
+  "type": "object",
+  "required": [
+    "status",
+    "batch_id",
+    "artifacts",
+    "articles"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "status": {
+      "enum": [
+        "batch-previewed",
+        "batch-published"
+      ]
+    },
+    "batch_id": {
+      "type": "string"
+    },
+    "artifacts": {
+      "type": "string",
+      "description": "The batch dir: candidates, jefe, plan.json, result.json"
+    },
+    "articles": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "run_id",
+          "author",
+          "title",
+          "portada_rank",
+          "status"
+        ],
+        "additionalProperties": true,
+        "properties": {
+          "run_id": {
+            "type": "string"
+          },
+          "author": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          },
+          "portada_rank": {
+            "type": "integer"
+          },
+          "status": {
+            "enum": [
+              "previewed",
+              "published",
+              "rejected",
+              "failed"
+            ]
+          },
+          "slug": {
+            "type": "string"
+          },
+          "permalink": {
+            "type": "string"
+          }
+        }
+      }
+    }
+  }
+}

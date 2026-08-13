@@ -76,6 +76,20 @@ class PipelineConfig:
                 if bc is not None and (not isinstance(bc, list) or not bc):
                     v.append(f"{block}.cmd: must be a non-empty argv list")
 
+        batch = raw.get("batch")
+        if batch is not None:
+            for key, default in (("candidates_prompt", "prompts/candidates.md"),
+                                 ("jefe_prompt", "prompts/jefe.md")):
+                bp = (base / batch.get(key, default)).resolve()
+                if not bp.is_file():
+                    v.append(f"batch.{key}: file not found: {bp}")
+                else:
+                    batch[key.replace("_prompt", "_prompt_path")] = str(bp)
+            for key, floor in (("concurrency", 1), ("used_urls_cap", 1)):
+                val = batch.get(key)
+                if val is not None and (not isinstance(val, int) or val < floor):
+                    v.append(f"batch.{key}: must be an integer >= {floor}")
+
         nodes = raw.get("nodes")
         if not isinstance(nodes, list) or not nodes:
             v.append("nodes: required non-empty list")

@@ -44,6 +44,9 @@ def cmd_run(argv: list[str]) -> int:
     ap.add_argument("--mode", choices=["preview", "auto"], default="preview",
                     help="preview (default): walk and gate, return the piece for approval; "
                          "auto: publish when the gate passes")
+    ap.add_argument("--image-brief",
+                    help="Hero image brief; renders best-effort through the toolkit "
+                         "(skipped cleanly when ComfyUI is off)")
     args = ap.parse_args(argv)
 
     cfg = load_config(args.config)
@@ -60,6 +63,8 @@ def cmd_run(argv: list[str]) -> int:
     run_id = args.run_id or "run-" + uuid.uuid4().hex[:12]
     inputs = {"topic": args.topic, "author": args.author, "section": args.section,
               "mode": args.mode}
+    if args.image_brief:
+        inputs["image_brief"] = args.image_brief
     emit_event(cfg.run_dir, {"event": "run-start", "run_id": run_id, "mode": args.mode,
                              "author": args.author, "section": args.section,
                              "topic": args.topic})
@@ -172,11 +177,72 @@ def cmd_events(argv: list[str]) -> int:
         return 0
 
 
+def cmd_batch(argv: list[str]) -> int:
+    ap = argparse.ArgumentParser(prog="run.py batch",
+                                 description="Run the daily batch: candidates per author, "
+                                             "the jefe selects, articles fan out")
+    ap.add_argument("--config", required=True)
+    ap.add_argument("--run-id", help="Batch id; reuse to resume (the stored plan is kept)")
+    ap.add_argument("--mode", choices=["preview", "auto"], default="preview",
+                    help="preview (default): write and hold every piece; "
+                         "auto: publish them in portada order")
+    ap.add_argument("--authors", help="Comma-separated handles (default: every author "
+                                      "with a beat and attached sources)")
+    args = ap.parse_args(argv)
+
+    cfg = load_config(args.config)
+    if cfg is None:
+        return 2
+    cfg.run_dir.mkdir(parents=True, exist_ok=True)
+    from src.batch import run_batch
+    batch_id = args.run_id or "batch-" + uuid.uuid4().hex[:12]
+    authors = [a.strip() for a in args.authors.split(",")] if args.authors else None
+    emit_event(cfg.run_dir, {"event": "batch-start", "run_id": batch_id, "mode": args.mode})
+    try:
+        result = run_batch(cfg.data, str(Path(args.config).resolve()), batch_id,
+                           args.mode, authors, lambda e: emit_event(cfg.run_dir, e))
+    except PipelineError as e:
+        print(f"{type(e).__name__}: {e}", file=sys.stderr)
+        emit_event(cfg.run_dir, {"event": "batch", "run_id": batch_id, "status": "failed",
+                                 "exit_code": e.exit_code, "error": str(e)[:300]})
+        return e.exit_code
+    emit_event(cfg.run_dir, {"event": "batch", "run_id": batch_id,
+                             "status": result["status"]})
+    print(json.dumps(result, ensure_ascii=False))
+    return 0
+
+
+def cmd_batch_approve(argv: list[str]) -> int:
+    ap = argparse.ArgumentParser(prog="run.py batch-approve",
+                                 description="Publish a previewed batch in portada order")
+    ap.add_argument("--config", required=True)
+    ap.add_argument("--run-id", required=True)
+    args = ap.parse_args(argv)
+
+    cfg = load_config(args.config)
+    if cfg is None:
+        return 2
+    result_file = cfg.run_dir / args.run_id / "result.json"
+    if not result_file.is_file():
+        print(f"CONFIG_INVALID:\nno batch result at {result_file}", file=sys.stderr)
+        return 2
+    articles = json.loads(result_file.read_text())["articles"]
+    held = sorted([a for a in articles if a.get("status") == "previewed"],
+                  key=lambda a: -a.get("portada_rank", 0))
+    published = []
+    for art in held:
+        code = cmd_approve(["--config", args.config, "--run-id", art["run_id"]])
+        published.append({"run_id": art["run_id"], "ok": code == 0})
+    print(json.dumps({"status": "batch-published", "batch_id": args.run_id,
+                      "approved": published}, ensure_ascii=False))
+    return 0 if all(p["ok"] for p in published) else 5
+
+
 def main() -> int:
-    if len(sys.argv) > 1 and sys.argv[1] == "approve":
-        return cmd_approve(sys.argv[2:])
-    if len(sys.argv) > 1 and sys.argv[1] == "events":
-        return cmd_events(sys.argv[2:])
+    subcommands = {"approve": cmd_approve, "events": cmd_events,
+                   "batch": cmd_batch, "batch-approve": cmd_batch_approve}
+    if len(sys.argv) > 1 and sys.argv[1] in subcommands:
+        return subcommands[sys.argv[1]](sys.argv[2:])
     return cmd_run(sys.argv[1:])
 
 

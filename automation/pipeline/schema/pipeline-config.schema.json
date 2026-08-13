@@ -297,6 +297,46 @@
           "default": 60
         }
       }
+    },
+    "batch": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "The daily batch: candidates per author, the jefe de redaccion selects, articles fan out in parallel and publish in portada order",
+      "properties": {
+        "concurrency": {
+          "type": "integer",
+          "minimum": 1,
+          "default": 3,
+          "description": "Parallel article writes (match the llama.cpp slots)"
+        },
+        "used_urls_cap": {
+          "type": "integer",
+          "minimum": 1,
+          "default": 50,
+          "description": "Per-author used-URL registry size; oldest fall off"
+        },
+        "candidates_prompt": {
+          "type": "string",
+          "default": "prompts/candidates.md"
+        },
+        "jefe_prompt": {
+          "type": "string",
+          "default": "prompts/jefe.md"
+        },
+        "feeds": {
+          "type": "object",
+          "description": "Feeds options for the candidates stage",
+          "additionalProperties": false,
+          "properties": {
+            "hours": {
+              "type": "number"
+            },
+            "max_per_source": {
+              "type": "integer"
+            }
+          }
+        }
+      }
     }
   }
 }

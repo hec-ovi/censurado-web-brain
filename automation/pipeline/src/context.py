@@ -7,6 +7,7 @@ import httpx
 
 from .errors import AdapterError
 from .feeds import fetch_feed, fresh
+from .registry import normalize_url
 from .websearch import WebSearcher
 
 
@@ -104,8 +105,9 @@ class ContextFetcher:
         registry = self._get("/sources")
         rows = registry.get("sources", registry) if isinstance(registry, dict) else registry
         by_slug = {s["slug"]: s for s in rows}
+        used = self._used_urls(handle)
 
-        lines, search_only, worked = [], [], 0
+        lines, search_only, worked, skipped = [], [], 0, 0
         for slug in attached:
             src = by_slug.get(slug)
             if not src or not src.get("enabled", True):
@@ -120,7 +122,9 @@ class ContextFetcher:
                     entries.extend(got)
                 except AdapterError as e:
                     note = f" (feed caido: {e})"
-            top = fresh(entries, hours)[:per_source]
+            unused = [e for e in entries if normalize_url(e.link) not in used]
+            skipped += len(entries) - len(unused)
+            top = fresh(unused, hours)[:per_source]
             lines.append(f"\n## {slug} (lean {src.get('lean', '')}){note}")
             if top:
                 worked += 1
@@ -134,7 +138,18 @@ class ContextFetcher:
         out = [f"Titulares frescos (ultimas {hours}h) de las fuentes del autor:"] + lines
         if search_only:
             out += ["\n## Fuentes sin feed (cubrir por busqueda web)"] + search_only
+        if skipped:
+            out.append(f"\n({skipped} titulares omitidos: el autor ya escribio esas noticias)")
         return "\n".join(out)
+
+    def _used_urls(self, handle: str) -> set[str]:
+        data = self._get("/authors")
+        rows = data if isinstance(data, list) else data.get("authors", [])
+        for a in rows:
+            if a.get("handle") == handle:
+                stored = (a.get("metadata") or {}).get("used_urls") or []
+                return {u for u in stored if isinstance(u, str)}
+        return set()
 
     def _websearch(self, opts: dict, outputs: dict) -> str:
         """Run the searches a prior node proposed, read its picked source pages directly,
