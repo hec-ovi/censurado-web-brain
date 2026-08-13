@@ -9,10 +9,12 @@ file's value, so empty settings derive a byte-equivalent config.
 import copy
 
 # The remote lane's defaults when the file config carries no openrouter entry.
+# The default model is the free Laguna tier, so an unconfigured remote lane
+# never bills; pick a paid model in the panel's Models section when needed.
 OPENROUTER_DEFAULTS = {
     "kind": "api",
     "base_url": "https://openrouter.ai/api/v1",
-    "model": "deepseek/deepseek-chat",
+    "model": "poolside/laguna-s-2.1:free",
     "api_key_env": "OPENROUTER_API_KEY",
 }
 
