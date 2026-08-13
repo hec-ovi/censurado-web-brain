@@ -84,3 +84,7 @@ scratch/
 # automation run logs (local)
 automation/logs/
 automation/pipeline/runs/
+
+# raw working notes, never published
+docs/REQUIREMENTS.md
+docs/features.md
