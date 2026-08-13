@@ -42,8 +42,9 @@ class Backend:
 
     def settings(self) -> dict:
         """The automation-settings singleton the panel's Models section edits
-        ({} when never set)."""
-        return self._request("GET", "/automation-settings").get("settings", {})
+        ({} when never set). The executor asks for the raw secrets explicitly:
+        it is the one consumer that feeds them into the derived pipeline config."""
+        return self._request("GET", "/automation-settings?include_secrets=true").get("settings", {})
 
     def put_status(self, status: dict) -> None:
         """Replace the automation-status heartbeat singleton the panel reads."""

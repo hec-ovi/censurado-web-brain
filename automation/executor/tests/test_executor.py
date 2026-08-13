@@ -71,7 +71,8 @@ def test_derive_config_merges_panel_settings_over_the_file():
     }
     settings = {
         "lanes": {"local": {"model": "qwen-nuevo"},
-                  "openrouter": {"model": "deepseek/deepseek-chat"}},
+                  "openrouter": {"model": "deepseek/deepseek-chat",
+                                 "api_key": "sk-or-secreta"}},
         "stages": {"evaluate": {"lane": "openrouter", "model": "openai/gpt-5-mini"},
                    "draft": {"lane": "local"},
                    "fantasma": {"lane": "openrouter"}},
@@ -83,6 +84,7 @@ def test_derive_config_merges_panel_settings_over_the_file():
     orl = cfg["adapters"]["openrouter"]
     assert orl["kind"] == "api" and orl["api_key_env"] == "OPENROUTER_API_KEY"
     assert orl["model"] == "deepseek/deepseek-chat"
+    assert orl["api_key"] == "sk-or-secreta", "the panel-stored key rides the derived config"
     # Stages: evaluate rides the remote lane with its own model; draft's lane
     # switch clears the stale per-node override; an unknown stage is ignored.
     nodes = {n["name"]: n for n in cfg["nodes"]}
@@ -160,7 +162,7 @@ class FakeBackendHandler(http.server.BaseHTTPRequestHandler):
     def do_GET(self):
         if self.path == "/schedules":
             self._json(200, {"schedules": self.store["schedules"]})
-        elif self.path == "/automation-settings":
+        elif self.path.startswith("/automation-settings"):
             self._json(200, {"settings": self.store.get("settings", {})})
         else:
             self._json(404, {"code": "not_found"})
@@ -253,15 +255,31 @@ def test_close_firings_queue_and_run_in_arrival_order(fake_backend):
     assert outcomes == {"alfa": "ok", "beta": "ok"}, "both firings reached their outcome"
 
 
-def test_heartbeat_reports_clock_and_lane_health(fake_backend):
+def test_heartbeat_reports_clock_health_and_the_effective_config(fake_backend, tmp_path):
     store, backend = fake_backend
-    executor = Executor(backend, Path("cfg.json"), runner=lambda s, r: ("ok", ""),
+    cfg = tmp_path / "cfg.json"
+    cfg.write_text(json.dumps({
+        "adapters": {"api": {"base_url": "http://127.0.0.1:8080/v1", "model": "qwen-local"}},
+        "nodes": [{"name": "draft", "adapter": "api"},
+                  {"name": "evaluate", "adapter": "api"}],
+    }))
+    store["settings"] = {"stages": {"evaluate": {"lane": "openrouter"}}}
+    executor = Executor(backend, cfg, runner=lambda s, r: ("ok", ""),
                         llama_probe=lambda: False)
     executor.tick(WED)
     assert store["status"]["llama_ok"] is False
     assert store["status"]["running"] is None
     assert store["status"]["queued"] == []
     assert store["status"]["at"].startswith("2026-08-12T07:30")
+    # The effective block is the merged truth the panel edits: real endpoints,
+    # per-stage lanes after the settings merge, key state but never the key.
+    eff = store["status"]["effective"]
+    assert eff["lanes"]["local"] == {"base_url": "http://127.0.0.1:8080/v1", "model": "qwen-local"}
+    assert eff["lanes"]["openrouter"]["base_url"] == "https://openrouter.ai/api/v1"
+    assert isinstance(eff["lanes"]["openrouter"]["key_set"], bool)
+    assert "api_key" not in json.dumps(eff), "the key value never rides the heartbeat"
+    assert eff["stages"]["draft"] == {"lane": "local", "model": "qwen-local"}
+    assert eff["stages"]["evaluate"]["lane"] == "openrouter"
 
 
 def test_tick_skips_not_due_and_records_failures(fake_backend):

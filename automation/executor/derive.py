@@ -45,6 +45,10 @@ def derive_config(base: dict, settings: dict) -> dict:
             entry["base_url"] = remote["base_url"]
         if remote.get("model"):
             entry["model"] = remote["model"]
+        # The panel-stored key rides the derived config directly (it wins over
+        # api_key_env in the adapter); it exists only in the runtime file.
+        if remote.get("api_key"):
+            entry["api_key"] = remote["api_key"]
 
     for name, stage in stages.items():
         stage = stage or {}

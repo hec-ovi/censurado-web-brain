@@ -78,6 +78,10 @@
       "type": "boolean",
       "default": false,
       "description": "Feed the prompt on stdin instead of substituting {prompt} (for REPL CLIs)"
+     },
+     "api_key": {
+      "type": "string",
+      "description": "Direct API key (wins over api_key_env); the panel-managed remote lane uses it via the executor's derived config"
      }
     }
    }

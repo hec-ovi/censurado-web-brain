@@ -25,7 +25,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from backend import Backend, BackendError  # noqa: E402
-from derive import derive_config  # noqa: E402
+from derive import OPENROUTER_DEFAULTS, derive_config  # noqa: E402
 from schedule import already_fired, due_run_id, is_due, latest_due  # noqa: E402
 
 REPO = Path(__file__).resolve().parents[2]
@@ -171,28 +171,72 @@ class Executor:
 
     def heartbeat(self, now: datetime | None = None) -> None:
         """Best-effort status for the panel: the executor's clock, the model
-        lane's health, the run in flight, and the queue."""
+        lane's health, the run in flight, the queue, and the EFFECTIVE model
+        configuration (file + panel settings merged) so the panel edits what
+        actually runs instead of an invisible overlay."""
         now = now or datetime.now()
         with self.lock:
             queued = [r for _, r, _ in self.queue]
             current = self.current
+        effective = self._effective_state()
+        # The probe targets the lane that actually runs (panel overrides included).
+        self._local_base = ((effective.get("lanes") or {}).get("local") or {}).get("base_url", "")
         status = {
             "at": now.astimezone().isoformat(timespec="seconds"),
             "llama_ok": bool(self.llama_probe()),
             "running": current,
             "queued": queued,
+            "effective": effective,
         }
         try:
             self.backend.put_status(status)
         except BackendError as e:
             print(f"[executor] heartbeat failed: {e}", file=sys.stderr)
 
-    def _probe_llama(self) -> bool:
-        """llama.cpp liveness: GET /health on the api adapter's host (3s cap)."""
+    def _effective_state(self) -> dict:
+        """What actually runs, in the panel's vocabulary: each lane's endpoint
+        and model, whether a remote key is available (never the key itself), and
+        the lane + model each pipeline stage resolves to after the merge."""
         try:
-            base = json.loads(self.config_path.read_text())["adapters"]["api"]["base_url"]
-        except (OSError, KeyError, ValueError):
-            return False
+            base = json.loads(self.config_path.read_text())
+        except (OSError, ValueError):
+            return {}
+        try:
+            settings = self.backend.settings()
+        except BackendError:
+            settings = {}
+        cfg = derive_config(base, settings)
+        adapters = cfg.get("adapters", {})
+        local = adapters.get("api", {})
+        remote = {**OPENROUTER_DEFAULTS, **adapters.get("openrouter", {})}
+        key_set = bool(remote.get("api_key")
+                       or os.environ.get(remote.get("api_key_env") or "", ""))
+        stages = {}
+        for node in cfg.get("nodes", []):
+            lane = "openrouter" if node.get("adapter") == "openrouter" else "local"
+            lane_model = remote.get("model") if lane == "openrouter" else local.get("model")
+            stages[node["name"]] = {"lane": lane,
+                                    "model": node.get("model") or lane_model or ""}
+        return {
+            "lanes": {
+                "local": {"base_url": local.get("base_url", ""),
+                          "model": local.get("model", "")},
+                "openrouter": {"base_url": remote.get("base_url", ""),
+                               "model": remote.get("model", ""),
+                               "key_set": key_set},
+            },
+            "stages": stages,
+        }
+
+    def _probe_llama(self) -> bool:
+        """llama.cpp liveness: GET /health on the EFFECTIVE local endpoint (the
+        heartbeat stashes it; the file config is the fallback), 3s cap."""
+        base = getattr(self, "_local_base", "")
+        if not base:
+            try:
+                base = json.loads(self.config_path.read_text())["adapters"]["api"]["base_url"]
+            except (OSError, KeyError, ValueError):
+                return False
         url = base.rstrip("/").removesuffix("/v1") + "/health"
         try:
             with urllib.request.urlopen(url, timeout=3) as resp:

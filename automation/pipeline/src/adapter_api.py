@@ -13,9 +13,11 @@ class ApiAdapter:
         self.system = cfg.get("system")
         self.timeout = cfg.get("timeout_s", 300)
         self.headers = {}
-        key_env = cfg.get("api_key_env")
-        if key_env and os.environ.get(key_env):
-            self.headers["Authorization"] = f"Bearer {os.environ[key_env]}"
+        # A direct api_key (e.g. merged in from the panel's settings) wins over
+        # the env-named one; either way the key never logs.
+        key = cfg.get("api_key") or os.environ.get(cfg.get("api_key_env") or "", "")
+        if key:
+            self.headers["Authorization"] = f"Bearer {key}"
 
     def complete(self, prompt: str, want_json: bool) -> str:
         messages = []
