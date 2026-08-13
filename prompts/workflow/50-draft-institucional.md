@@ -20,7 +20,7 @@ context. Each layer is new and dense; never restate an earlier one.
 **Say each idea once.** A caveat or a framing note is stated ONE time, in a single short
 line, and never repeated. Do not stack three, four, or five synonyms for the same point, and
 do not let it reappear in every paragraph. Any point the piece already made is advanced,
-never echoed. This is a straight, institutional voice: it writes with no disclaimer, no
+never echoed. This is a straight, institutional voice: it writes with no
 "opinion" or "analysis" label, and never names a byline.
 
 Name every source as plain text in the prose (use the attribution form `editorial-rules`

@@ -148,7 +148,7 @@ the persona synthesize prompt (`persona/synthesize.md`), and the editorial style
 database: the CLI (`cli/censurado.py`) reads and writes them directly from disk (verbs
 `step`, `prompt`, `set-prompt`, `style`); git in this repo is their version history. The one
 exception is the per-language editorial anchors, the banned lexicon and swaps, the
-orthography, the slop phrases, and the attribution and disclaimer wording: those are DB rows
+orthography, the slop phrases, and the attribution wording: those are DB rows
 in the backend (the `editorial_text` scope), read via the `editorial-rules <lang>` verb, so
 the prompt nodes state the language-agnostic RULES and defer the language-specific WORDS to
 the DB (operator-editable, and translated per language rather than hardcoded).

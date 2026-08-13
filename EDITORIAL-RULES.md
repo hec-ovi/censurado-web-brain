@@ -4,7 +4,7 @@ A compact contract for writing ONE publish-ready article. It covers only the CON
 out of scope: X/tweet cards, related notes, and the other `{{...}}` widgets. The live,
 enforced version of these rules is the step-gate workflow (`python3 cli/censurado.py step`);
 the qualitative voice guide is `style`; and the per-language word lists (banned lexicon,
-preferred swaps, orthography, slop phrases, attribution and disclaimer wording) are DB rows
+preferred swaps, orthography, slop phrases, attribution wording) are DB rows
 you read with `editorial-rules <language>`, not literals in this file.
 
 ## 1. Voice and objectivity
@@ -82,10 +82,9 @@ rhythm; do not run three identical gray paragraphs in a row.
   opening, no false balance.
 
 ## 9. Satire, opinion, fiction
-If the voice is satire, opinion, or fiction, open the body with ONE italic disclaimer line
-(the wording is the one `editorial-rules` prints for the language) and nothing more. A
-straight-news voice carries no disclaimer and no "opinion"/"analysis" label, and never names
-its own byline.
+Every voice enters the body directly: the first sentence is already inside the story. What a
+voice is (opinion, fiction, satire, straight news) travels in its byline, bio, and section;
+the body carries the story alone, and no voice labels itself or names its own byline.
 
 ## 10. Tags and keywords
 - topics: up to the enforced tag cap (`TOPIC_CAP` in `cli/workflow/parameters.json`,

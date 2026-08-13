@@ -69,7 +69,8 @@ class ContextFetcher:
     def _editorial(self, lang: str) -> str:
         data = self._get(f"/editorial-text?lang={lang}")
         return "\n".join(f"- {e['key']}: {e['value']}"
-                         for e in data.get("entries", []) if not e.get("deleted"))
+                         for e in data.get("entries", [])
+                         if not e.get("deleted") and e.get("value"))
 
     def _feeds(self, handle: str, opts: dict) -> str:
         """Fresh titulars from the author's registered sources, grouped per source.

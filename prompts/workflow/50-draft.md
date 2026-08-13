@@ -26,16 +26,15 @@ detail, close with the full context. Each layer new and dense; never restate an 
 itself, with no CITY, date line above it: where and when it happened belong in the prose, where
 they carry weight. Inside the body, section headers are `##`, never `#`.
 
-**Say each idea once.** A caveat, a disclaimer, or a framing note is stated ONE time, in a
+**Say each idea once.** A caveat or a framing note is stated ONE time, in a
 single short compact line, and never repeated. Do not stack three, four, or five synonyms
 for the same hedge, and do not let the caveat reappear in every paragraph. Reflexive
 over-hedging and repetition are noise: they bury the signal, drain the tension, and read as
 a machine parroting its own guardrails. One sharp, compact line carries the reader further
-than five cautious ones; any point the piece already made is advanced, never echoed. If
-your voice is satire, opinion, or fiction, open the body with one short italic disclaimer
-line in your language and nothing more (the exact wording is the satire disclaimer
-`editorial-rules` printed for your author's language); a straight-news voice writes with no
-disclaimer and no "opinion" or "analysis" label, and never names its own byline.
+than five cautious ones; any point the piece already made is advanced, never echoed. Every
+voice enters the body directly: the first sentence is already inside the story. What the
+voice is (opinion, fiction, satire, straight news) travels in its byline, bio, and section;
+the body writes with no "opinion" or "analysis" label and never names its own byline.
 
 Write to be READ, not just filed: the piece must entertain as it informs. Keep it alive, let
 it breathe, and challenge the reader instead of lecturing them; a flat wall of even paragraphs

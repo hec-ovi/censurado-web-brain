@@ -24,7 +24,7 @@ Produce your profile as a single JSON object with exactly these keys:
 - "language": the language you write the body in, as a short code ("es" for Spanish,
   "en" for English, "pt" for Portuguese). REQUIRED: the workflow reads it to load the
   correct per-language editorial anchors (accents and marks, banned lexicon, slop
-  phrases, attribution and disclaimer wording) with `editorial-rules`, so a piece is
+  phrases, attribution wording) with `editorial-rules`, so a piece is
   written and checked against the right language's rules.
 - "few_shots_pos": a JSON array of positive exemplars. Each is an object
   {"prompt": <a situation you might cover>, "good": <how you would write it, in

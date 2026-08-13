@@ -56,7 +56,7 @@ The nodes hand you the exact command at each step; these are the ones you will r
 
 - Author: `python3 cli/censurado.py personas` , `... persona <id>` (load voice + beat).
 - Editorial anchors: `python3 cli/censurado.py editorial-rules <language>` (the author's banned
-  lexicon, orthography, slop phrases, and attribution/disclaimer wording; load it once you know
+  lexicon, orthography, slop phrases, and attribution wording; load it once you know
   the author's `language` and apply it while drafting and revising).
 - Tweet / Truth card (OPTIONAL): `python3 cli/censurado.py tweet <url>` , `... truth <url>`. A live
   X post needs NONE of this: just write `{{tweet:<id>}}` in the body and `preview` fetches the

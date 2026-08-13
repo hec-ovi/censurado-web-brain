@@ -44,8 +44,8 @@ Each scope in the job is tagged with an `op`:
   phrase is not a translated Spanish one. The `source` shows the Spanish row as a STRUCTURAL
   template. Many editorial values are JSON (a list like `["a","b"]` or an object like
   `{"x":"y"}`); keep the exact JSON shape and write a valid JSON string back into `value`, just
-  with the target language's own words. Plain-text rows (an attribution example, a satire
-  disclaimer line) are written idiomatically for that language.
+  with the target language's own words. Plain-text rows (an attribution example) are
+  written idiomatically for that language.
 
 ## Notes
 

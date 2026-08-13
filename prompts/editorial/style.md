@@ -5,7 +5,7 @@ The newsroom's qualitative voice and house rules: the what-it-should-read-like g
 `cli/workflow/parameters.json` as MIN_SOURCES / MIN_PER_TYPE / TOPIC_CAP / RESPIN_PASSES,
 which `step` fills into the nodes; `set-floor` sets the two source counts). It is also NOT
 the per-language word lists: the banned lexicon, the preferred swaps, the orthography, the
-slop phrases, and the attribution and disclaimer wording are DB rows, authored per language.
+slop phrases, and the attribution wording are DB rows, authored per language.
 Read them for your author's language with:
 
     python3 cli/censurado.py editorial-rules <language>

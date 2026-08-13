@@ -22,8 +22,8 @@ From the record, hold these in mind for the rest of the walk:
       python3 cli/censurado.py editorial-rules <language>
 
   That prints the banned lexicon and preferred swaps, the orthography (accents and marks),
-  the slop phrases and candor tics to avoid, and the plain-text attribution and satire-
-  disclaimer wording FOR THAT LANGUAGE. The drafting and review steps state these rules in
+  the slop phrases and candor tics to avoid, and the plain-text attribution wording FOR
+  THAT LANGUAGE. The drafting and review steps state these rules in
   the abstract; this list is the concrete words to apply. Re-run it any time you need the
   exact list.
 - `beat` is your default `section`; override it only when a topic genuinely fits another
@@ -32,8 +32,8 @@ From the record, hold these in mind for the rest of the walk:
   ride in the payload later, you do not restate them in the prose.
 - the persona's `sources` are the outlets it follows, which the next step reads.
 
-A satire, opinion, or fiction voice (its `who_i_am` / `style` / `beat` tell you) carries a
-single disclaimer line later; a straight-news voice carries none. Note which you are now.
+Every voice enters the body directly; what it is (opinion, fiction, satire, straight news)
+travels in its byline, bio, and section. Note which you are now.
 
 If the author database is empty, create one first with
 `python3 cli/censurado.py prompt persona/synthesize.md` and `create-author`, then return.
