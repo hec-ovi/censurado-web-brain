@@ -240,6 +240,9 @@ services:
       HOME: /tmp
       NEWSROOM_OPERATOR_TOKEN: ${NEWSROOM_OPERATOR_TOKEN:-}
       WEBSEARCH_SEARXNG_URL: ${WEBSEARCH_SEARXNG_URL:-http://127.0.0.1:8888}
+      # The remote model lane's key (panel: Automation -> Models); empty keeps
+      # the lane local-only until one is minted.
+      OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
     volumes:
       - .:/newsroom
       - /etc/localtime:/etc/localtime:ro
