@@ -215,6 +215,30 @@
                 }
               }
             }
+          },
+          "respin": {
+            "type": "object",
+            "required": [
+              "prompt",
+              "target"
+            ],
+            "additionalProperties": false,
+            "description": "Gate nodes only: on a non-publish verdict, rewrite the target node's output with this prompt (placeholders {notes} + the running context) and re-run the gate, up to passes times",
+            "properties": {
+              "prompt": {
+                "type": "string",
+                "description": "Rewrite prompt file; relative to the config file"
+              },
+              "target": {
+                "type": "string",
+                "description": "Earlier node whose output the rewrite replaces"
+              },
+              "passes": {
+                "type": "integer",
+                "minimum": 1,
+                "default": 2
+              }
+            }
           }
         }
       }

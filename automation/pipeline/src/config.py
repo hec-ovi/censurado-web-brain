@@ -102,6 +102,29 @@ class PipelineConfig:
             if n.setdefault("output", "text") not in OUTPUTS:
                 v.append(f"{tag}.output: must be one of {sorted(OUTPUTS)}")
             drafts += n.get("role") == "draft"
+            respin = n.get("respin")
+            if respin is not None:
+                rtag = f"{tag}.respin"
+                if n.get("role") != "gate":
+                    v.append(f"{rtag}: only a gate node can respin")
+                elif not isinstance(respin, dict):
+                    v.append(f"{rtag}: must be an object")
+                else:
+                    target = respin.get("target")
+                    if not isinstance(target, str) or target == name or target not in names:
+                        v.append(f"{rtag}.target: must name an earlier node")
+                    passes = respin.setdefault("passes", 2)
+                    if not isinstance(passes, int) or passes < 1:
+                        v.append(f"{rtag}.passes: must be an integer >= 1")
+                    rp = respin.get("prompt")
+                    if not rp:
+                        v.append(f"{rtag}.prompt: required")
+                    else:
+                        rpp = (base / rp).resolve()
+                        if not rpp.is_file():
+                            v.append(f"{rtag}.prompt: file not found: {rpp}")
+                        else:
+                            respin["prompt_path"] = str(rpp)
             prompt = n.get("prompt")
             if not prompt:
                 v.append(f"{tag}.prompt: required")

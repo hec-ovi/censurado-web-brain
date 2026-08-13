@@ -50,6 +50,17 @@ def publish_piece(cfg: dict, piece: dict, inputs: dict, run_id: str) -> dict:
     return Publisher(cfg["backend"]).publish(piece, inputs, idempotency_key=run_id)
 
 
+def _verdict(out, raw: str) -> tuple[str, str]:
+    if isinstance(out, dict):
+        return str(out.get("verdict", "")).lower(), str(out.get("notes", ""))
+    return "", raw[:200]
+
+
+def _emit(art_dir: Path, name: str, raw: str, out) -> None:
+    (art_dir / f"{name}.txt").write_text(raw)
+    (art_dir / f"{name}.json").write_text(json.dumps(out, ensure_ascii=False, indent=1))
+
+
 @DBOS.workflow()
 def article_run(cfg: dict, inputs: dict) -> dict:
     run_id = DBOS.workflow_id
@@ -61,20 +72,36 @@ def article_run(cfg: dict, inputs: dict) -> dict:
         extra = fetch_context(cfg, node, inputs, context) if node.get("context") else {}
         prompt = render(Path(node["prompt_path"]).read_text(), {**context, **extra})
         raw = run_node(cfg, node, prompt)
-        (art_dir / f"{node['name']}.txt").write_text(raw)
         out = parse_json_output(raw) if node["output"] == "json" else raw
-        (art_dir / f"{node['name']}.json").write_text(
-            json.dumps(out, ensure_ascii=False, indent=1))
+        _emit(art_dir, node["name"], raw, out)
         context[node["name"]] = json.dumps(out, ensure_ascii=False) if isinstance(out, dict) else out
         if node["role"] == "draft":
             if not isinstance(out, dict) or not out.get("title") or not out.get("body"):
                 raise AdapterError(f"draft node '{node['name']}' output misses title/body")
             piece = out
         if node["role"] == "gate":
-            verdict = str(out.get("verdict", "")).lower() if isinstance(out, dict) else ""
+            verdict, notes = _verdict(out, raw)
+            respin = node.get("respin")
+            passes = 0
+            while verdict != "publish" and respin and passes < respin.get("passes", 2):
+                passes += 1
+                target = respin["target"]
+                rw_prompt = render(Path(respin["prompt_path"]).read_text(),
+                                   {**context, **extra, "notes": notes})
+                rw_raw = run_node(cfg, node, rw_prompt)
+                rw = parse_json_output(rw_raw)
+                _emit(art_dir, f"{target}-respin-{passes}", rw_raw, rw)
+                context[target] = json.dumps(rw, ensure_ascii=False)
+                if any(n["name"] == target and n["role"] == "draft" for n in cfg["nodes"]):
+                    piece = rw
+                gate_prompt = render(Path(node["prompt_path"]).read_text(), {**context, **extra})
+                raw = run_node(cfg, node, gate_prompt)
+                out = parse_json_output(raw)
+                _emit(art_dir, f"{node['name']}-respin-{passes}", raw, out)
+                context[node["name"]] = json.dumps(out, ensure_ascii=False)
+                verdict, notes = _verdict(out, raw)
             if verdict != "publish":
-                return {"status": "rejected", "run_id": run_id,
-                        "notes": out.get("notes", "") if isinstance(out, dict) else raw[:200],
+                return {"status": "rejected", "run_id": run_id, "notes": notes,
                         "artifacts": str(art_dir)}
     if inputs.get("mode", "preview") == "preview":
         (art_dir / "piece.json").write_text(json.dumps(

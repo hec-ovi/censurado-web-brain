@@ -18,8 +18,9 @@ DRAFT = {"title": "Titulo de prueba", "standfirst": "Una frase.",
 
 
 class FakeApi(BaseHTTPRequestHandler):
-    behavior = "publish"   # publish | revise | fail
+    behavior = "publish"   # publish | revise | respin-once | fail
     calls: list = []
+    gate_calls = 0
 
     def do_POST(self):
         body = json.loads(self.rfile.read(int(self.headers.get("Content-Length", 0))))
@@ -30,9 +31,15 @@ class FakeApi(BaseHTTPRequestHandler):
             self.wfile.write(b"boom")
             return
         prompt = body["messages"][-1]["content"]
-        if "editor de mesa" in prompt:
-            content = json.dumps({"verdict": "publish" if type(self).behavior == "publish"
-                                  else "revise", "notes": "motivo"})
+        if "Actua como editor de mesa" in prompt:
+            type(self).gate_calls += 1
+            if type(self).behavior == "respin-once":
+                verdict = "revise" if type(self).gate_calls == 1 else "publish"
+            else:
+                verdict = "publish" if type(self).behavior == "publish" else "revise"
+            content = json.dumps({"verdict": verdict, "notes": "motivo"})
+        elif "EXACTAMENTE" in prompt:
+            content = json.dumps({**DRAFT, "title": "Titulo corregido"}, ensure_ascii=False)
         elif "MARCA-CONSULTAS" in prompt:
             content = json.dumps({"queries": ["consulta de prueba"],
                                   "read_urls": ["https://fuente.test/nota-1"]})
@@ -117,7 +124,7 @@ class FakeFeed(BaseHTTPRequestHandler):
 
 @pytest.fixture()
 def servers():
-    FakeApi.behavior, FakeApi.calls = "publish", []
+    FakeApi.behavior, FakeApi.calls, FakeApi.gate_calls = "publish", [], 0
     FakeBackend.posts = []
     api = ThreadingHTTPServer(("127.0.0.1", 0), FakeApi)
     backend = ThreadingHTTPServer(("127.0.0.1", 0), FakeBackend)
@@ -368,6 +375,26 @@ def test_events_console_shows_runs_and_failures(tmp_path, servers):
     assert ev.returncode == 0, ev.stderr
     assert "run-bien" in ev.stdout and "published" in ev.stdout
     assert "run-mal" in ev.stdout and "FAIL" in ev.stdout
+
+
+def test_gate_respin_rewrites_and_passes(tmp_path, servers):
+    api_port, backend_port = servers
+    FakeApi.behavior = "respin-once"
+    nodes = [
+        {"name": "draft", "adapter": "api", "role": "draft", "output": "json",
+         "prompt": str(PROMPTS / "draft.md")},
+        {"name": "evaluate", "adapter": "api", "role": "gate", "output": "json",
+         "prompt": str(PROMPTS / "evaluate.md"),
+         "respin": {"prompt": str(PROMPTS / "respin.md"), "target": "draft", "passes": 2}},
+    ]
+    p = run_pipeline(write_config(tmp_path, api_port, backend_port, nodes=nodes),
+                     "--run-id", "run-respin")
+    assert p.returncode == 0, p.stderr
+    assert len(FakeBackend.posts) == 1
+    assert FakeBackend.posts[0]["body"]["title"] == "Titulo corregido"
+    art = tmp_path / "runs" / "run-respin"
+    assert (art / "draft-respin-1.json").is_file()
+    assert (art / "evaluate-respin-1.json").is_file()
 
 
 def test_websearch_context_must_name_an_earlier_node(tmp_path, servers):
