@@ -305,17 +305,34 @@ def cmd_topics(argv: list[str]) -> int:
     # groups stable between runs.
     adapter_cfg["temperature"] = 0.2
     adapter = ApiAdapter(adapter_cfg)
+    # llama-server serves whatever model is loaded and ignores the name in the
+    # request: a single-model lane must actually hold the configured model.
+    try:
+        served = httpx.get(f"{adapter.base}/models", headers=adapter.headers,
+                           timeout=10).json().get("data") or []
+    except (httpx.HTTPError, ValueError):
+        served = []
+    if len(served) == 1 and served[0].get("id") != adapter.model:
+        msg = f"lane serves {served[0].get('id')}, config names {adapter.model}"
+        print(f"ConfigError: {msg}", file=sys.stderr)
+        emit_event(cfg.run_dir, {"event": "topics", "run_id": run_id,
+                                 "status": "failed", "exit_code": 2, "error": msg})
+        return 2
     counts = {t["value"]: t["count"] for t in board}
     known = set(counts)
     raws: list[str] = []
 
     def _ask(prompt: str) -> dict:
+        # One retry covers the whole draw: a degenerate stream, an unreachable
+        # api, or a response that does not parse; a fresh draw is usually clean.
         try:
             raw = adapter.complete(prompt, want_json=True)
+            raws.append(raw)
+            return parse_json_output(raw)
         except PipelineError:
             raw = adapter.complete(prompt, want_json=True)
-        raws.append(raw)
-        return parse_json_output(raw)
+            raws.append(raw)
+            return parse_json_output(raw)
 
     def _merge_groups(out: dict, into: dict[str, str]) -> None:
         for grupo in out.get("grupos") or []:
@@ -339,25 +356,33 @@ def cmd_topics(argv: list[str]) -> int:
         return {k: c for k in mapa_raw
                 if k in known and (c := _canon(k)) != k and c in known}
 
-    proposed: dict[str, str] = {}
-    for chunk in chunks:
-        listado = "\n".join(f"- {t['value']} ({t['count']} notas)" for t in chunk)
-        _merge_groups(_ask(render(tmpl, {"temas": listado})), proposed)
-    mapa = _resolve(proposed)
+    try:
+        proposed: dict[str, str] = {}
+        for chunk in chunks:
+            listado = "\n".join(f"- {t['value']} ({t['count']} notas)" for t in chunk)
+            _merge_groups(_ask(render(tmpl, {"temas": listado})), proposed)
+        mapa = _resolve(proposed)
 
-    if mapa:
-        # Second look: judging the short list of proposed groups catches the
-        # false merges the clustering pass lets through.
-        grupos: dict[str, list[str]] = {}
-        for variante, canon in sorted(mapa.items()):
-            grupos.setdefault(canon, []).append(variante)
-        lineas = "\n".join(
-            "- " + ", ".join(f"{s} ({counts[s]} notas)" for s in [canon] + vs)
-            for canon, vs in sorted(grupos.items()))
-        confirm_tmpl = prompts_dir.joinpath("topics-confirm.md").read_text()
-        confirmed: dict[str, str] = {}
-        _merge_groups(_ask(render(confirm_tmpl, {"grupos": lineas})), confirmed)
-        mapa = _resolve(confirmed)
+        if mapa:
+            # Second look: judging the short list of proposed groups catches
+            # the false merges the clustering pass lets through.
+            grupos: dict[str, list[str]] = {}
+            for variante, canon in sorted(mapa.items()):
+                grupos.setdefault(canon, []).append(variante)
+            lineas = "\n".join(
+                "- " + ", ".join(f"{s} ({counts[s]} notas)" for s in [canon] + vs)
+                for canon, vs in sorted(grupos.items()))
+            confirm_tmpl = prompts_dir.joinpath("topics-confirm.md").read_text()
+            confirmed: dict[str, str] = {}
+            _merge_groups(_ask(render(confirm_tmpl, {"grupos": lineas})), confirmed)
+            mapa = _resolve(confirmed)
+    except PipelineError as e:
+        (art_dir / "mapa.txt").write_text("\n\n".join(raws))
+        print(f"AdapterError: {e}", file=sys.stderr)
+        emit_event(cfg.run_dir, {"event": "topics", "run_id": run_id,
+                                 "status": "failed", "exit_code": 4,
+                                 "error": str(e)[:300]})
+        return 4
 
     (art_dir / "mapa.txt").write_text("\n\n".join(raws))
     map_path = art_dir / "mapa.json"

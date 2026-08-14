@@ -28,7 +28,12 @@ def run_node(cfg: dict, node: dict, prompt: str) -> str:
         adapter = ApiAdapter(adapter_cfg)
     else:
         adapter = CliAdapter(adapter_cfg)
-    return adapter.complete(prompt, want_json=node["output"] == "json")
+    raw = adapter.complete(prompt, want_json=node["output"] == "json")
+    if node["output"] == "json":
+        # Validate inside the retry unit: a draw that does not parse burns one
+        # of the step's attempts instead of killing the run.
+        parse_json_output(raw)
+    return raw
 
 
 @DBOS.step(retries_allowed=True, max_attempts=3, interval_seconds=1.0, backoff_rate=2.0)

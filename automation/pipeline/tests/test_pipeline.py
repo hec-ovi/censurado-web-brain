@@ -18,9 +18,17 @@ DRAFT = {"title": "Titulo de prueba", "standfirst": "Una frase.",
 
 
 class FakeApi(BaseHTTPRequestHandler):
-    behavior = "publish"   # publish | revise | respin-once | fail
+    behavior = "publish"   # publish | revise | respin-once | fail | loop-stream
     calls: list = []
     gate_calls = 0
+    served_model = "fake"
+
+    def do_GET(self):
+        out = json.dumps({"data": [{"id": type(self).served_model}]}).encode()
+        self.send_response(200)
+        self.send_header("Content-Type", "application/json")
+        self.end_headers()
+        self.wfile.write(out)
 
     def do_POST(self):
         body = json.loads(self.rfile.read(int(self.headers.get("Content-Length", 0))))
@@ -29,6 +37,25 @@ class FakeApi(BaseHTTPRequestHandler):
             self.send_response(500)
             self.end_headers()
             self.wfile.write(b"boom")
+            return
+        if type(self).behavior == "loop-stream":
+            self.send_response(200)
+            self.send_header("Content-Type", "text/event-stream")
+            self.end_headers()
+            piece = json.dumps({"choices": [{"delta": {"content": '"eeuu": "usa", ' * 8}}]})
+            try:
+                for _ in range(600):
+                    self.wfile.write(f"data: {piece}\n\n".encode())
+                    self.wfile.flush()
+            except (BrokenPipeError, ConnectionResetError):
+                pass
+            return
+        if type(self).behavior == "cut-stream":
+            self.send_response(200)
+            self.send_header("Content-Type", "text/event-stream")
+            self.end_headers()
+            piece = json.dumps({"choices": [{"delta": {"content": '{"grupos": [["a",'}}]})
+            self.wfile.write(f"data: {piece}\n\n".encode())
             return
         prompt = body["messages"][-1]["content"]
         if "Actua como editor de mesa" in prompt:
@@ -194,6 +221,7 @@ class FakeFeed(BaseHTTPRequestHandler):
 @pytest.fixture()
 def servers():
     FakeApi.behavior, FakeApi.calls, FakeApi.gate_calls = "publish", [], 0
+    FakeApi.served_model = "fake"
     FakeBackend.posts, FakeBackend.author_upserts, FakeBackend.used_urls = [], [], []
     FakeBackend.puts = []
     api = ThreadingHTTPServer(("127.0.0.1", 0), FakeApi)
@@ -694,3 +722,42 @@ def test_topics_confirms_the_map_and_cleanses_the_board(tmp_path, servers):
     put = FakeBackend.puts[-1]
     assert put["path"] == "/articles/nota-vieja"
     assert put["body"]["topics"] == ["javier-milei", "otro-tema"]
+
+
+def test_topics_kills_a_degenerate_output_loop_quickly(tmp_path, servers):
+    # A runaway generation repeating one pattern must die at the detector,
+    # not at the timeout, and the failure names the real cause.
+    api_port, backend_port = servers
+    FakeApi.behavior = "loop-stream"
+    cfg = write_config(tmp_path, api_port, backend_port)
+    import time
+    t0 = time.monotonic()
+    p = run_sub(cfg, "topics", "--run-id", "temas-loop",
+                env_extra={"NEWSROOM_PUBLISH_BASE_URL": f"http://127.0.0.1:{backend_port}",
+                           "NEWSROOM_OPERATOR_TOKEN": "tok-test"})
+    assert p.returncode == 4, p.stderr
+    assert "degenerate output loop" in p.stderr
+    assert time.monotonic() - t0 < 60
+
+
+def test_topics_refuses_a_lane_serving_another_model(tmp_path, servers):
+    api_port, backend_port = servers
+    FakeApi.served_model = "otro-modelo"
+    cfg = write_config(tmp_path, api_port, backend_port)
+    p = run_sub(cfg, "topics", "--run-id", "temas-mismatch")
+    assert p.returncode == 2, p.stderr
+    assert "lane serves otro-modelo" in p.stderr
+    assert FakeApi.calls == []
+
+
+def test_topics_treats_an_unterminated_stream_as_a_failed_call(tmp_path, servers):
+    # A stream that ends without its terminator never reaches the parser as a
+    # truncated answer: the call fails, the retry fails the same way, exit 4.
+    api_port, backend_port = servers
+    FakeApi.behavior = "cut-stream"
+    cfg = write_config(tmp_path, api_port, backend_port)
+    p = run_sub(cfg, "topics", "--run-id", "temas-cut",
+                env_extra={"NEWSROOM_PUBLISH_BASE_URL": f"http://127.0.0.1:{backend_port}",
+                           "NEWSROOM_OPERATOR_TOKEN": "tok-test"})
+    assert p.returncode == 4, p.stderr
+    assert "stream ended early" in p.stderr
