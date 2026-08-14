@@ -27,6 +27,14 @@ Fire the newsroom's edition batches on the operator-defined schedules: poll the 
 - The fired batches' own artifacts under the pipeline's `run_dir` (this box adds none).
 - A log line per queue/fire/outcome on stdout (the compose service's `docker logs`).
 
+## The config derivation, for other boxes (`derive.py`)
+
+Stdlib-only and importable on its own, so anything that fires a batch resolves the lanes the same way this box does. Two pure functions plus one writer:
+
+- `derive_config(base, settings) -> dict`: the file config with the panel's automation settings merged over it. Never mutates `base`; empty settings return an equal config.
+- `lane_settings(base, lane, settings=None) -> dict`: settings that put EVERY stage on one lane (`local` or `openrouter`), for a caller that picks a lane instead of a per-stage routing. The `lanes` half (endpoint, model, key) survives; the `stages` half is replaced, so a stage model saved for the other lane cannot ride along and name a model this lane does not serve. It also sets the pipeline's `batch.adapter`, since the pitch and the jefe's selection are not nodes and would otherwise decide the edition on a different lane than the one writing it.
+- `write_derived(base_path, cfg, filename) -> Path`: write a derived config beside the base one (relative `run_dir` and prompt paths resolve against the containing directory) and return it, mode 600 because the remote lane's key rides it in plaintext. The caller owns the filename: this box writes `.executor.config.json`, and a second writer needs its own name or it swaps the config out from under a running batch.
+
 ## Errors
 
 - Backend unreachable at tick: logged, the tick is skipped (next minute retries).

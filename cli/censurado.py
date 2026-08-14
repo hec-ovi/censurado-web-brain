@@ -32,7 +32,7 @@ and write those files directly (no server), resolving the dir from `CENSURADO_PR
 WITH this package (`cli/workflow/parameters.json`). See cli/SKILL.md (the resolver + sub-skills)
 for the agent surface, `python3 cli/censurado.py <cmd> --help` for flags.
 """
-import argparse, hashlib, html, json, os, re, shutil, subprocess, sys, tempfile, time, unicodedata, urllib.error, urllib.parse, urllib.request
+import argparse, hashlib, html, importlib.util, json, os, re, shutil, subprocess, sys, tempfile, time, unicodedata, urllib.error, urllib.parse, urllib.request
 from datetime import datetime, timedelta
 from pathlib import Path
 
@@ -1853,6 +1853,13 @@ def cmd_deploy(a):
                          "Show the human what will go live, get an explicit yes, then re-run with "
                          "--yes.\n")
         return 1
+    return _push_public()
+
+
+def _push_public():
+    """Run the CDN push and relay its outcome. The body of `publicar` once its --yes gate has
+    passed, split out so the one-shot `automation` verb reaches the public site through THIS
+    code path (one FATAL relay, one success line) instead of shelling the script itself."""
     script = _REPO / "deploy" / "deploy-cdn.sh"
     if not script.is_file():
         fail(f"deploy script not found at {script} (expected deploy/deploy-cdn.sh in the repo).")
@@ -1873,6 +1880,227 @@ def cmd_deploy(a):
                      "opening the piece's public link (NOT by publishing again); plain `status` "
                      "confirms the public origin is serving.\n")
     return 0
+
+
+# ---- automations (the schedule registry, and running one on the spot) ----
+
+_PIPELINE_DIR = _REPO / "automation" / "pipeline"
+_EXECUTOR_DIR = _REPO / "automation" / "executor"
+PIPELINE_CONFIG = Path(os.environ.get(
+    "CENSURADO_PIPELINE_CONFIG", str(_PIPELINE_DIR / "pipeline.config.json")))
+# This verb's own derived config, beside the base one so its relative run_dir and prompt
+# paths still resolve. Deliberately NOT the executor's `.executor.config.json`: one file
+# written by both would swap the config out from under a scheduled batch mid-run.
+ONESHOT_CONFIG = ".automation.config.json"
+# What the operator picks is a lane, not an adapter. `remote` is the spoken name for the
+# openrouter lane; the lane -> adapter mapping itself stays in the executor's derive.py.
+LANES = {"local": "local", "remote": "openrouter", "openrouter": "openrouter"}
+
+
+def _derive():
+    """The executor box's config derivation (automation/executor/derive.py), loaded by path.
+    It is stdlib-only and is the ONE place a lane becomes an adapter, so this verb reuses it
+    rather than growing a second, drifting copy of the same merge."""
+    path = _EXECUTOR_DIR / "derive.py"
+    if not path.is_file():
+        fail(f"the executor's config derivation is missing at {path}. Automations need the "
+             "automation/executor/ box present in this repo.")
+    spec = importlib.util.spec_from_file_location("censurado_derive", path)
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
+
+
+def _pipeline_python():
+    """The interpreter that carries the pipeline's dependencies. This CLI is stdlib-only and is
+    documented as `python3 cli/censurado.py`, so the interpreter running THIS file is usually the
+    bare system one, which cannot import dbos/httpx/pydantic. The repo venv is the default;
+    CENSURADO_PIPELINE_PYTHON overrides it for a non-standard layout."""
+    explicit = os.environ.get("CENSURADO_PIPELINE_PYTHON", "").strip()
+    if explicit:
+        return explicit
+    venv = _REPO / ".venv" / "bin" / "python"
+    return str(venv) if venv.is_file() else sys.executable
+
+
+def _pipeline_env():
+    """The child's environment. The pipeline reads its secrets from the real environment, while
+    this CLI resolves them from .env, so an operator whose shell never exported them would watch
+    the batch die at config validation. Resolve them here and hand them over."""
+    env = dict(os.environ)
+    env["NEWSROOM_OPERATOR_TOKEN"] = token()
+    for key in ("OPENROUTER_API_KEY", "WEBSEARCH_SEARXNG_URL"):
+        value = _env_value(key)
+        if value:
+            env[key] = value
+    return env
+
+
+def _panel_settings():
+    """The panel's saved model settings (lanes: endpoint, model, key). Best effort, the same
+    fallback the executor takes: an unreachable backend, a non-200, or an empty singleton all
+    mean the file config's own lanes apply, so a panel that is down never blocks a run."""
+    try:
+        st, body = api("GET", "/automation-settings?include_secrets=true")
+    except ToolError as exc:
+        sys.stderr.write(f"automation: settings unreachable ({exc}), using the file config\n")
+        return {}
+    if st != 200:
+        sys.stderr.write(f"automation: settings unreadable (HTTP {st}), using the file config\n")
+        return {}
+    return _json(body, "the automation settings", want=dict).get("settings") or {}
+
+
+def cmd_automation(a):
+    """Run ONE automation right now, the whole newsroom in a single command: every author with
+    a beat and attached sources pitches candidates from their own feeds, the jefe de redaccion
+    picks the edition and ranks the portada, and the selected notes are written in parallel as
+    durable workflows. This is the same batch a scheduled automation fires, on the spot.
+
+    You pick a LANE, not a model: --lane local runs on the local llama.cpp endpoint, --lane
+    remote on the configured remote one, and each stage takes that lane's model as saved in the
+    panel's Models section. --prompt steers the edition (it reaches both the candidates and the
+    jefe prompts); without one the newsroom picks freely.
+
+    --deploy (the default) publishes the edition to the local portal in portada order and then
+    pushes the whole snapshot to the PUBLIC site. --no-deploy holds every piece in preview
+    instead, so nothing is published anywhere and `batch-approve` remains the way out.
+
+    A deploy ships the ENTIRE local snapshot, not just this edition's notes: everything sitting
+    published in the local backend goes live with it."""
+    lane = LANES.get(a.lane)
+    if lane is None:
+        fail(f"unknown lane {a.lane!r}. Pick one of: {', '.join(sorted(LANES))}.")
+    if not PIPELINE_CONFIG.is_file():
+        fail(f"no pipeline config at {PIPELINE_CONFIG}. Automations need the "
+             "automation/pipeline/ box present in this repo.")
+    derive = _derive()
+    base = _json(_read_file(str(PIPELINE_CONFIG), "the pipeline config"),
+                 "the pipeline config", want=dict)
+    settings = _panel_settings()
+    derived = derive.derive_config(base, derive.lane_settings(base, lane, settings))
+    config = derive.write_derived(PIPELINE_CONFIG, derived, ONESHOT_CONFIG)
+
+    run_id = a.run_id or "manual-" + datetime.now().strftime("%Y%m%d-%H%M")
+    mode = "auto" if a.deploy else "preview"
+    cmd = [_pipeline_python(), str(_PIPELINE_DIR / "run.py"), "batch",
+           "--config", str(config), "--mode", mode, "--run-id", run_id]
+    if a.authors:
+        cmd += ["--authors", a.authors]
+    if a.prompt:
+        cmd += ["--directive", a.prompt]
+
+    sys.stdout.write(f"automation {run_id}: lane {lane}, mode {mode}"
+                     f"{', then the public deploy' if a.deploy else ''}\n")
+    sys.stdout.flush()
+    try:
+        proc = subprocess.run(cmd, cwd=str(_REPO), env=_pipeline_env(), check=False)
+    except Exception as exc:
+        fail(f"could not launch the pipeline ({exc}). The pipeline's dependencies live in the "
+             "repo venv: run `make install` from the repo root, or point "
+             "CENSURADO_PIPELINE_PYTHON at an interpreter that has them.")
+    if proc.returncode != 0:
+        sys.stderr.write(f"automation {run_id} FAILED (the batch exited {proc.returncode}). "
+                         "Nothing was deployed. Relay the last lines above.\n")
+        return 1
+    _report_batch(config, run_id)
+    if not a.deploy:
+        sys.stdout.write(f"automation {run_id} OK, held in preview. Publish it with "
+                         f"`{_pipeline_python()} {_PIPELINE_DIR / 'run.py'} batch-approve "
+                         f"--config {PIPELINE_CONFIG} --run-id {run_id}`.\n")
+        return 0
+    return _push_public()
+
+
+def _report_batch(config, run_id):
+    """One line per article from the batch's own result.json, best effort. The pipeline exits 0
+    even when individual notes were rejected or failed, so the outcome lives in the artifact,
+    not the exit code."""
+    run_dir = Path(config).parent / "runs"
+    try:
+        cfg = json.loads(Path(config).read_text())
+        run_dir = Path(config).parent / cfg.get("run_dir", "runs")
+    except (OSError, ValueError):
+        pass
+    result = run_dir / run_id / "result.json"
+    if not result.is_file():
+        return
+    try:
+        data = json.loads(result.read_text())
+    except (OSError, ValueError):
+        return
+    articles = data.get("articles") or []
+    tally = {}
+    for art in articles:
+        tally[art.get("status", "?")] = tally.get(art.get("status", "?"), 0) + 1
+    sys.stdout.write(f"automation {run_id}: {len(articles)} notas "
+                     f"({', '.join(f'{n} {s}' for s, n in sorted(tally.items())) or 'ninguna'})\n")
+
+
+def cmd_automations(a):
+    """List the automations in the registry: what the executor fires, when, on which task, and
+    the recent-run strip of each. This is the read side; `automation-create` and
+    `automation-delete` are the write side, and plain `automation` runs one on the spot."""
+    st, body = api("GET", "/schedules" + ("?include_deleted=true" if a.all else ""))
+    sys.stdout.write(body.decode("utf-8", "replace") + "\n")
+    sys.stderr.write(f"automations -> HTTP {st}\n")
+    return 0 if st == 200 else 1
+
+
+def cmd_automation_create(a):
+    """Create an automation, or update one in place (the registry upserts on slug, so re-running
+    this with the same slug edits it and keeps its run history). Every field is replaced by what
+    you pass, so send the whole shape each time, not just the part you are changing.
+
+    A daily automation needs only --times. A weekly one also needs --weekdays (0 = Sunday), a
+    monthly one --monthdays (1..31). Times are HH:MM on the executor's own wall clock."""
+    if a.slug and a.slug != _slugify(a.slug):
+        fail(f"--slug must be url-safe lowercase (got {a.slug!r}; try {_slugify(a.slug)!r}), or "
+             "omit it and let the name decide.")
+    payload = {
+        "name": a.name,
+        "times": _split(a.times),
+        "cadence": a.cadence,
+        "mode": a.mode,
+        "task": a.task,
+        "prompt": a.prompt or "",
+        "authors": _split(a.authors) if a.authors else [],
+        # Always explicit: an omitted `enabled` means true at the backend, so a paused
+        # automation would silently wake up on the next edit.
+        "enabled": not a.disabled,
+    }
+    if a.slug:
+        payload["slug"] = a.slug
+    for flag, key in (("weekdays", "weekdays"), ("monthdays", "monthdays")):
+        raw = getattr(a, flag)
+        if raw:
+            try:
+                payload[key] = [int(x) for x in _split(raw)]
+            except ValueError:
+                fail(f"--{flag} takes comma-separated whole numbers (got {raw!r}).")
+    st, body = api("POST", "/schedules", payload)
+    sys.stdout.write(body.decode("utf-8", "replace") + "\n")
+    sys.stderr.write(f"automation-create {a.name!r} -> HTTP {st}\n")
+    return 0 if st == 200 else 1
+
+
+def cmd_automation_delete(a):
+    """Retire an automation so the executor stops firing it. The registry tombstones it: the row,
+    its run history and its creation date survive, and `automation-create` with the same slug
+    brings it back. Needs --yes."""
+    if not a.yes:
+        sys.stderr.write(f"automation-delete removes {a.slug!r} from the schedule registry and the "
+                         "executor stops firing it. Re-run with --yes to confirm.\n")
+        return 1
+    st, body = api("DELETE", "/schedules/" + urllib.parse.quote(a.slug, safe=""))
+    if st == 404:
+        sys.stderr.write(f"automation-delete {a.slug!r} -> HTTP 404 (no such automation; "
+                         "`automations` lists the real slugs)\n")
+        return 1
+    if body.strip():
+        sys.stdout.write(body.decode("utf-8", "replace") + "\n")
+    sys.stderr.write(f"automation-delete {a.slug!r} -> HTTP {st}\n")
+    return 0 if st == 204 else 1
 
 
 def cmd_doctor(a):
@@ -2453,6 +2681,55 @@ def build_parser():
     dp.add_argument("--yes", action="store_true",
                     help="confirm the public, irreversible publish (required)")
     dp.set_defaults(fn=cmd_deploy)
+
+    au = sub.add_parser("automation",
+                        help="run ONE automation right now: the full newsroom batch (every author "
+                             "pitches, the jefe picks, the notes are written), then go live")
+    au.add_argument("--lane", default="local", choices=sorted(LANES),
+                    help="which model lane every stage runs on (default: local); the model itself "
+                         "is the one saved for that lane in the panel")
+    au.add_argument("--prompt", default="",
+                    help="directive for this edition; reaches the candidates and jefe prompts")
+    au.add_argument("--authors", default="",
+                    help="comma-separated handles (default: every author with a beat and sources)")
+    au.add_argument("--run-id", dest="run_id", default="",
+                    help="batch id; reuse one to resume it (default: manual-<date>-<time>)")
+    au.add_argument("--deploy", action=argparse.BooleanOptionalAction, default=True,
+                    help="publish the edition and push the snapshot to the PUBLIC site "
+                         "(default: on; --no-deploy holds every piece in preview)")
+    au.set_defaults(fn=cmd_automation)
+
+    aul = sub.add_parser("automations",
+                         help="list the automations in the registry: cadence, times, task, and "
+                              "each one's recent-run strip")
+    aul.add_argument("--all", action="store_true", help="include retired (tombstoned) automations")
+    aul.set_defaults(fn=cmd_automations)
+
+    auc = sub.add_parser("automation-create",
+                         help="create an automation, or edit one in place (upserts on slug)")
+    auc.add_argument("name", help="display name; the slug is derived from it unless --slug is given")
+    auc.add_argument("--times", required=True,
+                     help="comma-separated HH:MM fire times, the executor's local wall clock")
+    auc.add_argument("--cadence", default="daily", choices=["daily", "weekly", "monthly"],
+                     help="how often it fires (default: daily)")
+    auc.add_argument("--weekdays", default="",
+                     help="comma-separated 0..6 (0 = Sunday); required for a weekly cadence")
+    auc.add_argument("--monthdays", default="",
+                     help="comma-separated 1..31; required for a monthly cadence")
+    auc.add_argument("--mode", default="preview", choices=["preview", "auto"],
+                     help="preview holds every piece for approval; auto publishes them (default: preview)")
+    auc.add_argument("--task", default="batch", choices=["batch", "topics"],
+                     help="what fires: the article edition or the topic sweep (default: batch)")
+    auc.add_argument("--prompt", default="", help="directive this automation runs with")
+    auc.add_argument("--authors", default="", help="comma-separated handles to limit it to")
+    auc.add_argument("--slug", default="", help="explicit url-safe slug instead of one from the name")
+    auc.add_argument("--disabled", action="store_true", help="create it paused")
+    auc.set_defaults(fn=cmd_automation_create)
+
+    aud = sub.add_parser("automation-delete", help="retire an automation (tombstone; needs --yes)")
+    aud.add_argument("slug", help="the automation's slug (`automations` lists them)")
+    aud.add_argument("--yes", action="store_true", help="confirm the delete")
+    aud.set_defaults(fn=cmd_automation_delete)
 
     dr = sub.add_parser("doctor",
                         help="self-check the stack, the skill package, and the on-disk agentic recipe")

@@ -25,7 +25,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from backend import Backend, BackendError  # noqa: E402
-from derive import OPENROUTER_DEFAULTS, derive_config  # noqa: E402
+from derive import OPENROUTER_DEFAULTS, derive_config, write_derived  # noqa: E402
 from schedule import already_fired, due_run_id, is_due, latest_due  # noqa: E402
 
 REPO = Path(__file__).resolve().parents[2]
@@ -341,9 +341,7 @@ class Executor:
         if not settings:
             return self.config_path
         derived = derive_config(json.loads(self.config_path.read_text()), settings)
-        out = self.config_path.with_name(".executor.config.json")
-        out.write_text(json.dumps(derived, ensure_ascii=False, indent=1))
-        return out
+        return write_derived(self.config_path, derived, ".executor.config.json")
 
     def _run_batch(self, schedule: dict, run_id: str) -> tuple[str, str]:
         if schedule.get("task") == "topics":

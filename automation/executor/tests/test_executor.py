@@ -96,6 +96,51 @@ def test_derive_config_merges_panel_settings_over_the_file():
     assert derive_config(base, {}) == base
 
 
+def test_lane_settings_puts_every_stage_on_one_lane():
+    """A one-shot run picks a lane, not a per-stage routing. If the panel's stage models rode
+    along, a run forced onto the local lane would ask llama.cpp for a remote model id and every
+    node would fail at the first call."""
+    from derive import derive_config, lane_settings
+
+    base = {
+        "adapters": {"api": {"base_url": "http://127.0.0.1:8080/v1", "model": "qwen-local"}},
+        "nodes": [{"name": "draft", "adapter": "api", "model": "stale-override"},
+                  {"name": "evaluate", "adapter": "api"}],
+    }
+    panel = {"lanes": {"local": {"model": "qwen-nuevo"},
+                       "openrouter": {"model": "deepseek/deepseek-chat"}},
+             "stages": {"evaluate": {"lane": "openrouter", "model": "openai/gpt-5-mini"}}}
+
+    base["batch"] = {"concurrency": 3}
+
+    local = derive_config(base, lane_settings(base, "local", panel))
+    assert [n["adapter"] for n in local["nodes"]] == ["api", "api"]
+    assert not any("model" in n for n in local["nodes"]), "the lane's own model applies"
+    assert local["adapters"]["api"]["model"] == "qwen-nuevo", "the panel's lane half survives"
+
+    remote = derive_config(base, lane_settings(base, "openrouter", panel))
+    assert [n["adapter"] for n in remote["nodes"]] == ["openrouter", "openrouter"]
+    assert remote["adapters"]["openrouter"]["model"] == "deepseek/deepseek-chat"
+    # The pitch and the jefe's selection are not nodes; without this the edition would be
+    # chosen on the local lane and written on the remote one.
+    assert remote["batch"]["adapter"] == "openrouter"
+    assert local["batch"]["adapter"] == "api"
+    assert base["nodes"][0]["model"] == "stale-override", "the base config is not mutated"
+    assert "adapter" not in base["batch"]
+
+
+def test_write_derived_lands_beside_the_base_config(tmp_path):
+    """The derived config's run_dir and prompt paths are relative to its own directory, so a
+    sibling is the only place it can be written without every path breaking."""
+    from derive import write_derived
+
+    base = tmp_path / "pipeline.config.json"
+    base.write_text("{}")
+    out = write_derived(base, {"run_dir": "runs"}, ".automation.config.json")
+    assert out.parent == base.parent and out.name == ".automation.config.json"
+    assert json.loads(out.read_text())["run_dir"] == "runs"
+
+
 def test_latest_due_finds_the_most_recent_missed_minute():
     from schedule import latest_due
     from datetime import datetime as dt

@@ -78,7 +78,7 @@ config:           ## validate the composed topology
 stack-clean:      ## stop, DELETE the named volumes (site/gocache/comfyui) + any orphans
 	./run.sh stack-clean
 
-serve:            ## the 24/7 loop: stack + telegram bridge + agent fallback chain (needs node)
+serve:            ## PARKED: the chat-bridge loop, waiting on whatsapp + telegram
 	./run.sh serve
 
 deploy:           ## build a fresh snapshot and push it to Cloudflare Pages (live site)

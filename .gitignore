@@ -90,3 +90,4 @@ docs/REQUIREMENTS.md
 docs/features.md
 docs/PLAN.md
 automation/pipeline/.executor.config.json
+automation/pipeline/.automation.config.json

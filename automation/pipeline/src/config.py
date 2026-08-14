@@ -99,6 +99,13 @@ class PipelineConfig:
                 val = batch.get(key)
                 if val is not None and (not isinstance(val, int) or val < floor):
                     v.append(f"batch.{key}: must be an integer >= {floor}")
+            adapter = batch.get("adapter")
+            if adapter is not None:
+                entry = (raw.get("adapters") or {}).get(adapter)
+                if entry is None:
+                    v.append(f"batch.adapter: no adapter named {adapter!r}")
+                elif (entry.get("kind") or adapter) != "api" and adapter != "api":
+                    v.append(f"batch.adapter: {adapter!r} is not an api-kind adapter")
 
         nodes = raw.get("nodes")
         if not isinstance(nodes, list) or not nodes:

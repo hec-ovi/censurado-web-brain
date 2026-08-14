@@ -96,8 +96,9 @@ The static site is not rebuilt inside the publish request: `generate` is a separ
 - `cli/SKILL.md` is the resolver skill that routes a CLI agent to the right fat sub-skill under `cli/skills/` (write-article, daily-batch, redactor, authors, sources, portada, prompts, media, publicar, translate, websearch).
 - `prompts/` is the editorial recipe: the `workflow/*` step-gate nodes + `manifest.json`, the `persona/synthesize.md` author guide, and `editorial/style.md`. Plain files, git is their history, no server and no database.
 - `newsroom/` is the maintenance CLI (`censurado-brain`): a backend health probe (`status`), the `normalize` whole-corpus contract pass (subcommands `check` (default), `links`, `sections`), plus the `topics cleanse` and `embeds recheck` sweeps. It needs the package installed (httpx + the corpus helpers); the authoring CLI does not.
-- `automation/supervisor/` is the 24/7 serve loop: `./run.sh serve` (or the shipped systemd unit) brings up the docker stack, starts the [telegram-bot-skill](https://github.com/hec-ovi/telegram-bot-skill) bridge from the sibling checkout with the one adapter named in `automation/supervisor/supervisor.config.json`, and keeps both alive with budget-limited restarts and owner alerts. Needs node >= 22; the bot credentials (`TELEGRAM_BOT_TOKEN`, `OWNER_ID`) cascade from this repo's `.env` into the bridge, and the bridge's own `.env` wins if it has them. Spec: [automation/supervisor/REQUIREMENTS.md](automation/supervisor/REQUIREMENTS.md).
+- `automation/supervisor/` is the chat-bridge serve loop, currently **parked**: `./run.sh serve` refuses and no unit is installed. It brings up the docker stack, starts the [telegram-bot-skill](https://github.com/hec-ovi/telegram-bot-skill) bridge from the sibling checkout with the one adapter named in `automation/supervisor/supervisor.config.json`, and keeps both alive with budget-limited restarts and owner alerts. It waits on the chat bridges (whatsapp alongside telegram); the schedule clock does not need it, since that lives in the `executor` container. Needs node >= 22; the bot credentials (`TELEGRAM_BOT_TOKEN`, `OWNER_ID`) cascade from this repo's `.env` into the bridge, and the bridge's own `.env` wins if it has them. Spec: [automation/supervisor/REQUIREMENTS.md](automation/supervisor/REQUIREMENTS.md).
 - `automation/executor/` is the schedule executor: a compose service that polls the backend's schedule registry (managed in the panel's Automation tab) each minute and fires due edition batches through the pipeline, one at a time, recording each run's outcome back onto the schedule. It starts and stops with the stack, so the newsroom's clock runs whenever docker runs. Contract: [automation/executor/CONTRACT.md](automation/executor/CONTRACT.md).
+- The same registry is editable from the CLI, and one edition can be run on the spot without touching it: `censurado.py automations` lists what is scheduled, `automation-create` / `automation-delete` manage it, and `censurado.py automation` fires a full batch right now on the chosen model lane (`--lane local` or `--lane remote`), taking it live unless `--no-deploy` holds it in preview. See [cli/skills/automations/SKILL.md](cli/skills/automations/SKILL.md).
 
 ### ComfyUI
 
@@ -266,7 +267,7 @@ Not built yet, captured here so we can pick them up. Nothing below blocks the cu
 
 - **Analytics / BI dashboard** (backend panel). One surface for growth: a most-popular-topics chart (filtered totals, built to scale to thousands of topics), authors ranked by likes, authors with the fewest articles, and statistical/growth modeling. Note: author-likes needs a reactions data source the backend does not hold yet (reactions live in the downstream Cloudflare Pages reactions function).
 - **Rebel Forge integration.** Integrate the Rebel Forge functionality (a separate GitHub repo). Pending, scope defined when picked up.
-- **Serve-loop follow-ups.** The 24/7 loop itself shipped (`./run.sh serve`, see below). Still open: a telegram command adapter that maps chat to the pipeline (run an article, run the batch, approve a run, tail events), contributed upstream in [telegram-bot-skill](https://github.com/hec-ovi/telegram-bot-skill), and a lightweight email trigger (a Cloudflare Email Worker posting to a small listener) for on-demand runs. The loop stays lean host code because the bridge's agent CLI and its auth live on the host.
+- **Serve-loop follow-ups.** The loop itself shipped and is parked until the chat bridges land. Still open: a telegram command adapter that maps chat to the pipeline (run an article, run the batch, approve a run, tail events), contributed upstream in [telegram-bot-skill](https://github.com/hec-ovi/telegram-bot-skill), and a lightweight email trigger (a Cloudflare Email Worker posting to a small listener) for on-demand runs. The loop stays lean host code because the bridge's agent CLI and its auth live on the host.
 
 ## Tests
 
@@ -294,7 +295,7 @@ The fully local lane (a headless agent CLI walking the whole editorial workflow 
 ```
 cli/censurado.py       the agent-facing CLI (publish/edit, media, image, tweet, authors, sources, step)
 cli/SKILL.md           the control skill (resolver): routes a CLI agent to the right sub-skill
-cli/skills/            the fat sub-skills (write-article, daily-batch, authors, sources, ...)
+cli/skills/            the fat sub-skills (write-article, daily-batch, authors, sources, automations, ...)
 cli/workflow/          the enforced numeric floor/caps (parameters.json) the walk fills into nodes
 cli/templates/         the ComfyUI render graph (flux2_klein)
 prompts/               the editorial recipe: workflow step-gate nodes + manifest, persona + editorial

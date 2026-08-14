@@ -328,6 +328,11 @@
        "type": "integer"
       }
      }
+    },
+    "adapter": {
+     "type": "string",
+     "default": "api",
+     "description": "Named api-kind adapter for the batch's own two calls (the per-author pitch and the jefe's selection); defaults to `api`"
     }
    }
   }

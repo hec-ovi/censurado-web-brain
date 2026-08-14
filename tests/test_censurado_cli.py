@@ -1856,3 +1856,177 @@ def test_always_author_stages_with_the_no_hero_override(monkeypatch):
     rc = cz.cmd_publish(_preview_ns(no_hero=True))
     assert rc == 0
     assert len(posts) == 1
+
+
+# ---- automations: running one on the spot, and the schedule registry ----
+
+def _automation_ns(**over):
+    ns = {"lane": "local", "prompt": "", "authors": "", "run_id": "b1", "deploy": True}
+    ns.update(over)
+    return SimpleNamespace(**ns)
+
+
+@pytest.fixture
+def automation_stack(monkeypatch, tmp_path):
+    """A real pipeline config on disk plus stubs for the two things the verb shells out to.
+    Records the batch argv and whether the public push was reached."""
+    cfg = tmp_path / "pipeline.config.json"
+    cfg.write_text(json.dumps({
+        "run_dir": "runs",
+        "adapters": {"api": {"kind": "api", "base_url": "http://127.0.0.1:8080/v1",
+                             "model": "qwen-local"}},
+        "nodes": [{"name": "draft", "adapter": "api"}],
+    }))
+    seen = {"batch": None, "env": {}, "pushed": False, "rc": 0}
+
+    def fake_run(cmd, **kw):
+        seen["batch"] = cmd
+        seen["env"] = kw.get("env") or {}
+        return SimpleNamespace(returncode=seen["rc"])
+
+    monkeypatch.setattr(cz, "PIPELINE_CONFIG", cfg)
+    monkeypatch.setattr(cz.subprocess, "run", fake_run)
+    monkeypatch.setattr(cz, "token", lambda: "t")
+    monkeypatch.setattr(cz, "_panel_settings", lambda: {})
+    monkeypatch.setattr(cz, "_push_public", lambda: seen.__setitem__("pushed", True) or 0)
+    return seen, cfg
+
+
+def test_automation_runs_the_batch_on_the_chosen_lane_then_deploys(automation_stack):
+    """--deploy is the whole point of the verb: a batch that only published locally would leave
+    the operator thinking the edition went live when the public site never changed."""
+    seen, cfg = automation_stack
+    rc = cz.cmd_automation(_automation_ns(lane="remote", prompt="la semana economica"))
+    assert rc == 0
+    argv = seen["batch"]
+    assert argv[1].endswith("run.py") and argv[2] == "batch"
+    assert "--mode" in argv and argv[argv.index("--mode") + 1] == "auto"
+    assert argv[argv.index("--directive") + 1] == "la semana economica"
+    assert seen["pushed"], "a --deploy run must reach the public push"
+    # The lane only means something if the batch is handed the DERIVED config. Asserting the
+    # file's contents alone would still pass while run.py received the untouched base one.
+    derived_path = cfg.parent / cz.ONESHOT_CONFIG
+    assert argv[argv.index("--config") + 1] == str(derived_path)
+    assert json.loads(derived_path.read_text())["nodes"][0]["adapter"] == "openrouter"
+    # The pipeline reads its secrets from the real environment; this CLI reads them from .env.
+    assert seen["env"]["NEWSROOM_OPERATOR_TOKEN"] == "t"
+
+
+def test_automation_without_deploy_holds_in_preview(automation_stack):
+    """--no-deploy has to hold the pieces AND skip the push; publishing locally but not deploying
+    would still put the edition on the portal the operator asked to keep clean."""
+    seen, _ = automation_stack
+    rc = cz.cmd_automation(_automation_ns(deploy=False))
+    assert rc == 0
+    argv = seen["batch"]
+    assert argv[argv.index("--mode") + 1] == "preview"
+    assert not seen["pushed"]
+
+
+def test_automation_narrows_to_the_named_authors_and_reports_the_outcome(automation_stack, capsys):
+    """The pipeline exits 0 even when notes were rejected, so the per-article tally is the only
+    honest report of what a run produced; --authors is what makes a targeted run possible."""
+    seen, cfg = automation_stack
+    run_dir = cfg.parent / "runs" / "b1"
+    run_dir.mkdir(parents=True)
+    (run_dir / "result.json").write_text(json.dumps({"articles": [
+        {"status": "published"}, {"status": "published"}, {"status": "rejected"}]}))
+    rc = cz.cmd_automation(_automation_ns(authors="lara-arianna,vector-omni"))
+    assert rc == 0
+    argv = seen["batch"]
+    assert argv[argv.index("--authors") + 1] == "lara-arianna,vector-omni"
+    out = capsys.readouterr().out
+    assert "3 notas" in out and "2 published" in out and "1 rejected" in out
+
+
+def test_automation_never_deploys_a_failed_batch(automation_stack):
+    """The failure path is the one that matters: half an edition pushed to the public site is
+    the outcome this guard exists to prevent."""
+    seen, _ = automation_stack
+    seen["rc"] = 1
+    rc = cz.cmd_automation(_automation_ns())
+    assert rc == 1
+    assert not seen["pushed"]
+
+
+def test_automation_rejects_an_unknown_lane(automation_stack):
+    with pytest.raises(cz.ToolError):
+        cz.cmd_automation(_automation_ns(lane="gpu-del-vecino"))
+
+
+def test_automation_create_sends_the_whole_schedule(monkeypatch, capsys):
+    """`enabled` is a pointer at the backend: omit it and a paused automation silently wakes up
+    on the next edit, so the verb always states it."""
+    seen = []
+
+    def fake_req(method, url, data=None, headers=None, timeout=60):
+        seen.append((method, url, json.loads(data) if data else None))
+        return 200, json.dumps({"slug": "repaso"}).encode()
+
+    monkeypatch.setattr(cz, "_req", fake_req)
+    monkeypatch.setattr(cz, "token", lambda: "t")
+    rc = cz.cmd_automation_create(SimpleNamespace(
+        name="Repaso", times="20:00, 07:00", cadence="weekly", weekdays="0,3", monthdays="",
+        mode="auto", task="batch", prompt="la semana", authors="lara-arianna, vector-omni",
+        slug="", disabled=True))
+    assert rc == 0
+    method, url, body = seen[0]
+    assert (method, url.endswith("/schedules")) == ("POST", True)
+    assert body["times"] == ["20:00", "07:00"] and body["weekdays"] == [0, 3]
+    assert body["authors"] == ["lara-arianna", "vector-omni"]
+    assert body["enabled"] is False and body["mode"] == "auto"
+
+
+def test_automation_create_refuses_a_slug_the_registry_would_not_round_trip(monkeypatch):
+    """The backend stores an explicit slug verbatim without slugifying it, so a spaced slug goes
+    in and then cannot be addressed by `automation-delete`. The stub matters: without it an
+    unreachable backend raises the same ToolError and the guard would look tested when it is not."""
+    calls = []
+    monkeypatch.setattr(cz, "_req", lambda *a, **k: calls.append(a) or (200, b"{}"))
+    monkeypatch.setattr(cz, "token", lambda: "t")
+    with pytest.raises(cz.ToolError):
+        cz.cmd_automation_create(SimpleNamespace(
+            name="Repaso", times="07:00", cadence="daily", weekdays="", monthdays="",
+            mode="preview", task="batch", prompt="", authors="", slug="Mi Slug!", disabled=False))
+    assert not calls, "the guard must refuse before the request goes out"
+
+
+def test_automation_delete_refuses_without_yes(monkeypatch, capsys):
+    called = []
+    monkeypatch.setattr(cz, "_req", lambda *a, **k: called.append(a) or (204, b""))
+    rc = cz.cmd_automation_delete(SimpleNamespace(slug="repaso", yes=False))
+    assert rc == 1 and not called
+    assert "--yes" in capsys.readouterr().err
+
+
+def test_automation_delete_tombstones_and_reports_an_absent_slug(monkeypatch, capsys):
+    """204 is the registry's success for a delete AND for a re-delete; 404 means the slug never
+    existed. Mapping either one to the wrong exit code makes the verb lie to its caller."""
+    seen = []
+    monkeypatch.setattr(cz, "token", lambda: "t")
+    monkeypatch.setattr(cz, "_req", lambda m, u, **k: seen.append((m, u)) or (204, b""))
+    assert cz.cmd_automation_delete(SimpleNamespace(slug="repaso semanal", yes=True)) == 0
+    assert seen[0][0] == "DELETE" and seen[0][1].endswith("/schedules/repaso%20semanal")
+
+    monkeypatch.setattr(cz, "_req", lambda m, u, **k: (404, b'{"code":"not_found"}'))
+    assert cz.cmd_automation_delete(SimpleNamespace(slug="fantasma", yes=True)) == 1
+    assert "404" in capsys.readouterr().err
+
+
+def test_automations_lists_the_registry(monkeypatch, capsys):
+    monkeypatch.setattr(cz, "token", lambda: "t")
+    monkeypatch.setattr(cz, "_req", lambda m, u, **k: (200, json.dumps(
+        {"schedules": [{"slug": "repaso", "include_deleted": "true" in u}]}).encode()))
+    rc = cz.cmd_automations(SimpleNamespace(all=True))
+    assert rc == 0
+    assert json.loads(capsys.readouterr().out)["schedules"][0]["include_deleted"] is True
+
+
+def test_cli_parses_the_automation_verbs():
+    p = cz.build_parser()
+    assert p.parse_args(["automation"]).fn is cz.cmd_automation
+    assert p.parse_args(["automation"]).deploy is True, "deploy is the default"
+    assert p.parse_args(["automation", "--no-deploy"]).deploy is False
+    assert p.parse_args(["automations"]).fn is cz.cmd_automations
+    assert p.parse_args(["automation-create", "X", "--times", "07:00"]).fn is cz.cmd_automation_create
+    assert p.parse_args(["automation-delete", "x"]).fn is cz.cmd_automation_delete

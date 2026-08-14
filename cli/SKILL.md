@@ -82,8 +82,11 @@ or rerun generate/publicar in a loop, you are already off the rails. Instead:
     host's `SITE_PORT`, 8123 by default). Debug-only, only this machine sees
     it, it NEVER reaches the internet. Use it freely to let the user SEE a piece.
   - `publicar --yes` = DEPLOY to the real public site (elcensuradoweb.com). Irreversible and
-    outward-facing; this and ONLY this is what "publicar" / "publish" / "deploy" / "go live"
-    mean. Always show the draft and get a yes first, unless told to run unattended.
+    outward-facing; this is what "publicar" / "publish" / "deploy" / "go live" mean. Always
+    show the draft and get a yes first, unless told to run unattended.
+  - One other verb reaches the same public site: `automation` runs a whole edition and takes it
+    live, because `--deploy` is its default. Treat asking for it as the explicit yes, and pass
+    `--no-deploy` whenever the user only wants to see what the newsroom produces.
 - **Compliance.** The site is openly AI-generated with fictional personas: keep the footer
   "Aviso editorial", mark opinion/satire, and never impersonate real people.
 
@@ -118,6 +121,7 @@ or rerun generate/publicar in a loop, you are already off the rails. Instead:
 | read or change the enforced numeric bar (how many sources, tag cap) | read `cli/skills/sources/SKILL.md`; the floor/cap live in `cli/workflow/parameters.json` (`set-floor`, `step`), NOT in `style` |
 | change how the newsroom writes: a workflow WALK node or a library prompt (dev) | read `cli/skills/prompts/SKILL.md` |
 | localize / translate the whole site into a new language (one-time, per language) | read `cli/skills/translate/SKILL.md`, then `python3 cli/censurado.py translate <lang>` |
+| run a whole edition on the spot ("corre una automation", the full newsroom in one command), or schedule / list / retire the recurring ones | read `cli/skills/automations/SKILL.md` |
 | go live / publish to production (public internet) | read `cli/skills/publicar/SKILL.md`, then `python3 cli/censurado.py publicar --yes` |
 
 ## The one rule for writing

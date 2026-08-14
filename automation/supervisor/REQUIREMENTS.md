@@ -1,5 +1,10 @@
 # The serve loop
 
+**PARKED.** No unit installed, no process running, and `./run.sh serve` refuses. The lane
+waits on the chat bridges (whatsapp alongside telegram); the code and its tests stay here
+for that. Nothing else needs it: the schedule clock lives in the `executor` container and
+compose restarts crashed services on its own.
+
 One resident host process that keeps the product alive 24/7. Run it with `./run.sh serve`
 (or the `censurado-serve@.service` systemd template here); config in
 `supervisor.config.json`; tests in `serve.e2e.test.mjs` (`npm test`). It runs on the host,

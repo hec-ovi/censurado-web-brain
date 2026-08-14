@@ -46,8 +46,12 @@ def _authors_with_sources(cfg: dict) -> list[dict]:
 
 
 def _call_node(cfg: dict, prompt_path: str, context: dict) -> tuple[dict, str]:
+    """The batch's own two editorial calls (each author's pitch, then the jefe's selection).
+    They run on `batch.adapter`, so a run that moves every stage to another lane moves the
+    edition's decisions with it instead of leaving them on the default endpoint."""
     prompt = render(Path(prompt_path).read_text(), context)
-    raw = ApiAdapter(cfg["adapters"]["api"]).complete(prompt, want_json=True)
+    name = (cfg.get("batch") or {}).get("adapter", "api")
+    raw = ApiAdapter(cfg["adapters"][name]).complete(prompt, want_json=True)
     return parse_json_output(raw), raw
 
 
