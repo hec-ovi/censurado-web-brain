@@ -1,9 +1,11 @@
 """Contract tests for the pipeline box, through the real entry point (run.py)."""
 import json
 import os
+import sqlite3
 import subprocess
 import sys
 import threading
+import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
@@ -58,6 +60,12 @@ class FakeApi(BaseHTTPRequestHandler):
             self.wfile.write(f"data: {piece}\n\n".encode())
             return
         prompt = body["messages"][-1]["content"]
+        if (type(self).behavior == "hang-story-one" and "Historia uno" in prompt
+                and "jefe de redacción" not in prompt):
+            # The first article's node call never answers; returning without a
+            # response closes the connection after the client is long gone.
+            time.sleep(12)
+            return
         if "Actua como editor de mesa" in prompt:
             type(self).gate_calls += 1
             if type(self).behavior == "title-nit":
@@ -66,7 +74,7 @@ class FakeApi(BaseHTTPRequestHandler):
                 if type(self).behavior == "respin-once":
                     revise = type(self).gate_calls == 1
                 else:
-                    revise = type(self).behavior != "publish"
+                    revise = type(self).behavior not in ("publish", "hang-story-one")
                 obs = ([{"nivel": "bloqueante", "detalle": "motivo"}] if revise
                        else [{"nivel": "pulido", "detalle": "brillo"}])
             content = json.dumps({"observaciones": obs})
@@ -675,6 +683,44 @@ def test_batch_auto_publishes_in_portada_order(tmp_path, servers):
     assert len(FakeBackend.posts) == 2
     assert FakeBackend.posts[0]["idem"] == "lote-auto-n2"
     assert FakeBackend.posts[1]["idem"] == "lote-auto-n1"
+
+
+def test_batch_contains_a_hung_article_and_continues(tmp_path, servers):
+    # One article stalling forever is that article's failure, reported with its
+    # cause; the other notes still write and the batch returns its result.
+    api_port, backend_port = servers
+    FakeApi.behavior = "hang-story-one"
+    cfg = write_config(tmp_path, api_port, backend_port,
+                       batch={**BATCH, "article_timeout_s": 4})
+    p = run_sub(cfg, "batch", "--run-id", "lote-colgado")
+    assert p.returncode == 0, p.stderr
+    result = json.loads(p.stdout.strip().splitlines()[-1])
+    assert result["status"] == "batch-previewed"
+    by_rank = {a["portada_rank"]: a for a in result["articles"]}
+    assert by_rank[1]["status"] == "failed"
+    assert "timed out after 4s" in by_rank[1]["error"]
+    assert by_rank[2]["status"] == "previewed"
+    events = (tmp_path / "runs" / "events.jsonl").read_text()
+    assert "timed out after 4s" in events
+
+
+def test_batch_concurrent_articles_keep_their_own_durable_state(tmp_path, servers):
+    # Two articles in flight at once: each run owns its own DBOS db, so neither
+    # process ever adopts (and orphans) the other's live workflow. recovery
+    # attempts above 1 would mean a sibling recovered it.
+    api_port, backend_port = servers
+    cfg = write_config(tmp_path, api_port, backend_port,
+                       batch={**BATCH, "concurrency": 2})
+    p = run_sub(cfg, "batch", "--run-id", "lote-par")
+    assert p.returncode == 0, p.stderr
+    result = json.loads(p.stdout.strip().splitlines()[-1])
+    assert [a["status"] for a in result["articles"]] == ["previewed", "previewed"]
+    for n in (1, 2):
+        db = tmp_path / "runs" / f"lote-par-n{n}" / ".dbos.sqlite"
+        assert db.is_file()
+        rows = sqlite3.connect(db).execute(
+            "select workflow_uuid, status, recovery_attempts from workflow_status").fetchall()
+        assert rows == [(f"lote-par-n{n}", "SUCCESS", 1)]
 
 
 def test_batch_resume_reuses_the_plan(tmp_path, servers):

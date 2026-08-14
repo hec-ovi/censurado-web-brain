@@ -20,6 +20,7 @@
   "websearch": { "cmd": ["websearch"], "timeout_s": 180 },
   "batch": {
     "concurrency": 3,
+    "article_timeout_s": 1800,
     "used_urls_cap": 50,
     "candidates_prompt": "prompts/candidates.md",
     "jefe_prompt": "prompts/jefe.md",

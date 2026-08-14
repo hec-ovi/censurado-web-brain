@@ -302,6 +302,12 @@
      "default": 3,
      "description": "Parallel article writes (match the llama.cpp slots)"
     },
+    "article_timeout_s": {
+     "type": "integer",
+     "minimum": 1,
+     "default": 1800,
+     "description": "Per-article wall clock; an article past it is killed, reported failed, and the batch continues"
+    },
     "used_urls_cap": {
      "type": "integer",
      "minimum": 1,

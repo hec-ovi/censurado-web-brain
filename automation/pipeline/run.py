@@ -56,13 +56,20 @@ def cmd_run(argv: list[str]) -> int:
         return 2
 
     cfg.run_dir.mkdir(parents=True, exist_ok=True)
+    run_id = args.run_id or "run-" + uuid.uuid4().hex[:12]
+    art_dir = cfg.run_dir / run_id
+    art_dir.mkdir(parents=True, exist_ok=True)
     from dbos import DBOS, SetWorkflowID
+    # One system db per run: DBOS.launch() recovers every PENDING workflow in its
+    # db, so a db shared across concurrent article processes lets each new process
+    # adopt a sibling's LIVE workflow, race its steps, and orphan the loser into
+    # an endless result poll. Scoped to the run's dir, recovery only ever sees
+    # this run, and resuming the same run id reattaches to the same db.
     DBOS(config={"name": "censurado-pipeline", "log_level": "WARNING",
-                 "system_database_url": f"sqlite:///{cfg.run_dir / '.dbos.sqlite'}"})
+                 "system_database_url": f"sqlite:///{art_dir / '.dbos.sqlite'}"})
     import src.flow as flow
     DBOS.launch()
 
-    run_id = args.run_id or "run-" + uuid.uuid4().hex[:12]
     inputs = {"topic": args.topic, "author": args.author, "section": args.section,
               "mode": args.mode}
     if args.image_brief:

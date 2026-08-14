@@ -112,27 +112,38 @@ def _jefe(cfg: dict, candidates: list[dict], batch_dir: Path, directive: str = "
     return selection
 
 
-def _write_article(cfg_path: str, item: dict, run_id: str) -> dict:
+def _write_article(cfg_path: str, item: dict, run_id: str, timeout_s: int) -> dict:
     argv = [sys.executable, RUN_PY, "--config", cfg_path,
             "--topic", f"{item['titulo']}: {item['descripcion']}",
             "--author", item["autor"], "--section", item["beat"],
             "--run-id", run_id, "--mode", "preview"]
     if item.get("imagen") and item.get("imagen_brief"):
         argv += ["--image-brief", item["imagen_brief"]]
-    p = subprocess.run(argv, capture_output=True, text=True, timeout=3600)
+    # A hung or unspawnable article is that ARTICLE's failure: it lands in the
+    # result as status failed and the batch keeps writing the other notes.
+    try:
+        p = subprocess.run(argv, capture_output=True, text=True, timeout=timeout_s)
+        out, err = p.stdout, (p.stderr or p.stdout)
+    except subprocess.TimeoutExpired:
+        out, err = "", f"article timed out after {timeout_s}s"
+    except OSError as e:
+        out, err = "", f"article process failed to start: {e}"
     result = {"run_id": run_id, "author": item["autor"], "title": item["titulo"],
               "portada_rank": item["portada_rank"]}
     try:
-        result.update(json.loads(p.stdout.strip().splitlines()[-1]))
+        result.update(json.loads(out.strip().splitlines()[-1]))
     except (ValueError, IndexError):
         result["status"] = "failed"
-        result["error"] = (p.stderr or p.stdout)[-300:]
+        result["error"] = err[-300:]
     return result
 
 
 def _approve(cfg_path: str, run_id: str) -> dict:
-    p = subprocess.run([sys.executable, RUN_PY, "approve", "--config", cfg_path,
-                        "--run-id", run_id], capture_output=True, text=True, timeout=300)
+    try:
+        p = subprocess.run([sys.executable, RUN_PY, "approve", "--config", cfg_path,
+                            "--run-id", run_id], capture_output=True, text=True, timeout=300)
+    except (subprocess.TimeoutExpired, OSError) as e:
+        return {"status": "failed", "error": f"approve: {e}"[:300]}
     try:
         return json.loads(p.stdout.strip().splitlines()[-1])
     except (ValueError, IndexError):
@@ -169,14 +180,18 @@ def run_batch(cfg: dict, cfg_path: str, batch_id: str, mode: str,
               "notes": f"{len(selection)} notas elegidas de {len(candidates)} candidatas"})
 
     concurrency = batch_cfg.get("concurrency", 3)
+    article_timeout_s = batch_cfg.get("article_timeout_s", 1800)
     with cf.ThreadPoolExecutor(max_workers=max(1, concurrency)) as ex:
         articles = list(ex.map(
-            lambda pair: _write_article(cfg_path, pair[1], f"{batch_id}-n{pair[0]}"),
+            lambda pair: _write_article(cfg_path, pair[1], f"{batch_id}-n{pair[0]}",
+                                        article_timeout_s),
             enumerate(sorted(selection, key=lambda s: s["portada_rank"]), 1)))
     for art in articles:
         emit({"event": "batch-article", "run_id": art["run_id"], "author": art["author"],
               "status": art.get("status", "failed"),
               **({"error": art["error"]} if art.get("error") else {})})
+    if all(a.get("status") == "failed" for a in articles):
+        raise AdapterError("batch: every article failed")
 
     registry = UsedUrls(cfg["backend"], cap=batch_cfg.get("used_urls_cap", 50))
     for item in selection:
@@ -197,7 +212,7 @@ def run_batch(cfg: dict, cfg_path: str, batch_id: str, mode: str,
     result = {"status": status, "batch_id": batch_id, "artifacts": str(batch_dir),
               "articles": [{k: a.get(k) for k in
                             ("run_id", "author", "title", "portada_rank", "status",
-                             "slug", "permalink") if a.get(k) is not None}
+                             "slug", "permalink", "error") if a.get(k) is not None}
                            for a in articles]}
     (batch_dir / "result.json").write_text(json.dumps(result, ensure_ascii=False, indent=1))
     return result
