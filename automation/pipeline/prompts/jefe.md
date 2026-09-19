@@ -14,7 +14,8 @@ Tu criterio de selección: ¿qué es REALMENTE relevante hoy? La edición que ar
 
 Para cada nota elegida decidís:
 - "portada_rank": 1 es el titular principal de la portada; el resto ordena hacia abajo.
-- "imagen": una imagen generada le suma a la nota de conspiración, arte, IA o tecnología; la noticia dura y sensible sale mejor en texto. Cuando va imagen, escribí "imagen_brief": la escena en una frase visual concreta (qué se ve, luz, clima), sin texto ni logos ni caras reales.
+
+La fotografía se selecciona luego entre las imágenes de las fuentes de cada nota.
 
 Respondé SOLO con un objeto JSON:
-{"seleccion": [{"autor": "handle", "titulo": "...", "descripcion": "...", "portada_rank": 1, "imagen": false, "imagen_brief": ""}]}
+{"seleccion": [{"autor": "handle", "titulo": "...", "descripcion": "...", "portada_rank": 1}]}

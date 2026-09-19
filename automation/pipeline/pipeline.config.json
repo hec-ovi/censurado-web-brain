@@ -18,6 +18,7 @@
     "cli": { "cmd": ["claude", "-p", "{prompt}"], "timeout_s": 3600 }
   },
   "websearch": { "cmd": ["websearch"], "timeout_s": 180 },
+  "source_images": { "enabled": true, "vision": false },
   "batch": {
     "concurrency": 3,
     "article_timeout_s": 1800,

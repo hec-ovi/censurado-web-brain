@@ -38,11 +38,14 @@ class ApiAdapter:
         if key:
             self.headers["Authorization"] = f"Bearer {key}"
 
-    def complete(self, prompt: str, want_json: bool) -> str:
+    def complete(self, prompt: str, want_json: bool, images: list[str] | None = None) -> str:
         messages = []
         if self.system:
             messages.append({"role": "system", "content": self.system})
-        messages.append({"role": "user", "content": prompt})
+        content = ([{"type": "text", "text": prompt}]
+                   + [{"type": "image_url", "image_url": {"url": url}} for url in images]
+                   if images else prompt)
+        messages.append({"role": "user", "content": content})
         payload: dict = {"model": self.model, "messages": messages, "stream": True}
         if self.temperature is not None:
             payload["temperature"] = self.temperature

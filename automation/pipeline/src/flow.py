@@ -9,8 +9,8 @@ from .adapter_cli import CliAdapter
 from .context import ContextFetcher
 from .errors import AdapterError
 from .publisher import Publisher
+from .photographs import attach_photograph
 from .render import parse_json_output, render
-from .toolkit import run_verb
 
 
 @DBOS.step(retries_allowed=True, max_attempts=3, interval_seconds=1.0, backoff_rate=2.0)
@@ -42,13 +42,9 @@ def publish_piece(cfg: dict, piece: dict, inputs: dict, run_id: str) -> dict:
 
 
 @DBOS.step(retries_allowed=False)
-def render_hero(cfg: dict, brief: str, alt: str) -> dict:
-    """Best-effort hero render through the toolkit's `image` verb; {} when ComfyUI is
-    absent or the render fails (the piece publishes text-only, like the CLI lane)."""
-    out = run_verb(cfg, "image", "--prompt", brief, "--alt", alt, timeout=600)
-    if out and out.get("image"):
-        return {"image": out["image"], "image_alt": out.get("image_alt", alt)}
-    return {}
+def source_hero(cfg: dict, inputs: dict, context: dict, piece: dict) -> dict:
+    """Select an article photograph from its sources; absence is text-only."""
+    return attach_photograph(cfg, inputs, context, piece)
 
 
 _CORRECTOR_OWNS = ("titular", "titulo", "título", "bajada", "standfirst")
@@ -119,9 +115,12 @@ def article_run(cfg: dict, inputs: dict) -> dict:
             if verdict != "publish":
                 return {"status": "rejected", "run_id": run_id, "notes": notes,
                         "artifacts": str(art_dir)}
-    if inputs.get("image_brief") and piece:
-        piece.update(render_hero(cfg, inputs["image_brief"],
-                                 piece.get("standfirst", "") or piece.get("title", "")))
+    if piece and (cfg.get("source_images") or {}).get("enabled"):
+        for key in ("image", "image_alt", "image_caption", "image_credit", "image_source", "image_original"):
+            piece.pop(key, None)
+        photo = source_hero(cfg, inputs, context, piece)
+        _emit(art_dir, "source-image", json.dumps(photo, ensure_ascii=False), photo)
+        piece.update(photo)
     if inputs.get("mode", "preview") == "preview":
         (art_dir / "piece.json").write_text(json.dumps(
             {"piece": piece, "inputs": {k: inputs[k] for k in ("topic", "author", "section")}},

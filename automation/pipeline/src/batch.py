@@ -103,9 +103,7 @@ def _jefe(cfg: dict, candidates: list[dict], batch_dir: Path, directive: str = "
                           "titulo": s["titulo"],
                           "descripcion": s.get("descripcion") or cand.get("descripcion", ""),
                           "fuente": cand.get("fuente", ""),
-                          "portada_rank": int(s.get("portada_rank") or len(selection) + 1),
-                          "imagen": bool(s.get("imagen")),
-                          "imagen_brief": s.get("imagen_brief") or ""})
+                          "portada_rank": int(s.get("portada_rank") or len(selection) + 1)})
     if not selection:
         raise AdapterError("jefe: the selection came back empty")
     (batch_dir / "jefe.json").write_text(json.dumps(selection, ensure_ascii=False, indent=1))
@@ -117,8 +115,8 @@ def _write_article(cfg_path: str, item: dict, run_id: str, timeout_s: int) -> di
             "--topic", f"{item['titulo']}: {item['descripcion']}",
             "--author", item["autor"], "--section", item["beat"],
             "--run-id", run_id, "--mode", "preview"]
-    if item.get("imagen") and item.get("imagen_brief"):
-        argv += ["--image-brief", item["imagen_brief"]]
+    if item.get("fuente"):
+        argv += ["--source-url", item["fuente"]]
     # A hung or unspawnable article is that ARTICLE's failure: it lands in the
     # result as status failed and the batch keeps writing the other notes.
     try:

@@ -79,6 +79,17 @@ class PipelineConfig:
                 elif not acfg.get("stdin") and not any("{prompt}" in a for a in cmd):
                     v.append(f"adapters.{aname}.cmd: no element carries {{prompt}} (or set adapters.{aname}.stdin)")
 
+        images = raw.get("source_images")
+        if images is not None:
+            if not isinstance(images, dict):
+                v.append("source_images: must be an object")
+            else:
+                for key in ("enabled", "vision"):
+                    if key in images and not isinstance(images[key], bool):
+                        v.append(f"source_images.{key}: must be a boolean")
+                if images.get("enabled") and images.get("adapter") and kinds.get(images["adapter"]) != "api":
+                    v.append("source_images.adapter: must name a configured api-kind adapter")
+
         for block in ("websearch", "toolkit"):
             block_cfg = raw.get(block)
             if block_cfg is not None:
@@ -216,6 +227,10 @@ class PipelineConfig:
                         v.append(f"{ctag}: unknown source '{kind}'")
         if nodes and drafts != 1:
             v.append(f"nodes: exactly one node must have role 'draft' (found {drafts})")
+        if isinstance(images, dict) and images.get("enabled") and not images.get("adapter"):
+            draft_node = next((n for n in nodes if isinstance(n, dict) and n.get("role") == "draft"), {})
+            if kinds.get(draft_node.get("adapter")) != "api":
+                v.append("source_images.adapter: required when the draft uses a cli adapter")
 
         if v:
             raise ConfigError("\n".join(v))

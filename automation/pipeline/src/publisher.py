@@ -69,6 +69,9 @@ class Publisher:
             meta["image"] = piece["image"]
             meta["card"] = {"type": "image", "src": piece["image"],
                             "alt": piece.get("image_alt", "")}
+            for key in ("image_alt", "image_caption", "image_credit", "image_source", "image_original"):
+                if piece.get(key):
+                    meta[key] = piece[key]
         else:
             meta["card"] = {"type": "text"}
         if piece.get("standfirst"):

@@ -341,6 +341,25 @@
      "description": "Named api-kind adapter for the batch's own two calls (the per-author pitch and the jefe's selection); defaults to `api`"
     }
    }
+  },
+  "source_images": {
+   "type": "object",
+   "additionalProperties": false,
+   "properties": {
+    "enabled": {
+     "type": "boolean",
+     "default": false
+    },
+    "adapter": {
+     "type": "string",
+     "description": "API adapter; defaults to the final draft adapter"
+    },
+    "vision": {
+     "type": "boolean",
+     "default": false,
+     "description": "Attach image pixels to the selection call; text-only models use captions and source context"
+    }
+   }
   }
  }
 }

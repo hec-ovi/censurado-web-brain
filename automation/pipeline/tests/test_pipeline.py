@@ -100,9 +100,9 @@ class FakeApi(BaseHTTPRequestHandler):
         elif "jefe de redacción" in prompt:
             content = json.dumps({"seleccion": [
                 {"autor": "autor-test", "titulo": "Historia uno", "descripcion": "La primera.",
-                 "portada_rank": 1, "imagen": False, "imagen_brief": ""},
+                 "portada_rank": 1},
                 {"autor": "autor-test", "titulo": "Historia dos", "descripcion": "La segunda.",
-                 "portada_rank": 2, "imagen": False, "imagen_brief": ""}]}, ensure_ascii=False)
+                 "portada_rank": 2}]}, ensure_ascii=False)
         else:
             content = json.dumps(DRAFT, ensure_ascii=False)
         out = json.dumps({"choices": [{"message": {"content": content}}]}).encode()
@@ -524,6 +524,24 @@ def test_approve_refuses_a_run_without_a_previewed_piece(tmp_path, servers):
     assert a.returncode == 2
     assert "no previewed piece" in a.stderr
     assert FakeBackend.posts == []
+
+
+def test_source_photo_metadata_survives_approval(tmp_path, servers):
+    cfg = write_config(tmp_path, *servers)
+    folder = tmp_path / "runs" / "photo"
+    folder.mkdir(parents=True)
+    photo = {"image": "/media/source.jpg", "image_alt": "Galaxia Centaurus A",
+             "image_caption": "Vista infrarroja", "image_credit": "NASA",
+             "image_source": "https://source.test/article",
+             "image_original": "https://source.test/photo.jpg"}
+    (folder / "piece.json").write_text(json.dumps({
+        "piece": {**DRAFT, **photo},
+        "inputs": {"topic": "Webb", "author": "autor-test", "section": "science"}}))
+    result = run_sub(cfg, "approve", "--run-id", "photo")
+    assert result.returncode == 0, result.stderr
+    metadata = FakeBackend.posts[0]["body"]["metadata"]
+    assert {key: metadata[key] for key in photo} == photo
+    assert metadata["card"] == {"type": "image", "src": photo["image"], "alt": photo["image_alt"]}
 
 
 def test_events_console_shows_runs_and_failures(tmp_path, servers):

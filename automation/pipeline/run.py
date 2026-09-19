@@ -20,6 +20,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from src.config import PipelineConfig            # noqa: E402
 from src.errors import ConfigError, PipelineError, PublishError  # noqa: E402
+from src.photo_command import image_command  # noqa: E402
 
 
 def emit_event(run_dir: Path, event: dict) -> None:
@@ -46,9 +47,7 @@ def cmd_run(argv: list[str]) -> int:
     ap.add_argument("--mode", choices=["preview", "auto"], default="preview",
                     help="preview (default): walk and gate, return the piece for approval; "
                          "auto: publish when the gate passes")
-    ap.add_argument("--image-brief",
-                    help="Hero image brief; renders best-effort through the toolkit "
-                         "(skipped cleanly when ComfyUI is off)")
+    ap.add_argument("--source-url", help="Original article URL used to find a relevant photograph")
     args = ap.parse_args(argv)
 
     cfg = load_config(args.config)
@@ -72,8 +71,8 @@ def cmd_run(argv: list[str]) -> int:
 
     inputs = {"topic": args.topic, "author": args.author, "section": args.section,
               "mode": args.mode}
-    if args.image_brief:
-        inputs["image_brief"] = args.image_brief
+    if args.source_url:
+        inputs["source_url"] = args.source_url
     emit_event(cfg.run_dir, {"event": "run-start", "run_id": run_id, "mode": args.mode,
                              "author": args.author, "section": args.section,
                              "topic": args.topic})
@@ -424,7 +423,7 @@ def cmd_topics(argv: list[str]) -> int:
 def main() -> int:
     subcommands = {"approve": cmd_approve, "events": cmd_events,
                    "batch": cmd_batch, "batch-approve": cmd_batch_approve,
-                   "topics": cmd_topics}
+                   "topics": cmd_topics, "image": image_command}
     if len(sys.argv) > 1 and sys.argv[1] in subcommands:
         return subcommands[sys.argv[1]](sys.argv[2:])
     return cmd_run(sys.argv[1:])
