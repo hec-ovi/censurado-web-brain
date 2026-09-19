@@ -1,0 +1,20 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$defs": {
+    "backend": {"type": "object", "required": ["base_url", "token_env"], "properties": {
+      "base_url": {"type": "string", "format": "uri"},
+      "token_env": {"type": "string"}
+    }},
+    "input": {"type": "object", "required": ["urls", "article"], "properties": {
+      "urls": {"type": "array", "items": {"type": "string", "format": "uri"}},
+      "article": {"type": "object", "required": ["title", "body"], "properties": {
+        "title": {"type": "string"}, "body": {"type": "string"}
+      }}
+    }},
+    "output": {"type": "object", "properties": {
+      "image": {"type": "string"}, "image_alt": {"type": "string"},
+      "image_caption": {"type": "string"}, "image_credit": {"type": "string"},
+      "image_source": {"type": "string"}, "image_original": {"type": "string"}
+    }, "additionalProperties": false}
+  }
+}
